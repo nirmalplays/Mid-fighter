@@ -24,6 +24,8 @@ export interface SimSnapshot {
     m: number[][];
     d: number[][];
     p: number[] | null;
+    /** The safe (workshop) portal: [u, v, age ms, lasts ms], or null. */
+    s: number[] | null;
     w: number;
     nx: number;
     /** performance.now() at arrival. */
@@ -35,7 +37,8 @@ export type NetEvent =
     | { type: 'bite'; damage: number }
     | { type: 'kill'; kind: string }
     | { type: 'gain'; skill: string; id: number }
-    | { type: 'wave'; wave: number; u: number; v: number };
+    | { type: 'wave'; wave: number; u: number; v: number }
+    | { type: 'safe'; u: number; v: number };
 
 export interface Remote {
     id: string;
@@ -97,12 +100,13 @@ function handle(msg: Msg): void {
             break;
         }
         case 'sim':
-            snap = { m: msg.m as number[][], d: msg.d as number[][], p: msg.p as number[] | null, w: msg.w as number, nx: msg.nx as number, at: performance.now() };
+            snap = { m: msg.m as number[][], d: msg.d as number[][], p: msg.p as number[] | null, s: msg.s as number[] | null, w: msg.w as number, nx: msg.nx as number, at: performance.now() };
             break;
         case 'bite':
         case 'kill':
         case 'gain':
         case 'wave':
+        case 'safe':
             for (const l of listeners) l(msg as unknown as NetEvent);
             break;
     }

@@ -12,7 +12,10 @@
         "idleTimeout": 120,
         "metadata": {
           "waveEverySec": 30,
-          "firstWaveSec": 4
+          "firstWaveSec": 4,
+          "safeEverySec": 24,
+          "safeForSec": 20,
+          "safeFirstSec": 6
         }
       }
     }

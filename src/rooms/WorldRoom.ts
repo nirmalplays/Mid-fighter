@@ -43,12 +43,13 @@ interface SnapshotMsg { type: 'snapshot'; players: Record<string, { name: string
 interface PoseOut extends Pose { type: 'pose'; id: string }
 interface ActOut { type: 'act'; id: string; kind: string }
 interface AwayOut { type: 'away'; id: string }
-interface SimOut { type: 'sim'; m: number[][]; d: number[][]; p: number[] | null; w: number; nx: number }
+interface SimOut { type: 'sim'; m: number[][]; d: number[][]; p: number[] | null; s: number[] | null; w: number; nx: number }
 interface BiteOut { type: 'bite'; damage: number }
 interface KillOut { type: 'kill'; kind: string }
 interface GainOut { type: 'gain'; skill: string; id: number }
 interface WaveOut { type: 'wave'; wave: number; u: number; v: number }
-type Protocol = PoseMsg | ActMsg | AwayMsg | HelloMsg | HitMsg | PickupMsg | SnapshotMsg | PoseOut | ActOut | AwayOut | SimOut | BiteOut | KillOut | GainOut | WaveOut;
+interface SafeOut { type: 'safe'; u: number; v: number }
+type Protocol = PoseMsg | ActMsg | AwayMsg | HelloMsg | HitMsg | PickupMsg | SnapshotMsg | PoseOut | ActOut | AwayOut | SimOut | BiteOut | KillOut | GainOut | WaveOut | SafeOut;
 
 const MAP_TILES = 256;
 const ROOM_TILES = 8;
@@ -81,7 +82,7 @@ export default class WorldRoom extends GameRoom<Protocol> {
         this.map = map;
         const blocked = map.blocked;
         const heightAt = (i: number, j: number) => map.height[j * MAP_TILES + i];
-        const meta = (this.config.metadata ?? {}) as { waveEverySec?: number; firstWaveSec?: number };
+        const meta = (this.config.metadata ?? {}) as { waveEverySec?: number; firstWaveSec?: number; safeEverySec?: number; safeForSec?: number; safeFirstSec?: number };
         this.sim = new GameSim(
             {
                 players: () => {
@@ -109,7 +110,13 @@ export default class WorldRoom extends GameRoom<Protocol> {
                 },
                 rand: Math.random,
             },
-            { everyMs: (meta.waveEverySec ?? 120) * 1000, firstMs: (meta.firstWaveSec ?? 20) * 1000 },
+            {
+                everyMs: (meta.waveEverySec ?? 120) * 1000,
+                firstMs: (meta.firstWaveSec ?? 20) * 1000,
+                safeEveryMs: (meta.safeEverySec ?? 120) * 1000,
+                safeForMs: (meta.safeForSec ?? 20) * 1000,
+                safeFirstMs: (meta.safeFirstSec ?? 45) * 1000,
+            },
         );
         this.lastTick = Date.now();
         this.clock.setInterval('sim', () => this.tick(), SIM_MS);
@@ -181,7 +188,7 @@ export default class WorldRoom extends GameRoom<Protocol> {
         this.lastTick = now;
         this.dispatch(sim.update(dt));
         // Send every tick while there is something moving; once a second otherwise (the wave countdown).
-        const busy = sim.monsters.size > 0 || sim.drops.size > 0 || sim.portal !== null;
+        const busy = sim.monsters.size > 0 || sim.drops.size > 0 || sim.portal !== null || sim.safe !== null;
         this.quietFor += dt;
         if (busy || this.quietFor >= 1000) {
             this.quietFor = 0;
@@ -193,7 +200,8 @@ export default class WorldRoom extends GameRoom<Protocol> {
         for (const e of events) {
             if (e.type === 'bite') this.sendTo(e.playerId, { type: 'bite', damage: e.damage });
             else if (e.type === 'kill') this.sendTo(e.playerId, { type: 'kill', kind: e.kind });
-            else this.broadcast({ type: 'wave', wave: e.wave, u: e.u, v: e.v });
+            else if (e.type === 'wave') this.broadcast({ type: 'wave', wave: e.wave, u: e.u, v: e.v });
+            else this.broadcast({ type: 'safe', u: e.u, v: e.v });
         }
     }
 

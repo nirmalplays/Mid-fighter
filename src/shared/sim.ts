@@ -52,6 +52,11 @@ const DIST_MIN = 12;
 const DIST_MAX = 19;
 /** A player must be this close (tiles) to a drop to take it (a little slack for lag). */
 const PICKUP_SLACK = 2.6;
+/** The safe zone around the workshop portal, in tiles. Monsters never enter it. */
+export const SAFE_RADIUS = 3.4;
+/** How far from a player the safe portal appears. */
+const SAFE_DIST_MIN = 7;
+const SAFE_DIST_MAX = 13;
 
 /** Monster count, toughness and kinds for wave n and a number of players. */
 export function waveSpec(n: number, players = 1) {
@@ -110,6 +115,15 @@ export interface SimDrop {
     age: number;
 }
 
+/** The workshop portal: a temporary safe zone. */
+export interface SimSafe {
+    u: number;
+    v: number;
+    age: number;
+    /** How long it stays open, ms. */
+    lasts: number;
+}
+
 export interface SimPortal {
     u: number;
     v: number;
@@ -126,17 +140,25 @@ export interface SimPortal {
 export type SimEvent =
     | { type: 'bite'; playerId: string; damage: number }
     | { type: 'kill'; playerId: string; kind: string }
-    | { type: 'wave'; wave: number; u: number; v: number };
+    | { type: 'wave'; wave: number; u: number; v: number }
+    | { type: 'safe'; u: number; v: number };
 
 export interface SimOptions {
     everyMs: number;
     firstMs: number;
+    /** The safe portal opens about every `safeEveryMs` for `safeForMs`; the first one after about `safeFirstMs`. */
+    safeEveryMs: number;
+    safeForMs: number;
+    safeFirstMs: number;
 }
 
 export class GameSim {
     monsters = new Map<number, SimMonster>();
     drops = new Map<number, SimDrop>();
     portal: SimPortal | null = null;
+    safe: SimSafe | null = null;
+    /** Ms until the safe portal next opens. */
+    safeClock: number;
     wave = 0;
     /** Ms until the next portal opens. */
     clock: number;
@@ -148,6 +170,7 @@ export class GameSim {
         this.env = env;
         this.opts = opts;
         this.clock = opts.firstMs;
+        this.safeClock = opts.safeFirstMs * (0.7 + 0.6 * env.rand());
     }
 
     /** Remove every monster, drop and portal (the wave counter and timer stay). */
@@ -155,6 +178,12 @@ export class GameSim {
         this.monsters.clear();
         this.drops.clear();
         this.portal = null;
+        this.safe = null;
+    }
+
+    /** Is (u, v) inside the safe zone (only while the safe portal is open)? */
+    inSafe(u: number, v: number): boolean {
+        return this.safe !== null && Math.hypot(u - this.safe.u, v - this.safe.v) < SAFE_RADIUS;
     }
 
     update(dtMs: number): SimEvent[] {
@@ -179,6 +208,28 @@ export class GameSim {
             }
         }
         if (this.portal) this.updatePortal(this.portal, dtMs, players);
+
+        // The safe portal: opens at a random spot near a random player, stays a short while, then closes.
+        if (this.safe) {
+            this.safe.age += dtMs;
+            if (this.safe.age >= this.safe.lasts) {
+                this.safe = null;
+                // The next one comes about `safeEveryMs` after this one opened, give or take.
+                const gap = this.opts.safeEveryMs - this.opts.safeForMs;
+                this.safeClock = Math.max(15000, gap * (0.8 + 0.4 * this.env.rand()));
+            }
+        } else if (players.length > 0) {
+            this.safeClock -= dtMs;
+            if (this.safeClock <= 0) {
+                const spot = this.findSafeSpot(players);
+                if (spot) {
+                    this.safe = { u: spot.u, v: spot.v, age: 0, lasts: this.opts.safeForMs };
+                    events.push({ type: 'safe', u: spot.u, v: spot.v });
+                } else {
+                    this.safeClock = 5000;
+                }
+            }
+        }
 
         for (const m of [...this.monsters.values()]) this.updateMonster(m, dt, dtMs, players, events);
 
@@ -263,6 +314,7 @@ export class GameSim {
             ]),
             d: [...this.drops.values()].map((d) => [d.id, SKILLS.indexOf(d.skill), round(d.u), round(d.v), Math.round(d.age)]),
             p: p ? [round(p.u), round(p.v), p.wave, Math.round(p.age), p.doneAt === null ? -1 : Math.round(p.doneAt)] : null,
+            s: this.safe ? [round(this.safe.u), round(this.safe.v), Math.round(this.safe.age), this.safe.lasts] : null,
             w: this.wave,
             nx: p ? 0 : Math.max(0, Math.ceil(this.clock / 1000)),
         };
@@ -307,10 +359,31 @@ export class GameSim {
         if (p.doneAt !== null && p.age >= p.doneAt + PORTAL_CLOSE_MS) this.portal = null;
     }
 
+    private findSafeSpot(players: SimPlayer[]): { u: number; v: number } | null {
+        const anchor = players[Math.floor(this.env.rand() * players.length)];
+        for (let n = 0; n < 40; n++) {
+            const ang = this.env.rand() * Math.PI * 2;
+            const d = SAFE_DIST_MIN + this.env.rand() * (SAFE_DIST_MAX - SAFE_DIST_MIN);
+            const u = anchor.u + Math.cos(ang) * d;
+            const v = anchor.v + Math.sin(ang) * d;
+            if (u < 6 || v < 6 || u > 250 || v > 250 || !this.env.canStand(u, v)) continue;
+            return { u, v };
+        }
+        return null;
+    }
+
+    /** A step that would carry a monster into the safe zone is refused (leaving it is fine). */
+    private allowed(m: SimMonster, tu: number, tv: number): boolean {
+        const s = this.safe;
+        if (!s) return true;
+        const into = Math.hypot(tu - s.u, tv - s.v);
+        return into >= SAFE_RADIUS || into >= Math.hypot(m.u - s.u, m.v - s.v);
+    }
+
     private step(m: SimMonster, du: number, dv: number): boolean {
         let moved = false;
-        if (du !== 0 && this.env.canMove(m.u, m.v, m.u + du, m.v)) { m.u += du; moved = true; }
-        if (dv !== 0 && this.env.canMove(m.u, m.v, m.u, m.v + dv)) { m.v += dv; moved = true; }
+        if (du !== 0 && this.allowed(m, m.u + du, m.v) && this.env.canMove(m.u, m.v, m.u + du, m.v)) { m.u += du; moved = true; }
+        if (dv !== 0 && this.allowed(m, m.u, m.v + dv) && this.env.canMove(m.u, m.v, m.u, m.v + dv)) { m.v += dv; moved = true; }
         return moved;
     }
 
@@ -322,10 +395,24 @@ export class GameSim {
             return;
         }
 
-        // Hunt the nearest player in the world.
+        // A monster caught inside a new safe zone is driven out of it.
+        if (this.safe) {
+            const du0 = m.u - this.safe.u;
+            const dv0 = m.v - this.safe.v;
+            const d0 = Math.hypot(du0, dv0);
+            if (d0 < SAFE_RADIUS) {
+                const ux = d0 > 0.001 ? du0 / d0 : 1;
+                const uy = d0 > 0.001 ? dv0 / d0 : 0;
+                m.u += ux * 5 * dt;
+                m.v += uy * 5 * dt;
+            }
+        }
+
+        // Hunt the nearest player in the world (anyone inside the safe zone is out of reach).
         let target: SimPlayer | null = null;
         let best = Infinity;
         for (const p of players) {
+            if (this.inSafe(p.u, p.v)) continue;
             const d = Math.hypot(p.u - m.u, p.v - m.v);
             if (d < best) { best = d; target = p; }
         }
@@ -363,6 +450,7 @@ export class GameSim {
                 m.hit = true;
                 // Whoever is in reach when the blow lands takes it.
                 for (const p of players) {
+                    if (this.inSafe(p.u, p.v)) continue; // safe inside the zone
                     if (Math.hypot(p.u - m.u, p.v - m.v) < def.reach + 0.45) events.push({ type: 'bite', playerId: p.id, damage: m.damage });
                 }
             }

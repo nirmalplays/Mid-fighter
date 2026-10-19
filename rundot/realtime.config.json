@@ -10,7 +10,13 @@
         "reconnectTimeout": 30,
         "autoPersist": false,
         "idleTimeout": 120,
-        "metadata": { "waveEverySec": 120, "firstWaveSec": 20 }
+        "metadata": {
+          "waveEverySec": 120,
+          "firstWaveSec": 20,
+          "safeEverySec": 120,
+          "safeForSec": 20,
+          "safeFirstSec": 45
+        }
       }
     }
   ]
