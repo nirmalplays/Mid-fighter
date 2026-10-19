@@ -502,7 +502,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     let invuln = 0; // ms of grace after being bitten
     const hurtPlayer = (n: number) => {
         if (invuln > 0 || character.dead || entering) return;
-        invuln = 1000;
+        invuln = 1500;
         store.patch({ hp: Math.max(0, store.get().hp - n) });
         character.command({ type: 'hurt' });
         net.sendAct('hurt');

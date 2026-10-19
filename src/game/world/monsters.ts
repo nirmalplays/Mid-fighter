@@ -33,16 +33,16 @@ interface Kind {
 }
 
 const KINDS: Record<string, Kind> = {
-    goblin: { hp: 5, speed: 2.3, reach: 1.05, attackMs: 560, hitAt: 0.55, recoverMs: 900, moveFrameMs: 150, size: 1, barY: 84, hop: 0, weight: 3 },
-    slime: { hp: 4, speed: 1.5, reach: 0.95, attackMs: 640, hitAt: 0.6, recoverMs: 1100, moveFrameMs: 130, size: 1.15, barY: 46, hop: 7, weight: 3 },
-    wolf: { hp: 6, speed: 3.5, reach: 1.15, attackMs: 440, hitAt: 0.5, recoverMs: 750, moveFrameMs: 90, size: 1, barY: 64, hop: 0, weight: 2 },
-    skeleton: { hp: 8, speed: 1.9, reach: 1.1, attackMs: 720, hitAt: 0.6, recoverMs: 1200, moveFrameMs: 150, size: 1.05, barY: 92, hop: 0, weight: 2 },
+    goblin: { hp: 5, speed: 2.3, reach: 1.05, attackMs: 560, hitAt: 0.55, recoverMs: 1300, moveFrameMs: 150, size: 1.3, barY: 100, hop: 0, weight: 3 },
+    slime: { hp: 4, speed: 1.5, reach: 0.95, attackMs: 640, hitAt: 0.6, recoverMs: 1500, moveFrameMs: 130, size: 1.9, barY: 62, hop: 7, weight: 3 },
+    wolf: { hp: 6, speed: 3.5, reach: 1.15, attackMs: 440, hitAt: 0.5, recoverMs: 1300, moveFrameMs: 90, size: 1.5, barY: 82, hop: 0, weight: 2 },
+    skeleton: { hp: 8, speed: 1.9, reach: 1.1, attackMs: 720, hitAt: 0.6, recoverMs: 1600, moveFrameMs: 150, size: 1.25, barY: 108, hop: 0, weight: 2 },
 };
 const KIND_NAMES = Object.keys(KINDS);
 
 const MAX_ALIVE = 4;
 const SPAWN_EVERY_MS = 6000;
-const FIRST_SPAWN_MS = 3500;
+const FIRST_SPAWN_MS = 5000;
 const SPAWN_MIN = 9;
 const SPAWN_MAX = 13;
 const LEASH = 26;
