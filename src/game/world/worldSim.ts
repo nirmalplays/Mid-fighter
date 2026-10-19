@@ -87,6 +87,22 @@ export function createWorldSim(opts: {
                 if (map.terrain[k] === 4 || map.blocked[k] === 1) return false;
                 return Math.abs(heightAt(i, j) - heightAt(i + 1, j)) <= 1 && Math.abs(heightAt(i, j) - heightAt(i, j + 1)) <= 1;
             },
+            isOpen: (u, v) => {
+                const i = Math.floor(u);
+                const j = Math.floor(v);
+                let solid = 0;
+                for (let dj = -2; dj <= 2; dj++) {
+                    for (let di = -2; di <= 2; di++) {
+                        const k = (j + dj) * MAP_TILES + (i + di);
+                        if (map.terrain[k] === 4) return false; // WATER
+                        if (map.blocked[k] === 1) {
+                            if (Math.abs(di) <= 1 && Math.abs(dj) <= 1) return false;
+                            solid++;
+                        }
+                    }
+                }
+                return solid <= 2;
+            },
             rand: Math.random,
         },
         {
@@ -201,6 +217,8 @@ export function createWorldSim(opts: {
 
         destroy() {
             offNet();
+            // Leaving while the safe portal is open uses it up: the next one comes after the usual gap.
+            if (local.safe) persist.safeClock = Math.max(15000, (opts.safeEverySec - opts.safeForSec) * 1000);
         },
     };
 }

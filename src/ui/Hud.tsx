@@ -180,6 +180,21 @@ function WavePill() {
     );
 }
 
+/** The workshop portal while it is open: a green pill with an arrow, distance and seconds left. */
+function SafePill() {
+    const aim = useStore((s) => s.safeAim);
+    if (!aim) return null;
+    return (
+        <div
+            className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-xl px-3 text-[13px] font-black tabular-nums text-white"
+            style={{ top: 46, height: 30, background: 'rgba(20,90,50,.88)', border: '3px solid #4ade80' }}
+        >
+            <span style={{ display: 'inline-block', transform: `rotate(${aim.angle}rad)`, fontSize: 15, lineHeight: 1 }}>➤</span>
+            <span>Safe portal · {Math.round(aim.dist)} tiles · {aim.left}s</span>
+        </div>
+    );
+}
+
 /** A message that fades after a couple of seconds (wave starts, pickups). */
 function Banner() {
     const banner = useStore((s) => s.banner);
@@ -193,7 +208,7 @@ function Banner() {
     return (
         <div
             className="pointer-events-none absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-center text-xl font-black text-white transition-opacity duration-500"
-            style={{ top: 52, opacity: shown ? 1 : 0, textShadow: '0 2px 0 #1a0c10, 0 0 8px #1a0c10, 2px 0 0 #1a0c10, -2px 0 0 #1a0c10' }}
+            style={{ top: 86, opacity: shown ? 1 : 0, textShadow: '0 2px 0 #1a0c10, 0 0 8px #1a0c10, 2px 0 0 #1a0c10, -2px 0 0 #1a0c10' }}
         >
             {shown ?? ''}
         </div>
@@ -370,7 +385,7 @@ export default function Hud() {
                     }}
                     onPointerDown={(e) => {
                         e.preventDefault();
-                        if (inBase) store.patch({ spawnAt: 'portal', phase: 'playing' });
+                        if (inBase) store.patch({ phase: 'playing' });
                         else store.patch({ phase: 'base' });
                     }}
                 >
@@ -381,6 +396,7 @@ export default function Hud() {
             <Hotbar />
             {!inBase && <SkillChips />}
             {!inBase && <WavePill />}
+            {!inBase && <SafePill />}
             {!inBase && <Banner />}
 
             {/* Actions, bottom right */}

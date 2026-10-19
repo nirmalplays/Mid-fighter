@@ -108,6 +108,23 @@ export default class WorldRoom extends GameRoom<Protocol> {
                     if (map.terrain[k] === WATER || blocked[k] === 1) return false;
                     return Math.abs(heightAt(i, j) - heightAt(i + 1, j)) <= 1 && Math.abs(heightAt(i, j) - heightAt(i, j + 1)) <= 1;
                 },
+                // Open ground: nothing solid within one tile, and at most two solid cells within two.
+                isOpen: (u, v) => {
+                    const i = Math.floor(u);
+                    const j = Math.floor(v);
+                    let solid = 0;
+                    for (let dj = -2; dj <= 2; dj++) {
+                        for (let di = -2; di <= 2; di++) {
+                            const k = (j + dj) * MAP_TILES + (i + di);
+                            if (map.terrain[k] === WATER) return false;
+                            if (blocked[k] === 1) {
+                                if (Math.abs(di) <= 1 && Math.abs(dj) <= 1) return false;
+                                solid++;
+                            }
+                        }
+                    }
+                    return solid <= 2;
+                },
                 rand: Math.random,
             },
             {

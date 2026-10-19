@@ -8,7 +8,8 @@
  * terrain hides what is behind it; an x-ray copy of the player shows through.
  * Ground is shaded by height and a noise tone, props cast soft shadows, and
  * water deepens away from the shore with foam along the edge and ripples.
- * A stone plaza holds the portal that leads to the workshop (the base).
+ * Every couple of minutes a temporary safe portal opens somewhere; walking into it leads
+ * to the workshop (the base), and a ring around it keeps monsters out for its few seconds.
  */
 import {
     Assets, Container, Graphics, Rectangle, Sprite, Text, Texture,
@@ -29,6 +30,7 @@ import {
 import { createInput, JOY_RADIUS } from './input.ts';
 import { createDropView, SKILL_CAP, SKILL_COLOR, SKILL_NAMES, type Skill } from './drops.ts';
 import { createMonsterView } from './monsters.ts';
+import { createSafeView } from './safeZone.ts';
 import { createPortalView } from './waves.ts';
 import { createWorldSim } from './worldSim.ts';
 import { ISO_FRAMES, ISO_SCALE } from './isoAtlas.ts';
@@ -57,15 +59,7 @@ const KICK_NEIGHBOUR = 60;
 /** Elevation from which a stone tile is capped with snow. */
 const SNOW_LEVEL = 7;
 /** Portal: 6 animation frames of 112 × 128, scaled up; the base's centre sits on its tile. */
-const PORTAL_FRAMES = 6;
-const PORTAL_W = 112;
-const PORTAL_H = 128;
-const PORTAL_SCALE = 1.45;
-const PORTAL_BASE_Y = 108 / PORTAL_H;
-const PORTAL_MS = 130;
-/** Multiplies the stone tiles (purple-grey) to the portal's grey-teal stonework. */
-const PLAZA_TINT = 0x9fffd6;
-/** Walking within this many tiles of the portal's centre pulls the player in. */
+/** Walking within this many tiles of the open safe portal's centre pulls the player in. */
 const PORTAL_REACH = 1.35;
 const ENTER_MS = 850;
 const FLASH_MS = 350;
@@ -203,19 +197,13 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         pu = Math.min(MAP_TILES - 1, Math.max(0, spawn[0])) + 0.5;
         pv = Math.min(MAP_TILES - 1, Math.max(0, spawn[1])) + 0.5;
     }
-    // Resume where this player left off (unless they are coming back through the portal).
-    if (store.get().spawnAt === 'center' && progress.saved?.world.set) {
+    // Resume where this player left off (including coming back from the workshop).
+    if (progress.saved?.world.set) {
         const { u, v } = progress.saved.world;
         if (u >= 0 && v >= 0 && u < MAP_TILES && v < MAP_TILES && map.blocked[Math.floor(v) * MAP_TILES + Math.floor(u)] === 0) {
             pu = u;
             pv = v;
         }
-    }
-    // Coming back from the base: step out beside the portal.
-    if (store.get().spawnAt === 'portal') {
-        pu = map.portal.i + 0.5;
-        pv = map.portal.j + 2.5;
-        store.patch({ spawnAt: 'center' });
     }
     // Debug: with ?spawn= the player is exposed for automated checks.
     if (spawn) (window as unknown as { __player?: Container }).__player = player;
@@ -227,7 +215,6 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
 
     // Per-chunk lookups.
     const chunkOf = (i: number, j: number) => Math.floor(j / CHUNK_TILES) * MAP_CHUNKS + Math.floor(i / CHUNK_TILES);
-    const plazaCells = new Set(map.plaza);
     const propsByChunk = new Map<number, Prop[]>();
     for (const p of map.props) {
         const k = chunkOf(p.i, p.j);
@@ -297,8 +284,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                     add(sp, 0);
                 }
                 const topCube = isoSprite(base, x, y - h * LEVEL_H + lift);
-                // The plaza keeps one even tint so it matches the portal; the rest is mottled by tone.
-                topCube.tint = t === WATER ? waterTint(depth) : plazaCells.has(k) ? PLAZA_TINT : shade(h, tone);
+                topCube.tint = t === WATER ? waterTint(depth) : shade(h, tone);
                 add(topCube, 0);
                 const top = y - h * LEVEL_H;
                 if (t === WATER) {
@@ -469,36 +455,12 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         store.patch({ tileX: i, tileY: j, height: map.height[t], chunkX: curCx, chunkY: curCy, loadedChunks: chunks.size });
     };
 
-    // Portal: walking into it leaves the world for the base.
-    const portalSheet = Assets.get<Texture>('portal');
-    portalSheet.source.scaleMode = 'nearest';
-    const portalTex = Array.from({ length: PORTAL_FRAMES }, (_, n) =>
-        new Texture({ source: portalSheet.source, frame: new Rectangle(n * PORTAL_W, 0, PORTAL_W, PORTAL_H) }));
-    const portalX = sx(map.portal.i + 0.5, map.portal.j + 0.5);
-    const portalY = sy(map.portal.i + 0.5, map.portal.j + 0.5);
-    const portalGlow = new Sprite(glowTex);
-    portalGlow.anchor.set(0.5);
-    portalGlow.tint = 0x5dff8a;
-    portalGlow.position.set(portalX, portalY);
-    portalGlow.zIndex = portalY + Z_DECAL;
-    const portalSprite = new Sprite(portalTex[0]);
-    portalSprite.anchor.set(0.5, PORTAL_BASE_Y);
-    portalSprite.scale.set(PORTAL_SCALE);
-    portalSprite.position.set(portalX, portalY);
-    portalSprite.zIndex = portalY + Z_PROP;
-    const portalLabel = new Text({
-        text: 'WORKSHOP',
-        style: { fontFamily: 'sans-serif', fontSize: 26, fontWeight: '900', fill: 0xffffff, stroke: { color: 0x14442a, width: 6 } },
-    });
-    portalLabel.anchor.set(0.5);
-    portalLabel.position.set(portalX, portalY - 185);
-    portalLabel.zIndex = portalY + Z_PROP + 5;
-    objects.addChild(portalGlow, portalSprite, portalLabel);
     const flash = new Graphics();
     app.stage.addChild(flash);
     let entering = false;
     let enterT = 0;
     let enterFrom = { x: 0, y: 0 };
+    let enterTo = { x: 0, y: 0 };
     let exited = false;
 
     // Monsters, the wave portal and drops: shown from the shared simulation (the server's when
@@ -543,7 +505,12 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                 progress.reachWave(n);
                 banner(`Wave ${n}! A portal has opened`);
             },
+            safe: () => banner('Safe portal open! Reach it to rest in the workshop'),
         },
+        // Debug: ?safeEvery / safeFor / safeFirst (seconds) change the safe portal's timing offline.
+        safeEverySec: Number(q.get('safeEvery')) || 120,
+        safeForSec: Number(q.get('safeFor')) || 20,
+        safeFirstSec: Number(q.get('safeFirst')) || 45,
     });
     const monsterView = createMonsterView({
         layer: objects,
@@ -564,6 +531,13 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         player: () => ({ u: pu, v: pv, alive: !character.dead && !entering }),
         wantsSkill: (skill: Skill) => store.get().skills[skill] < SKILL_CAP[skill],
         onTouch: (id) => sim.take(id),
+    });
+    const safeView = createSafeView({
+        layer: objects,
+        heightAt,
+        toScreen: worldPoint,
+        zFor: sortZ,
+        levelH: LEVEL_H,
     });
     const portalView = createPortalView({
         layer: objects,
@@ -667,21 +641,19 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         player.zIndex = sy(ci + 0.5, cj + 0.5) + Z_PLAYER;
         xray.position.copyFrom(player.position);
 
-        // Portal: animate, glow, and pull the player in when they walk up to it.
-        portalSprite.texture = portalTex[Math.floor(clock / PORTAL_MS) % PORTAL_FRAMES];
-        portalGlow.alpha = 0.3 + 0.18 * Math.sin(clock / 380);
-        portalGlow.scale.set(1.05 + 0.08 * Math.sin(clock / 380));
-        portalLabel.y = portalY - 185 + Math.sin(clock / 450) * 4;
-        if (!entering && !character.dead && Math.hypot(pu - (map.portal.i + 0.5), pv - (map.portal.j + 0.5)) < PORTAL_REACH) {
+        // Safe portal: when it is open and the player walks up to it, pull them in.
+        const safe = sim.view().safe;
+        if (!entering && safe && !character.dead && safe.age < safe.lasts - 400 && Math.hypot(pu - safe.u, pv - safe.v) < PORTAL_REACH) {
             entering = true;
             enterT = 0;
             enterFrom = { x: player.x, y: player.y };
+            enterTo = { x: sx(safe.u, safe.v), y: sy(safe.u, safe.v) - heightAt(safe.u, safe.v) * LEVEL_H };
         }
         if (entering) {
             enterT += ticker.deltaMS;
             const t = Math.min(1, enterT / ENTER_MS);
             const e = t * t;
-            player.position.set(enterFrom.x + (portalX - enterFrom.x) * e, enterFrom.y + (portalY - 24 - enterFrom.y) * e);
+            player.position.set(enterFrom.x + (enterTo.x - enterFrom.x) * e, enterFrom.y + (enterTo.y - 24 - enterFrom.y) * e);
             player.scale.set(1 - 0.85 * e);
             player.alpha = 1 - e;
             xray.visible = false;
@@ -718,6 +690,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         monsterView.sync(view.monsters, ticker.deltaMS, view.online ? 110 : 0);
         dropView.sync(view.drops, ticker.deltaMS);
         portalView.sync(view.portal, ticker.deltaMS);
+        safeView.sync(view.safe, ticker.deltaMS);
         hudClock -= ticker.deltaMS;
         if (hudClock <= 0) {
             hudClock = 150;
@@ -729,7 +702,15 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                     return { angle: Math.atan2(dy, dx), dist: Math.hypot(portal.u - pu, portal.v - pv) };
                 })()
                 : null;
-            store.patch({ wave: view.wave, nextWaveIn: view.nextIn, portalAim: aim, sharedMonsters: view.online });
+            const sf = view.safe;
+            const safeAim = sf
+                ? {
+                    angle: Math.atan2((sf.u - pu + (sf.v - pv)) * TILE_DY, (sf.u - pu - (sf.v - pv)) * TILE_DX),
+                    dist: Math.hypot(sf.u - pu, sf.v - pv),
+                    left: Math.max(0, Math.ceil((sf.lasts - sf.age) / 1000)),
+                }
+                : null;
+            store.patch({ wave: view.wave, nextWaveIn: view.nextIn, portalAim: aim, safeAim, sharedMonsters: view.online });
         }
         wasLocked = character.locked;
 
@@ -777,7 +758,8 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             monsterView.destroy();
             dropView.destroy();
             portalView.destroy();
-            store.patch({ portalAim: null, banner: null });
+            safeView.destroy();
+            store.patch({ portalAim: null, safeAim: null, banner: null });
             remotes.destroy();
             net.sendAway();
             progress.record({ scene: 'world', u: pu, v: pv, tool: character.tool, hp: store.get().hp });

@@ -45,10 +45,6 @@ export interface WorldMap {
     shoreDist: Uint8Array;
     flats: Flat[];
     props: Prop[];
-    /** The home portal's cell. */
-    portal: { i: number; j: number };
-    /** Cells of the stone plaza the portal stands on (tinted to match its stonework). */
-    plaza: number[];
 }
 
 function rng(seed: number): () => number {
@@ -425,37 +421,6 @@ export function generateWorld(seed = 1337): WorldMap {
     // ---- Props: bushes, boulders, tall grass.
     const occupied = new Set<number>(road);
 
-    // ---- Home portal: a free grass cell a few tiles from spawn, away from the roads.
-    let portal = { i: SPAWN + 5, j: SPAWN - 4 };
-    search: for (const r of [5, 6, 7, 4]) {
-        for (let n = 0; n < 24; n++) {
-            const ang = 0.6 + n * 0.2618;
-            const i = Math.round(SPAWN + Math.cos(ang) * r), j = Math.round(SPAWN + Math.sin(ang) * r);
-            let clear = true;
-            for (let dj = -2; dj <= 2 && clear; dj++) {
-                for (let di = -2; di <= 2; di++) {
-                    const k = at(i + di, j + dj);
-                    if (road.has(k) || terrain[k] !== GRASS || height[k] !== 0) { clear = false; break; }
-                }
-            }
-            if (clear) { portal = { i, j }; break search; }
-        }
-    }
-    blocked[at(portal.i, portal.j)] = 1;
-    // A rounded stone plaza under and around the portal, with a clear margin.
-    const plaza: number[] = [];
-    for (let dj = -3; dj <= 3; dj++) {
-        for (let di = -3; di <= 3; di++) {
-            const k = at(portal.i + di, portal.j + dj);
-            occupied.add(k);
-            if (di * di + dj * dj <= 7) {
-                terrain[k] = STONE;
-                plaza.push(k);
-            }
-        }
-    }
-    const inPlazaArea = (i: number, j: number) => Math.abs(i - portal.i) <= 3 && Math.abs(j - portal.j) <= 3;
-    for (let n = flats.length - 1; n >= 0; n--) if (inPlazaArea(flats[n].i, flats[n].j)) flats.splice(n, 1);
     const place = (name: string, i: number, j: number, solid: boolean) => {
         props.push({ name, i, j });
         occupied.add(at(i, j));
@@ -495,5 +460,5 @@ export function generateWorld(seed = 1337): WorldMap {
         else if (terrain[k] === WATER && shoreDist[k] >= 2 && shoreDist[k] <= 4 && !occupied.has(k) && rand() < 0.03) place(`rock${intIn(1, 5)}`, i, j, true);
     }
 
-    return { terrain, variant, blocked, height, tone, shoreDist, flats, props, portal, plaza };
+    return { terrain, variant, blocked, height, tone, shoreDist, flats, props };
 }

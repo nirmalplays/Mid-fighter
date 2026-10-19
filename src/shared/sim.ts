@@ -86,6 +86,8 @@ export interface SimEnv {
     canMove(fromU: number, fromV: number, toU: number, toV: number): boolean;
     /** Is this a good place to stand (portal placement, spawn spots)? */
     canStand(u: number, v: number): boolean;
+    /** Is this open enough ground for the safe portal (clear of bushes and trees, so it can be reached)? */
+    isOpen(u: number, v: number): boolean;
     rand(): number;
 }
 
@@ -361,12 +363,12 @@ export class GameSim {
 
     private findSafeSpot(players: SimPlayer[]): { u: number; v: number } | null {
         const anchor = players[Math.floor(this.env.rand() * players.length)];
-        for (let n = 0; n < 40; n++) {
+        for (let n = 0; n < 160; n++) {
             const ang = this.env.rand() * Math.PI * 2;
             const d = SAFE_DIST_MIN + this.env.rand() * (SAFE_DIST_MAX - SAFE_DIST_MIN);
             const u = anchor.u + Math.cos(ang) * d;
             const v = anchor.v + Math.sin(ang) * d;
-            if (u < 6 || v < 6 || u > 250 || v > 250 || !this.env.canStand(u, v)) continue;
+            if (u < 6 || v < 6 || u > 250 || v > 250 || !this.env.canStand(u, v) || !this.env.isOpen(u, v)) continue;
             return { u, v };
         }
         return null;

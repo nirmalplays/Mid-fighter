@@ -13,8 +13,6 @@ import { useSyncExternalStore } from 'react';
 export interface AppState {
     /** 'loading' → 'menu' → 'playing' (the world); the home portal leads to 'base' and back. */
     phase: 'loading' | 'menu' | 'playing' | 'base';
-    /** Where the world scene puts the player: map centre, or beside the home portal (coming back from the base). */
-    spawnAt: 'center' | 'portal';
     /** 0..1 progress of the critical-asset warm during 'loading' */
     loadProgress: number;
     /** Set by the host's onPause/onResume lifecycle hooks */
@@ -41,6 +39,8 @@ export interface AppState {
     /** Seconds until the next portal opens, and the portal's bearing/distance for the HUD arrow (null if none) */
     nextWaveIn: number;
     portalAim: { angle: number; dist: number } | null;
+    /** The workshop (safe) portal while open: bearing, distance in tiles and seconds left */
+    safeAim: { angle: number; dist: number; left: number } | null;
     /** Short message shown near the top (wave start, pickups), cleared by the HUD */
     banner: { text: string; id: number } | null;
     /** Equipped tool id (a hotbar slot: see world/character.ts HOTBAR) */
@@ -56,7 +56,6 @@ const listeners = new Set<() => void>();
 
 let state: AppState = {
     phase: 'loading',
-    spawnAt: 'center',
     loadProgress: 0,
     paused: false,
     tileX: 0,
@@ -73,6 +72,7 @@ let state: AppState = {
     wave: 0,
     nextWaveIn: 0,
     portalAim: null,
+    safeAim: null,
     banner: null,
     toolId: 'none',
     chunkX: 0,
