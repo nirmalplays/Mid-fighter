@@ -24,7 +24,7 @@ export interface Controls {
 }
 
 export function bindControls(character: Character): Controls {
-    store.patch({ toolId: character.tool, hp: progress.savedHp() });
+    store.patch({ toolId: character.tool, hp: progress.savedHp(), maxHp: progress.maxHp() });
     const offCommands = commands.subscribe((c) => {
         // Hurt costs a heart; Die empties them all. Getting up from death restores health (see tick).
         if (c.type === 'hurt' && !character.dead) store.patch({ hp: Math.max(0, store.get().hp - 2) });
@@ -45,7 +45,7 @@ export function bindControls(character: Character): Controls {
     let wasDead = false;
     return {
         tick() {
-            if (wasDead && !character.dead && store.get().hp === 0) store.patch({ hp: 6 });
+            if (wasDead && !character.dead && store.get().hp === 0) store.patch({ hp: store.get().maxHp });
             wasDead = character.dead;
             // Out of hearts: collapse once any action has finished.
             if (store.get().hp === 0 && !character.dead && !character.locked) character.command({ type: 'die' });

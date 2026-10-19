@@ -19,6 +19,10 @@ export interface BounceSave {
     playSeconds: number;
     /** Monsters defeated. */
     kills: number;
+    /** Highest wave reached. */
+    bestWave: number;
+    /** Skill levels raised by monster drops. Vitality adds a heart each. */
+    skills: { attack: number; defence: number; speed: number; vitality: number };
 }
 
 export function defaultSave(): BounceSave {
@@ -30,6 +34,8 @@ export function defaultSave(): BounceSave {
         hp: 6,
         playSeconds: 0,
         kills: 0,
+        bestWave: 0,
+        skills: { attack: 0, defence: 0, speed: 0, vitality: 0 },
     };
 }
 
@@ -44,8 +50,13 @@ export const saveSystem = createSaveSystem<BounceSave>({
         fillMissing(s.world, def.world);
         if (!Number.isFinite(s.world.u) || !Number.isFinite(s.world.v)) s.world = { ...def.world };
         if (typeof s.tool !== 'string') s.tool = def.tool;
-        if (!(s.hp >= 0 && s.hp <= 6)) s.hp = def.hp;
+        if (!(s.hp >= 0)) s.hp = def.hp;
         if (!(s.playSeconds >= 0)) s.playSeconds = 0;
         if (!(s.kills >= 0)) s.kills = 0;
+        if (!(s.bestWave >= 0)) s.bestWave = 0;
+        if (typeof s.skills !== 'object' || !s.skills) s.skills = { ...def.skills };
+        fillMissing(s.skills, def.skills);
+        for (const k of ['attack', 'defence', 'speed', 'vitality'] as const) if (!(s.skills[k] >= 0)) s.skills[k] = 0;
+        if (!(s.hp >= 0 && s.hp <= 6 + 2 * s.skills.vitality)) s.hp = Math.min(6 + 2 * s.skills.vitality, Math.max(1, s.hp));
     },
 });

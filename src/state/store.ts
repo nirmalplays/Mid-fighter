@@ -29,8 +29,18 @@ export interface AppState {
     kills: number;
     /** Total time this player has played, in seconds (from the save) */
     playSeconds: number;
-    /** Health in half hearts, 0..6 */
+    /** Health in half hearts, 0..maxHp */
     hp: number;
+    /** Maximum health in half hearts (6, plus 2 per Vitality level) */
+    maxHp: number;
+    /** Skill levels from drops, and the wave the portal has reached (0 before the first) */
+    skills: { attack: number; defence: number; speed: number; vitality: number };
+    wave: number;
+    /** Seconds until the next portal opens, and the portal's bearing/distance for the HUD arrow (null if none) */
+    nextWaveIn: number;
+    portalAim: { angle: number; dist: number } | null;
+    /** Short message shown near the top (wave start, pickups), cleared by the HUD */
+    banner: { text: string; id: number } | null;
     /** Equipped tool id (a hotbar slot: see world/character.ts HOTBAR) */
     toolId: string;
     /** Terrace level the player stands on */
@@ -55,6 +65,12 @@ let state: AppState = {
     kills: 0,
     playSeconds: 0,
     hp: 6,
+    maxHp: 6,
+    skills: { attack: 0, defence: 0, speed: 0, vitality: 0 },
+    wave: 0,
+    nextWaveIn: 0,
+    portalAim: null,
+    banner: null,
     toolId: 'none',
     chunkX: 0,
     chunkY: 0,

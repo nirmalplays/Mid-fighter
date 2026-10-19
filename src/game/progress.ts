@@ -25,7 +25,32 @@ export const progress = {
     /** The saved health, never starting someone at zero. */
     savedHp(): number {
         const hp = saveSystem.data?.hp ?? 6;
-        return hp > 0 ? hp : 6;
+        return hp > 0 ? hp : this.maxHp();
+    },
+
+    maxHp(): number {
+        return 6 + 2 * (saveSystem.data?.skills.vitality ?? 0);
+    },
+
+    skills() {
+        return saveSystem.data?.skills ?? { attack: 0, defence: 0, speed: 0, vitality: 0 };
+    },
+
+    /** Raise a skill by one level (a drop was picked up). Returns the new level. */
+    raise(skill: 'attack' | 'defence' | 'speed' | 'vitality'): number {
+        const d = saveSystem.data;
+        if (!d) return 0;
+        d.skills[skill] += 1;
+        store.patch({ skills: { ...d.skills }, maxHp: 6 + 2 * d.skills.vitality });
+        saveSystem.save();
+        return d.skills[skill];
+    },
+
+    reachWave(n: number): void {
+        const d = saveSystem.data;
+        if (!d || n <= d.bestWave) return;
+        d.bestWave = n;
+        saveSystem.save();
     },
 
     record(p: { scene: 'world' | 'base'; u?: number; v?: number; tool: string; hp: number }): void {
@@ -70,8 +95,8 @@ export const progress = {
     reset(): void {
         const d = saveSystem.data;
         if (!d) return;
-        Object.assign(d, { scene: 'world', world: { u: 128.5, v: 128.5, set: false }, tool: 'none', hp: 6, playSeconds: 0, kills: 0 });
-        store.patch({ playSeconds: 0, kills: 0 });
+        Object.assign(d, { scene: 'world', world: { u: 128.5, v: 128.5, set: false }, tool: 'none', hp: 6, playSeconds: 0, kills: 0, bestWave: 0, skills: { attack: 0, defence: 0, speed: 0, vitality: 0 } });
+        store.patch({ playSeconds: 0, kills: 0, maxHp: 6, hp: 6, skills: { attack: 0, defence: 0, speed: 0, vitality: 0 } });
         saveSystem.save();
     },
 };

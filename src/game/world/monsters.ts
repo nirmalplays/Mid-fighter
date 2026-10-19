@@ -1,6 +1,6 @@
 /**
  * Enemies from the IsometricEnemies pack: goblins, slimes, wolves and skeletons.
- * They spawn out of sight around the player, hunt them, attack when close (each kind
+ * The wave portal (waves.ts) spawns them; they hunt the player, attack when close (each kind
  * has its own speed, health, reach and timing) and die with their death animation.
  * The player's swings hit those in front of them with knockback; a health bar shows
  * once an enemy is hurt. Enemies live only on this device: they hunt the local
@@ -38,14 +38,9 @@ const KINDS: Record<string, Kind> = {
     wolf: { hp: 6, speed: 3.5, reach: 1.15, attackMs: 440, hitAt: 0.5, recoverMs: 1300, moveFrameMs: 90, size: 1.5, barY: 82, hop: 0, weight: 2 },
     skeleton: { hp: 8, speed: 1.9, reach: 1.1, attackMs: 720, hitAt: 0.6, recoverMs: 1600, moveFrameMs: 150, size: 1.25, barY: 108, hop: 0, weight: 2 },
 };
-const KIND_NAMES = Object.keys(KINDS);
+export const KIND_NAMES = Object.keys(KINDS);
 
-const MAX_ALIVE = 4;
-const SPAWN_EVERY_MS = 6000;
-const FIRST_SPAWN_MS = 5000;
-const SPAWN_MIN = 9;
-const SPAWN_MAX = 13;
-const LEASH = 26;
+const LEASH = 40;
 const DYING_FADE_MS = 450;
 /** How far in front of the player a swing reaches, and how wide (radians either side of facing). */
 const REACH = 1.9;
@@ -60,6 +55,9 @@ interface Monster {
     v: number;
     z: number;
     hp: number;
+    maxHp: number;
+    speedMul: number;
+    damage: number;
     state: State;
     t: number;
     /** Knockback velocity, tiles / s, decaying. */
@@ -77,6 +75,12 @@ interface Monster {
 
 export interface Monsters {
     update(dtMs: number): void;
+    /** Whether a kind's sheets have finished loading (it cannot be spawned before). */
+    ready(kind: string): boolean;
+    /** Put a monster of `kind` at (u, v); `hpMul` / `speedMul` toughen it, `damage` is its bite in half hearts. */
+    spawn(kind: string, u: number, v: number, mods: { hpMul: number; speedMul: number; damage: number }): void;
+    /** How many are alive (not counting ones already dying). */
+    alive(): number;
     /** A player swing from (u, v) facing a 0-7 sector: damages enemies in reach; returns how many it killed. */
     strike(u: number, v: number, facing: number, damage: number): number;
     destroy(): void;
@@ -93,7 +97,8 @@ export function createMonsters(opts: {
     levelH: number;
     player: () => { u: number; v: number; alive: boolean };
     onBite: (damage: number) => void;
-    onKill: () => void;
+    /** An enemy died at (u, v). */
+    onKill: (kind: string, u: number, v: number) => void;
 }): Monsters {
     // Sheets load in the background; a kind spawns once all three of its sheets are in.
     const frames = new Map<string, Texture[][]>();
@@ -111,20 +116,8 @@ export function createMonsters(opts: {
     }
 
     const monsters: Monster[] = [];
-    let spawnClock = FIRST_SPAWN_MS;
 
-    const pickKind = (): string | null => {
-        const pool = KIND_NAMES.filter((k) => ready.has(k));
-        if (!pool.length) return null;
-        let roll = Math.random() * pool.reduce((n, k) => n + KINDS[k].weight, 0);
-        for (const k of pool) {
-            roll -= KINDS[k].weight;
-            if (roll <= 0) return k;
-        }
-        return pool[0];
-    };
-
-    const make = (kind: string, u: number, v: number): Monster => {
+    const make = (kind: string, u: number, v: number, mods: { hpMul: number; speedMul: number; damage: number }): Monster => {
         const def = KINDS[kind];
         const sprite = new Sprite(frames.get(`${kind}-move`)![0][0]);
         const [fx, fy] = ENEMY_FEET[kind];
@@ -136,7 +129,8 @@ export function createMonsters(opts: {
         const bar = new Graphics();
         opts.layer.addChild(shadow, sprite, bar);
         return {
-            kind, def, u, v, z: opts.heightAt(u, v) * opts.levelH, hp: def.hp, state: 'chase', t: 0,
+            kind, def, u, v, z: opts.heightAt(u, v) * opts.levelH, hp: Math.round(def.hp * mods.hpMul), maxHp: Math.round(def.hp * mods.hpMul),
+            speedMul: mods.speedMul, damage: mods.damage, state: 'chase', t: 0,
             ku: 0, kv: 0, flash: 0, animT: Math.random() * 1000, hit: false, side: Math.random() < 0.5 ? 1 : -1,
             sprite, shadow, bar,
         };
@@ -145,21 +139,6 @@ export function createMonsters(opts: {
         m.sprite.destroy();
         m.shadow.destroy();
         m.bar.destroy();
-    };
-
-    const trySpawn = () => {
-        const kind = pickKind();
-        if (!kind) return;
-        const p = opts.player();
-        for (let n = 0; n < 12; n++) {
-            const ang = Math.random() * Math.PI * 2;
-            const d = SPAWN_MIN + Math.random() * (SPAWN_MAX - SPAWN_MIN);
-            const u = p.u + Math.cos(ang) * d;
-            const v = p.v + Math.sin(ang) * d;
-            if (u < 1 || v < 1 || u > 255 || v > 255 || !opts.canStand(u, v)) continue;
-            monsters.push(make(kind, u, v));
-            return;
-        }
     };
 
     /** Move by (du, dv) if the new spot is free, sliding along obstacles. */
@@ -172,22 +151,23 @@ export function createMonsters(opts: {
 
     const drawBar = (m: Monster, x: number, y: number) => {
         m.bar.clear();
-        if (m.hp >= m.def.hp || m.state === 'dying') return;
+        if (m.hp >= m.maxHp || m.state === 'dying') return;
         const w = 30;
         m.bar.rect(x - w / 2, y, w, 5).fill({ color: 0x1a0c10, alpha: 0.85 });
-        m.bar.rect(x - w / 2 + 1, y + 1, (w - 2) * Math.max(0, m.hp / m.def.hp), 3).fill(0xef4444);
+        m.bar.rect(x - w / 2 + 1, y + 1, (w - 2) * Math.max(0, m.hp / m.maxHp), 3).fill(0xef4444);
     };
 
     return {
+        ready: (kind) => ready.has(kind),
+        spawn(kind, u, v, mods) {
+            if (!ready.has(kind)) return;
+            monsters.push(make(kind, u, v, mods));
+        },
+        alive: () => monsters.filter((m) => m.state !== 'dying').length,
+
         update(dtMs) {
             const dt = Math.min(dtMs, 100) / 1000;
             const p = opts.player();
-
-            spawnClock -= dtMs;
-            if (spawnClock <= 0) {
-                spawnClock = SPAWN_EVERY_MS;
-                if (p.alive && monsters.filter((m) => m.state !== 'dying').length < MAX_ALIVE) trySpawn();
-            }
 
             for (let i = monsters.length - 1; i >= 0; i--) {
                 const m = monsters[i];
@@ -221,7 +201,7 @@ export function createMonsters(opts: {
                         m.t = 0;
                         m.hit = false;
                     } else {
-                        const k = (def.speed * dt) / dist;
+                        const k = (def.speed * m.speedMul * dt) / dist;
                         let moved = step(m, du * k, dv * k);
                         // Blocked: sidestep around whatever is in the way.
                         if (!moved) moved = step(m, -dv * k * m.side, du * k * m.side);
@@ -231,7 +211,7 @@ export function createMonsters(opts: {
                 } else if (m.state === 'attack') {
                     if (!m.hit && m.t >= def.attackMs * def.hitAt) {
                         m.hit = true;
-                        if (p.alive && dist < def.reach + 0.45) opts.onBite(1);
+                        if (p.alive && dist < def.reach + 0.45) opts.onBite(m.damage);
                     }
                     if (m.t >= def.attackMs) {
                         m.state = 'recover';
@@ -305,7 +285,7 @@ export function createMonsters(opts: {
                     m.state = 'dying';
                     m.t = 0;
                     kills++;
-                    opts.onKill();
+                    opts.onKill(m.kind, m.u, m.v);
                 } else if (m.state === 'attack') {
                     // A hit interrupts the attack.
                     m.state = 'recover';
