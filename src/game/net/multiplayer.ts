@@ -206,8 +206,12 @@ function sendAway(): void {
 
 export const net = {
     remotes, connect, sendPose, sendAct, sendAway, sendHit, sendPickup,
-    /** True while the shared room is connected (so the server owns the monsters). */
-    online: (): boolean => room !== null,
+    /**
+     * True while the server is running the monsters: the room is connected and its combat
+     * snapshots are arriving (it sends at least one a second). A room that connects but never
+     * sends one (a mock, or a server without the simulation) leaves the game on its local copy.
+     */
+    online: (): boolean => room !== null && snap !== null && performance.now() - snap.at < 4000,
     /** The latest combat snapshot from the server, or null. */
     snap: (): SimSnapshot | null => snap,
     /** Subscribe to combat events from the server. Returns unsubscribe. */

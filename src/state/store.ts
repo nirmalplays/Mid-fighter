@@ -29,6 +29,8 @@ export interface AppState {
     kills: number;
     /** Total time this player has played, in seconds (from the save) */
     playSeconds: number;
+    /** True while the server is running the monsters (shared with everyone in the room) */
+    sharedMonsters: boolean;
     /** Health in half hearts, 0..maxHp */
     hp: number;
     /** Maximum health in half hearts (6, plus 2 per Vitality level) */
@@ -64,6 +66,7 @@ let state: AppState = {
     online: 0,
     kills: 0,
     playSeconds: 0,
+    sharedMonsters: false,
     hp: 6,
     maxHp: 6,
     skills: { attack: 0, defence: 0, speed: 0, vitality: 0 },

@@ -729,7 +729,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                     return { angle: Math.atan2(dy, dx), dist: Math.hypot(portal.u - pu, portal.v - pv) };
                 })()
                 : null;
-            store.patch({ wave: view.wave, nextWaveIn: view.nextIn, portalAim: aim });
+            store.patch({ wave: view.wave, nextWaveIn: view.nextIn, portalAim: aim, sharedMonsters: view.online });
         }
         wasLocked = character.locked;
 

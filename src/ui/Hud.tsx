@@ -160,6 +160,7 @@ function WavePill() {
     const wave = useStore((s) => s.wave);
     const next = useStore((s) => s.nextWaveIn);
     const aim = useStore((s) => s.portalAim);
+    const shared = useStore((s) => s.sharedMonsters);
     const mm = Math.floor(next / 60);
     const ss = String(next % 60).padStart(2, '0');
     return (
@@ -170,10 +171,10 @@ function WavePill() {
             {aim ? (
                 <>
                     <span style={{ display: 'inline-block', transform: `rotate(${aim.angle}rad)`, fontSize: 16, lineHeight: 1 }}>➤</span>
-                    <span>Wave {wave} portal · {Math.round(aim.dist)} tiles</span>
+                    <span>Wave {wave} portal · {Math.round(aim.dist)} tiles{shared ? ' · shared' : ''}</span>
                 </>
             ) : (
-                <span>{wave > 0 ? `Wave ${wave + 1}` : 'Wave 1'} in {mm}:{ss}</span>
+                <span>{wave > 0 ? `Wave ${wave + 1}` : 'Wave 1'} in {mm}:{ss}{shared ? ' · shared' : ''}</span>
             )}
         </div>
     );
