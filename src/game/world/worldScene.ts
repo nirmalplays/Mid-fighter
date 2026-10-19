@@ -539,10 +539,18 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             return true;
         },
     });
+    // Enemies ignore bushes, trees and rocks (they push through); water, the map edge and cliffs stop them.
+    const monsterCanMove = (fu: number, fv: number, tu: number, tv: number): boolean => {
+        const ti = Math.floor(tu);
+        const tj = Math.floor(tv);
+        if (ti < 1 || tj < 1 || ti >= MAP_TILES - 1 || tj >= MAP_TILES - 1) return false;
+        if (map.terrain[tj * MAP_TILES + ti] === WATER) return false;
+        return Math.abs(map.height[tj * MAP_TILES + ti] - map.height[Math.floor(fv) * MAP_TILES + Math.floor(fu)]) <= 1;
+    };
     const monsters = createMonsters({
         layer: objects,
         shadowTex,
-        canStand: boxOk,
+        canMove: monsterCanMove,
         heightAt,
         toScreen: (u, v) => ({ x: sx(u, v), y: sy(u, v) }),
         zFor: (u, v) => sy(Math.floor(u) + 0.5, Math.floor(v) + 0.5) + Z_PLAYER,
@@ -555,6 +563,10 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             if (drop && Math.random() < drop.chance && store.get().skills[drop.skill] < SKILL_CAP[drop.skill]) drops.spawn(drop.skill, u, v);
         },
     });
+    // Debug: with ?spawn= the game exposes a way to drop a gem at the player's feet.
+    if (new URLSearchParams(window.location.search).has('spawn')) {
+        (window as unknown as { __game?: unknown }).__game = { dropAt: (skill: Skill) => drops.spawn(skill, pu + 1.4, pv + 1.4) };
+    }
     // Debug: ?firstWave=<s>&waveEvery=<s> shorten the portal timers for testing.
     const q = new URLSearchParams(window.location.search);
     const waves = createWaves({

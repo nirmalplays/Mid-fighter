@@ -23,8 +23,11 @@ export const SKILL_COLOR: Record<Skill, number> = { attack: 0xff6b6b, defence: 0
 
 const LIFE_MS = 45000;
 const BLINK_MS = 8000;
-const PICKUP_RANGE = 0.9;
+const PICKUP_RANGE = 1.15;
 const POP_MS = 420;
+/** Gems this close drift toward the player (tiles) at this speed (tiles / s). */
+const MAGNET_RANGE = 2.4;
+const MAGNET_SPEED = 6.5;
 
 interface Drop {
     skill: Skill;
@@ -113,8 +116,18 @@ export function createDrops(opts: {
                     continue;
                 }
                 const k = Math.min(1, d.age / POP_MS);
-                d.u += (d.tu - d.u) * Math.min(1, dtMs / 90);
-                d.v += (d.tv - d.v) * Math.min(1, dtMs / 90);
+                const away = Math.hypot(p.u - d.u, p.v - d.v);
+                if (p.alive && d.age > POP_MS && away < MAGNET_RANGE && away > 0.05) {
+                    // Drift toward the player; keep the landing spot in step so it does not pull back.
+                    const stepLen = Math.min(away, (MAGNET_SPEED * dtMs) / 1000);
+                    d.u += ((p.u - d.u) / away) * stepLen;
+                    d.v += ((p.v - d.v) / away) * stepLen;
+                    d.tu = d.u;
+                    d.tv = d.v;
+                } else {
+                    d.u += (d.tu - d.u) * Math.min(1, dtMs / 90);
+                    d.v += (d.tv - d.v) * Math.min(1, dtMs / 90);
+                }
                 const pos = opts.toScreen(d.u, d.v);
                 const ground = opts.heightAt(d.u, d.v) * opts.levelH;
                 const arc = k < 1 ? Math.sin(k * Math.PI) * 38 : 0;

@@ -89,7 +89,8 @@ export interface Monsters {
 export function createMonsters(opts: {
     layer: Container;
     shadowTex: Texture;
-    canStand: (u: number, v: number) => boolean;
+    /** Whether an enemy may step from one spot to another (they push through plants; water and cliffs stop them). */
+    canMove: (fromU: number, fromV: number, toU: number, toV: number) => boolean;
     heightAt: (u: number, v: number) => number;
     toScreen: (u: number, v: number) => { x: number; y: number };
     /** Depth-sort value for something standing at (u, v). */
@@ -144,8 +145,8 @@ export function createMonsters(opts: {
     /** Move by (du, dv) if the new spot is free, sliding along obstacles. */
     const step = (m: Monster, du: number, dv: number): boolean => {
         let moved = false;
-        if (du !== 0 && opts.canStand(m.u + du, m.v)) { m.u += du; moved = true; }
-        if (dv !== 0 && opts.canStand(m.u, m.v + dv)) { m.v += dv; moved = true; }
+        if (du !== 0 && opts.canMove(m.u, m.v, m.u + du, m.v)) { m.u += du; moved = true; }
+        if (dv !== 0 && opts.canMove(m.u, m.v, m.u, m.v + dv)) { m.v += dv; moved = true; }
         return moved;
     };
 
