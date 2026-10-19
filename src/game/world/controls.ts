@@ -4,6 +4,7 @@
  * a heart, die empties them, getting up restores them).
  */
 import { commands, type GameCommand } from '../commands.ts';
+import { net } from '../net/multiplayer.ts';
 import { store } from '../../state/store.ts';
 import { TOOL_LABELS, type Character } from './character.ts';
 
@@ -25,6 +26,7 @@ export function bindControls(character: Character): Controls {
         // Hurt costs a heart; Die empties them all. Getting up from death restores health (see tick).
         if (c.type === 'hurt' && !character.dead) store.patch({ hp: Math.max(0, store.get().hp - 2) });
         if (c.type === 'die' && !character.dead) store.patch({ hp: 0 });
+        if (c.type !== 'tool') net.sendAct(c.type);
         character.command(c);
     });
     const onKey = (e: KeyboardEvent) => {

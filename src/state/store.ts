@@ -22,6 +22,9 @@ export interface AppState {
     /** Player tile and chunk coordinates, and how many chunks are loaded */
     tileX: number;
     tileY: number;
+    /** Multiplayer link to the shared world room, and how many players (including you) are in it */
+    netStatus: 'off' | 'connecting' | 'online';
+    online: number;
     /** Health in half hearts, 0..6 */
     hp: number;
     /** Label of the equipped tool */
@@ -43,6 +46,8 @@ let state: AppState = {
     tileX: 0,
     tileY: 0,
     height: 0,
+    netStatus: 'off',
+    online: 0,
     hp: 6,
     tool: 'Bare hands',
     chunkX: 0,

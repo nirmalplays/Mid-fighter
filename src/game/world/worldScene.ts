@@ -17,6 +17,8 @@ import {
 import { store } from '../../state/store.ts';
 import type { Scene } from '../scene.ts';
 import type { Stage } from '../stage.ts';
+import { net } from '../net/multiplayer.ts';
+import { createRemotePlayers } from '../net/remotePlayers.ts';
 import { createCharacter, TOOL_LABELS } from './character.ts';
 import { bindControls } from './controls.ts';
 import {
@@ -171,6 +173,14 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     world.addChild(xray);
     // HUD buttons, keyboard shortcuts and the health rules (world/controls.ts).
     const controls = bindControls(character);
+    // The other players in the shared room (world/../net).
+    const remotes = createRemotePlayers({
+        scene: 'world',
+        layer: objects,
+        toScreen: (u, v) => ({ x: sx(u, v), y: sy(u, v) }),
+        zFor: (u, v) => sy(Math.floor(u) + 0.5, Math.floor(v) + 0.5) + Z_PLAYER,
+    });
+    void net.connect();
 
     let pz = 0; // smoothed terrace lift under the player, screen px
     let pu = MAP_TILES / 2 + 0.5;
@@ -580,6 +590,8 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         // Character animation: face the way the stick points; idle when blocked or still.
         character.update(ticker.deltaMS, dir, pu !== fromU || pv !== fromV);
         controls.tick();
+        net.sendPose({ scene: 'world', u: pu, v: pv, z: pz, face: character.facing, anim: pu !== fromU || pv !== fromV ? character.anim : 'idle', tool: character.tool });
+        remotes.update(ticker.deltaMS);
 
         placeCamera();
         syncChunks();
@@ -620,6 +632,8 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             offResize();
             input.destroy();
             controls.destroy();
+            remotes.destroy();
+            net.sendAway();
             character.destroy();
             for (const c of chunks.values()) unloadChunk(c);
             chunks.clear();

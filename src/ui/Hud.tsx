@@ -143,6 +143,8 @@ export default function Hud() {
     const hp = useStore((s) => s.hp);
     const paused = useStore((s) => s.paused);
     const inBase = useStore((s) => s.phase === 'base');
+    const netStatus = useStore((s) => s.netStatus);
+    const online = useStore((s) => s.online);
     const [more, setMore] = useState(false);
 
     return (
@@ -270,6 +272,14 @@ export default function Hud() {
             </div>
 
             {/* World readout, small */}
+            {/* Multiplayer: who is in the shared room */}
+            {netStatus !== 'off' && (
+                <div className="absolute bottom-6 left-2 flex items-center gap-1.5 rounded-md bg-black/45 px-2 py-0.5 text-[11px] font-bold text-white">
+                    <span className={`inline-block h-2 w-2 rounded-full ${netStatus === 'online' ? 'bg-emerald-400' : 'animate-pulse bg-amber-300'}`} />
+                    {netStatus === 'online' ? `Online · ${online} ${online === 1 ? 'player' : 'players'}` : 'Connecting…'}
+                </div>
+            )}
+
             {!inBase && (
                 <div className="absolute bottom-1 left-2 rounded-md bg-black/35 px-2 py-0.5 text-[10px] font-bold tabular-nums text-white/80">
                     Chunk {chunkX},{chunkY} · {loaded} loaded

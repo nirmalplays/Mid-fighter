@@ -11,6 +11,8 @@ import { Assets, Container, Graphics, Rectangle, Sprite, Texture, type Applicati
 import { store } from '../../state/store.ts';
 import type { Scene } from '../scene.ts';
 import type { Stage } from '../stage.ts';
+import { net } from '../net/multiplayer.ts';
+import { createRemotePlayers } from '../net/remotePlayers.ts';
 import { createCharacter, TOOL_LABELS } from './character.ts';
 import { bindControls } from './controls.ts';
 import { TILE_DX, TILE_DY } from './constants.ts';
@@ -124,6 +126,14 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
     // Player.
     const character = createCharacter((tool) => store.patch({ tool: TOOL_LABELS[tool] }));
     const controls = bindControls(character);
+    // The other players in the shared room.
+    const remotes = createRemotePlayers({
+        scene: 'base',
+        layer: objects,
+        toScreen: (u, v) => ({ x: sx(u, v), y: sy(u, v) }),
+        zFor: (u, v) => sy(u, v),
+    });
+    void net.connect();
     objects.addChild(character.player);
     world.addChild(character.xray);
     const player = character.player;
@@ -202,6 +212,8 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
 
         character.update(ticker.deltaMS, dir, pu !== fromU || pv !== fromV);
         controls.tick();
+        net.sendPose({ scene: 'base', u: pu, v: pv, z: 0, face: character.facing, anim: pu !== fromU || pv !== fromV ? character.anim : 'idle', tool: character.tool });
+        remotes.update(ticker.deltaMS);
         placeCamera();
         publish();
 
@@ -220,6 +232,8 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
             offResize();
             input.destroy();
             controls.destroy();
+            remotes.destroy();
+            net.sendAway();
             character.destroy();
             joyGfx.destroy();
             flash.destroy();

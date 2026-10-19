@@ -67,7 +67,14 @@ export interface Character {
     /** True while an action, sitting or death holds the character in place. */
     readonly locked: boolean;
     readonly dead: boolean;
+    readonly seated: boolean;
     readonly tool: Tool;
+    /** Facing sector 0-7 (0 = right, clockwise), and the current movement animation. */
+    readonly facing: number;
+    readonly anim: 'idle' | 'walk' | 'run';
+    /** For remote players: set the tool and facing directly instead of from input. */
+    setTool(tool: Tool): void;
+    setFacing(sector: number): void;
     command(c: GameCommand): void;
     /** Call once per frame; `dir` is the input vector, `moved` whether the character actually moved. */
     update(dtMs: number, dir: { x: number; y: number }, moved: boolean): void;
@@ -249,6 +256,17 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
         xray,
         get locked() { return mode !== 'move'; },
         get dead() { return mode === 'dead'; },
+        get seated() { return mode === 'seated'; },
+        get facing() { return facing; },
+        get anim() { return lastAnim as 'idle' | 'walk' | 'run'; },
+        setTool(t: Tool) {
+            if (t === tool) return;
+            tool = t;
+            loadTool(t);
+        },
+        setFacing(sector: number) {
+            facing = ((Math.round(sector) % 8) + 8) % 8;
+        },
         get tool() { return tool; },
         command,
         update,
