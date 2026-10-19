@@ -1,0 +1,14 @@
+{
+  "gameId": "tYXDdl5dbIoHegRoTUHx",
+  "relativePathToDistFolder": "dist",
+  "usesPreloader": false,
+  "fullscreenEnabled": true,
+  "maxDpr": 1.5,
+  "orientation": "landscape",
+  "keywords": [
+    "starter",
+    "demo",
+    "casual"
+  ],
+  "kitId": null
+}

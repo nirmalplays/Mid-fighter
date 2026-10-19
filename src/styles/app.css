@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+@theme {
+    /* ADAPT: game palette — these become Tailwind utilities (bg-primary,
+       text-primary, bg-surface, ...). Add the game's full palette here. */
+    --color-primary: #22c55e;
+    --color-surface: #0b1020;
+}
+
+/* ---------------------------------------------------------------------------
+   Viewport + device frame — pattern from a shipped RUN game. The app is a
+   centered landscape frame: edge-to-edge on phones, letterboxed on
+   ultra-wide desktop, page scroll and zoom fully locked.
+--------------------------------------------------------------------------- */
+
+:root {
+    --game-w: 100vw;
+    /* The RUN host already pads below its native header, so we deliberately
+       do NOT use env(safe-area-inset-top) — it double-pads on Android.
+       Consume via the pt-safe-top utility below. */
+    --safe-top: 0px;
+}
+
+/* Landscape game: fill the screen, but cap the width at ~21:9 on ultra-wide
+   windows so the visible world area stays within the loaded 3 x 3 chunks. */
+:root {
+    --game-w: min(100vw, calc(100dvh * 21 / 9));
+}
+
+html,
+body {
+    height: 100%;
+}
+
+body {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background: #000; /* letterbox bars */
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+    position: fixed;
+    inset: 0;
+}
+
+/* The device frame every screen renders inside (see ui/App.jsx). */
+#app-frame {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: var(--game-w);
+    overflow: hidden;
+}
+
+/* Safe-area utilities. Bottom uses the real env inset (home indicator);
+   top uses --safe-top per the note above. */
+@utility pt-safe-top {
+    padding-top: calc(0.5rem + var(--safe-top));
+}
+@utility pb-safe-bottom {
+    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+}

@@ -1,0 +1,80 @@
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import App from './ui/App.tsx';
+import { store } from './state/store.ts';
+import { initSdk, registerLifecycles } from './sdk/runSdk.ts';
+import { warmAssets } from './assets/preload.ts';
+import './styles/app.css';
+
+/**
+ * Boot sequence. The ORDER here matters — it's the pattern from a shipped RUN
+ * game. Keep the numbered steps in this order; add your own work at the
+ * marked points.
+ */
+async function boot() {
+    // 1. The static SDK /api import has completed its initialization attempt.
+    //    Check public context and the profile getter because the SDK may catch init errors.
+    //    Keep boot alive when the host is unavailable.
+    await initSdk();
+
+    // 2. ADAPT: load the save before first render, so the first screen can
+    //    reflect real progress instead of popping in after a beat. With
+    //    systems/save from this repo:
+    //        const saveSystem = createSaveSystem({ ... });
+    //        await saveSystem.load();
+    //    If the game is localized (systems/localization), restore the
+    //    language here too — before any UI renders.
+
+    // 3. Mount React. `phase` starts at 'loading', so this paints the
+    //    loading screen (progress bar at 0%).
+    createRoot(document.getElementById('root')!).render(
+        <React.StrictMode>
+            <App />
+        </React.StrictMode>
+    );
+
+    // 4. Lift the boot cover once the loading screen has actually painted
+    //    (double-rAF = after the next rendered frame). Asset warming continues
+    //    behind it — the player watches the progress bar, not a black screen.
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            const cover = document.getElementById('boot-cover');
+            if (!cover) return;
+            cover.classList.add('hidden');
+            setTimeout(() => cover.remove(), 400); // matches the CSS transition
+        });
+    });
+
+    // 5. Warm all critical assets (see src/assets/manifest.ts). Deferred
+    //    assets keep loading in the background after this resolves.
+    await warmAssets((p) => store.patch({ loadProgress: p }));
+
+    // 6. Loading done — hand over to the menu.
+    store.patch({ phase: 'menu' });
+
+    // 7. Host lifecycle hooks. Register AFTER boot so handlers never race
+    //    half-initialized state.
+    //    Rules (see docs/run-sdk-notes.md): persist on onSleep, never rely on
+    //    onQuit firing, and never fire fresh SDK RPCs (e.g. scheduling
+    //    notifications) from onSleep/onQuit — a hard close kills the runtime
+    //    before they land.
+    registerLifecycles({
+        onPause: () => store.patch({ paused: true }),
+        onResume: () => store.patch({ paused: false }),
+        onSleep: async () => {
+            // ADAPT: flush the save here. With systems/save:
+            //     try { await saveSystem.flush(); } catch (e) { /* guarded */ }
+        },
+        onQuit: async () => {
+            // ADAPT: same flush — but treat onSleep as the reliable one.
+        },
+    });
+
+    // 8. ADAPT: post-boot, fire-and-forget work goes here — server time
+    //    refresh (shared/serverTime.ts), notification re-arming, analytics
+    //    boot event, subscription status refresh. None of it should block or
+    //    throw into this function.
+}
+
+if (document.readyState === 'complete') boot();
+else window.addEventListener('load', boot);
