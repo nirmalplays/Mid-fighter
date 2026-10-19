@@ -107,7 +107,8 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
         sp.anchor.set(0.5, 0.82);
         sp.scale.set(s);
         sp.position.set(sx(it.u, it.v), sy(it.u, it.v) - lift);
-        sp.zIndex = sy(it.u, it.v) + 0.3 + lift * 0.001;
+        // Lifted items (stacked, or resting on the table) sort above what they sit on.
+        sp.zIndex = sy(it.u, it.v) + 0.3 + Math.min(lift, 30) + lift * 0.001;
         objects.addChild(sp);
         if (!it.flat && lift === 0) {
             const sh = new Sprite(shadowTex);
