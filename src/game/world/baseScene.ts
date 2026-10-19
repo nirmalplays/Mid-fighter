@@ -3,10 +3,11 @@
  * Workshop button. Its floor is the store building's floor slab (Isometric RPG
  * Buildings, 2x2Tile_Store/Layer4_Floor), scaled up to an 8 × 8 tile floor, with
  * two back walls drawn in the same outlined style. The player walks on the same
- * iso grid as the world, and the camera follows them around the room. There is
- * no exit portal: the HUD's World button leads back.
+ * iso grid as the world, and the camera follows them around the room. It is
+ * furnished with the Ultimate Isometric Pack's placeable items (see
+ * workshopLayout.ts). There is no exit portal: the HUD's World button leads back.
  */
-import { Assets, Container, Graphics, Sprite, type Application, type Texture, type Ticker } from 'pixi.js';
+import { Assets, Container, Graphics, Rectangle, Sprite, Texture, type Application, type Ticker } from 'pixi.js';
 import { store } from '../../state/store.ts';
 import type { Scene } from '../scene.ts';
 import type { Stage } from '../stage.ts';
@@ -14,6 +15,8 @@ import { createCharacter, TOOL_LABELS } from './character.ts';
 import { bindControls } from './controls.ts';
 import { TILE_DX, TILE_DY } from './constants.ts';
 import { createInput, JOY_RADIUS } from './input.ts';
+import { ITEM_FRAMES } from './workshopAtlas.ts';
+import { WORKSHOP_ITEMS } from './workshopLayout.ts';
 
 /** Room size in tiles, and the floor art's scale to match it (the slab's top face is ~650 px wide). */
 const ROOM = 8;
@@ -81,6 +84,42 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
     floor.zIndex = -1000;
     objects.addChild(floor);
 
+    // Furnishings: chests, crates, a forge, a workbench with tools, and material piles.
+    const itemSheet = Assets.get<Texture>('workshop-items');
+    const itemTex = new Map<string, Texture>();
+    const itemTexture = (name: string): Texture => {
+        let t = itemTex.get(name);
+        if (!t) {
+            const [x, y, w, h] = ITEM_FRAMES[name];
+            t = new Texture({ source: itemSheet.source, frame: new Rectangle(x, y, w, h) });
+            itemTex.set(name, t);
+        }
+        return t;
+    };
+    const shadowGfx = new Graphics().ellipse(40, 14, 40, 14).fill({ color: 0x1a0c10, alpha: 0.3 });
+    const shadowTex = app.renderer.generateTexture({ target: shadowGfx, resolution: 2 });
+    shadowGfx.destroy();
+    const solid = new Set<number>();
+    for (const it of WORKSHOP_ITEMS) {
+        const s = it.s ?? 0.5;
+        const lift = it.lift ?? 0;
+        const sp = new Sprite(itemTexture(it.name));
+        sp.anchor.set(0.5, 0.82);
+        sp.scale.set(s);
+        sp.position.set(sx(it.u, it.v), sy(it.u, it.v) - lift);
+        sp.zIndex = sy(it.u, it.v) + 0.3 + lift * 0.001;
+        objects.addChild(sp);
+        if (!it.flat && lift === 0) {
+            const sh = new Sprite(shadowTex);
+            sh.anchor.set(0.5);
+            sh.scale.set((sp.width * 0.85) / 80);
+            sh.position.set(sx(it.u, it.v), sy(it.u, it.v) + 4);
+            sh.zIndex = sy(it.u, it.v) + 0.2;
+            objects.addChild(sh);
+        }
+        if (it.block) solid.add(Math.floor(it.v) * ROOM + Math.floor(it.u));
+    }
+
     // Player.
     const character = createCharacter((tool) => store.patch({ tool: TOOL_LABELS[tool] }));
     const controls = bindControls(character);
@@ -91,7 +130,7 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
     // Debug: with ?spawn= the player is exposed for automated checks.
     if (new URLSearchParams(window.location.search).has('spawn')) (window as unknown as { __player?: Container }).__player = player;
     let pu = ROOM / 2;
-    let pv = ROOM / 2 + 0.6;
+    let pv = ROOM - 2;
 
     const joyGfx = new Graphics();
     app.stage.addChild(joyGfx);
@@ -99,9 +138,14 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
     app.stage.addChild(flash);
     const input = createInput(app.canvas);
 
-    // Whether the player's box may stand at (u, v): inside the room.
-    const boxOk = (u: number, v: number): boolean =>
-        u - RADIUS >= 0 && v - RADIUS >= 0 && u + RADIUS < ROOM && v + RADIUS < ROOM;
+    // Whether the player's box may stand at (u, v): inside the room and clear of furniture.
+    const boxOk = (u: number, v: number): boolean => {
+        if (u - RADIUS < 0 || v - RADIUS < 0 || u + RADIUS >= ROOM || v + RADIUS >= ROOM) return false;
+        for (const [cu, cv] of [[u - RADIUS, v - RADIUS], [u + RADIUS, v - RADIUS], [u - RADIUS, v + RADIUS], [u + RADIUS, v + RADIUS]]) {
+            if (solid.has(Math.floor(cv) * ROOM + Math.floor(cu))) return false;
+        }
+        return true;
+    };
 
     // The camera follows the player, but never shows past the room's edges.
     const bounds = { minX: left.x - 40, maxX: right.x + 40, minY: top.y - WALL_H - 24, maxY: sy(ROOM, ROOM) + 60 };
