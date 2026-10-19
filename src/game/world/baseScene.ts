@@ -14,7 +14,7 @@ import type { Stage } from '../stage.ts';
 import { net } from '../net/multiplayer.ts';
 import { progress } from '../progress.ts';
 import { createRemotePlayers } from '../net/remotePlayers.ts';
-import { createCharacter, TOOL_LABELS } from './character.ts';
+import { createCharacter } from './character.ts';
 import { bindControls } from './controls.ts';
 import { TILE_DX, TILE_DY } from './constants.ts';
 import { createInput, JOY_RADIUS } from './input.ts';
@@ -125,7 +125,7 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
     }
 
     // Player.
-    const character = createCharacter((tool) => store.patch({ tool: TOOL_LABELS[tool] }));
+    const character = createCharacter((tool) => store.patch({ toolId: tool }));
     character.setTool(progress.savedTool());
     const controls = bindControls(character);
     // The other players in the shared room.

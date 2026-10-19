@@ -20,7 +20,7 @@ import type { Stage } from '../stage.ts';
 import { net } from '../net/multiplayer.ts';
 import { progress } from '../progress.ts';
 import { createRemotePlayers } from '../net/remotePlayers.ts';
-import { createCharacter, TOOL_LABELS } from './character.ts';
+import { createCharacter } from './character.ts';
 import { bindControls } from './controls.ts';
 import {
     CHUNK_TILES, LOAD_RADIUS, MAP_CHUNKS, MAP_TILES, TILE_DX, TILE_DY, ZOOM,
@@ -166,7 +166,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     stage.root.addChild(world);
 
     // Player: the Character0 art with tools and actions (world/character.ts).
-    const character = createCharacter((tool) => store.patch({ tool: TOOL_LABELS[tool] }));
+    const character = createCharacter((tool) => store.patch({ toolId: tool }));
     const player = character.player;
     objects.addChild(player);
     // Faint copy above everything, so the player stays visible behind mountains.

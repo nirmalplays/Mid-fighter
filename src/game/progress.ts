@@ -6,7 +6,7 @@
  */
 import { saveSystem } from '../saveConfig.ts';
 import { store } from '../state/store.ts';
-import { TOOLS, type Tool } from './world/character.ts';
+import { HOTBAR, type Tool } from './world/character.ts';
 
 let fraction = 0;
 
@@ -19,7 +19,7 @@ export const progress = {
     /** The saved tool, checked against the known list. */
     savedTool(): Tool {
         const t = saveSystem.data?.tool ?? 'none';
-        return (TOOLS as readonly string[]).includes(t) ? (t as Tool) : 'none';
+        return (HOTBAR as readonly string[]).includes(t) ? (t as Tool) : 'none';
     },
 
     /** The saved health, never starting someone at zero. */

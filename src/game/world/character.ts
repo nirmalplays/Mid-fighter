@@ -13,6 +13,8 @@ const SCALE = 0.5;
 
 export const TOOLS = ['none', 'sword', 'axe', 'pickaxe', 'hammer', 'shovel', 'fishingpole', 'watercan', 'shield', 'hold'] as const;
 export type Tool = (typeof TOOLS)[number];
+/** The nine hotbar slots, in order: bare hands first, then the tools. ('hold' is not a slot.) */
+export const HOTBAR: readonly Tool[] = ['none', 'sword', 'axe', 'pickaxe', 'hammer', 'shovel', 'fishingpole', 'watercan', 'shield'];
 export const TOOL_LABELS: Record<Tool, string> = {
     none: 'Bare hands', sword: 'Sword', axe: 'Axe', pickaxe: 'Pickaxe', hammer: 'Hammer', shovel: 'Shovel',
     fishingpole: 'Fishing pole', watercan: 'Watering can', shield: 'Shield', hold: 'Carrying',
@@ -161,10 +163,15 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
     const getUpKey = () => (tool === 'none' ? 'getup' : `getup:${tool}`);
 
     const command = (c: GameCommand) => {
-        if (c.type === 'tool') {
+        if (c.type === 'tool' || c.type === 'equip') {
             if (mode === 'dead') return;
-            const i = (TOOLS.indexOf(tool) + c.delta + TOOLS.length) % TOOLS.length;
-            tool = TOOLS[i];
+            if (c.type === 'equip') {
+                if (!(HOTBAR as readonly string[]).includes(c.tool)) return;
+                tool = c.tool as Tool;
+            } else {
+                const at = Math.max(0, HOTBAR.indexOf(tool));
+                tool = HOTBAR[(at + c.delta + HOTBAR.length) % HOTBAR.length];
+            }
             loadTool(tool);
             onTool(tool);
             return;

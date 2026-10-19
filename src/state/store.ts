@@ -29,8 +29,8 @@ export interface AppState {
     playSeconds: number;
     /** Health in half hearts, 0..6 */
     hp: number;
-    /** Label of the equipped tool */
-    tool: string;
+    /** Equipped tool id (a hotbar slot: see world/character.ts HOTBAR) */
+    toolId: string;
     /** Terrace level the player stands on */
     height: number;
     chunkX: number;
@@ -52,7 +52,7 @@ let state: AppState = {
     online: 0,
     playSeconds: 0,
     hp: 6,
-    tool: 'Bare hands',
+    toolId: 'none',
     chunkX: 0,
     chunkY: 0,
     loadedChunks: 0,

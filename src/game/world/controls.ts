@@ -7,12 +7,14 @@ import { commands, type GameCommand } from '../commands.ts';
 import { net } from '../net/multiplayer.ts';
 import { progress } from '../progress.ts';
 import { store } from '../../state/store.ts';
-import { TOOL_LABELS, type Character } from './character.ts';
+import { HOTBAR, type Character } from './character.ts';
 
 const KEYS: Record<string, GameCommand> = {
     ' ': { type: 'attack' }, j: { type: 'attack' }, e: { type: 'use' }, f: { type: 'interact' },
     c: { type: 'sit' }, h: { type: 'hurt' }, x: { type: 'die' }, g: { type: 'dig' }, r: { type: 'fish' },
     q: { type: 'tool', delta: -1 }, t: { type: 'tool', delta: 1 },
+    // Number keys pick a hotbar slot.
+    ...Object.fromEntries(HOTBAR.map((tool, i) => [String(i + 1), { type: 'equip', tool } as GameCommand])),
 };
 
 export interface Controls {
@@ -22,7 +24,7 @@ export interface Controls {
 }
 
 export function bindControls(character: Character): Controls {
-    store.patch({ tool: TOOL_LABELS[character.tool], hp: progress.savedHp() });
+    store.patch({ toolId: character.tool, hp: progress.savedHp() });
     const offCommands = commands.subscribe((c) => {
         // Hurt costs a heart; Die empties them all. Getting up from death restores health (see tick).
         if (c.type === 'hurt' && !character.dead) store.patch({ hp: Math.max(0, store.get().hp - 2) });

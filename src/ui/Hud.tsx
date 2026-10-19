@@ -8,7 +8,7 @@
  * pointer-events-auto. `pt-safe-top` (see app.css) pads below the RUN host
  * header. Action buttons fire on pointer-down and emit commands the world scene hears.
  */
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { commands, type GameCommand } from '../game/commands.ts';
 import { store, useStore } from '../state/store.ts';
 
@@ -130,6 +130,77 @@ function Clock() {
     );
 }
 
+/** The nine hotbar slots, in the same order as HOTBAR in world/character.ts. */
+const HOTBAR_ITEMS: { tool: string; icon?: string; label: string }[] = [
+    { tool: 'none', label: 'Bare hands' },
+    { tool: 'sword', icon: 'sword', label: 'Sword' },
+    { tool: 'axe', icon: 'axe', label: 'Axe' },
+    { tool: 'pickaxe', icon: 'pickaxe', label: 'Pickaxe' },
+    { tool: 'hammer', icon: 'hammer', label: 'Hammer' },
+    { tool: 'shovel', icon: 'shovel', label: 'Shovel' },
+    { tool: 'fishingpole', icon: 'fishingpole', label: 'Fishing pole' },
+    { tool: 'watercan', icon: 'watercan', label: 'Watering can' },
+    { tool: 'shield', icon: 'shield', label: 'Shield' },
+];
+
+/** A Minecraft-style hotbar: tap a slot (or press 1-9) to hold that item; its name shows briefly. */
+function Hotbar() {
+    const toolId = useStore((s) => s.toolId);
+    const [name, setName] = useState<string | null>(null);
+    const first = useRef(true);
+    useEffect(() => {
+        if (first.current) {
+            first.current = false;
+            return;
+        }
+        setName(HOTBAR_ITEMS.find((i) => i.tool === toolId)?.label ?? null);
+        const id = window.setTimeout(() => setName(null), 1700);
+        return () => window.clearTimeout(id);
+    }, [toolId]);
+
+    return (
+        <div className="pointer-events-none absolute bottom-2 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1 pb-safe-bottom">
+            <div className="h-5 text-sm font-bold text-white transition-opacity duration-300" style={{ textShadow: '0 1px 3px #000', opacity: name ? 1 : 0 }}>
+                {name ?? ''}
+            </div>
+            <div className="flex gap-[3px] rounded-sm p-[3px]" style={{ background: 'rgba(22,22,22,.78)', border: '3px solid #3b3b3b', boxShadow: 'inset 0 0 0 2px #151515' }}>
+                {HOTBAR_ITEMS.map((it, i) => {
+                    const selected = it.tool === toolId;
+                    return (
+                        <button
+                            key={it.tool}
+                            type="button"
+                            aria-label={it.label}
+                            className="pointer-events-auto relative flex touch-none items-center justify-center"
+                            style={{
+                                width: 42,
+                                height: 42,
+                                background: 'rgba(72,72,72,.72)',
+                                border: selected ? '3px solid #fff' : '3px solid #5a5a5a',
+                                boxShadow: selected ? '0 0 0 2px #000' : 'none',
+                                borderRadius: 2,
+                            }}
+                            onPointerDown={(e) => {
+                                e.preventDefault();
+                                commands.emit({ type: 'equip', tool: it.tool });
+                            }}
+                        >
+                            {it.icon ? (
+                                <img src={`images/hud/${it.icon}.png`} width={32} height={32} draggable={false} alt="" />
+                            ) : (
+                                <span className="text-lg opacity-80">✋</span>
+                            )}
+                            <span className="absolute bottom-[-1px] right-[2px] text-[10px] font-bold leading-none text-white" style={{ textShadow: '0 1px 0 #000, 1px 0 0 #000' }}>
+                                {i + 1}
+                            </span>
+                        </button>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
 export default function Hud() {
     const tileX = useStore((s) => s.tileX);
     const tileY = useStore((s) => s.tileY);
@@ -137,7 +208,6 @@ export default function Hud() {
     const chunkX = useStore((s) => s.chunkX);
     const chunkY = useStore((s) => s.chunkY);
     const loaded = useStore((s) => s.loadedChunks);
-    const tool = useStore((s) => s.tool);
     const hp = useStore((s) => s.hp);
     const paused = useStore((s) => s.paused);
     const inBase = useStore((s) => s.phase === 'base');
@@ -232,25 +302,7 @@ export default function Hud() {
                 </button>
             </div>
 
-            {/* Tool switcher */}
-            <div className="absolute left-1/2 top-2 flex -translate-x-1/2 items-center gap-1 pt-safe-top">
-                <PixelBtn size={36} onPress={emit({ type: 'tool', delta: -1 })}><span className="text-sm">◀</span></PixelBtn>
-                <div
-                    className="flex min-w-[128px] items-center justify-center px-2 font-black"
-                    style={{
-                        height: 36,
-                        borderRadius: 10,
-                        background: `linear-gradient(${TAN_LIGHT}, ${TAN})`,
-                        border: `4px solid ${BROWN}`,
-                        boxShadow: `inset 0 0 0 2px ${TAN_LIGHT}, 0 3px 0 ${BROWN_DARK}`,
-                        color: INK,
-                        fontSize: 14,
-                    }}
-                >
-                    {tool}
-                </div>
-                <PixelBtn size={36} onPress={emit({ type: 'tool', delta: 1 })}><span className="text-sm">▶</span></PixelBtn>
-            </div>
+            <Hotbar />
 
             {/* Actions, bottom right */}
             <div className="absolute bottom-0 right-0 pb-safe-bottom pr-4">

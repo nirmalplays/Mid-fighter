@@ -4,7 +4,8 @@
  */
 export type GameCommand =
     | { type: 'attack' | 'use' | 'interact' | 'dig' | 'fish' | 'sit' | 'hurt' | 'die' }
-    | { type: 'tool'; delta: number };
+    | { type: 'tool'; delta: number }
+    | { type: 'equip'; tool: string };
 
 const listeners = new Set<(c: GameCommand) => void>();
 
