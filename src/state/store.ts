@@ -25,6 +25,8 @@ export interface AppState {
     /** Multiplayer link to the shared world room, and how many players (including you) are in it */
     netStatus: 'off' | 'connecting' | 'online';
     online: number;
+    /** Monsters this player has defeated (from the save) */
+    kills: number;
     /** Total time this player has played, in seconds (from the save) */
     playSeconds: number;
     /** Health in half hearts, 0..6 */
@@ -50,6 +52,7 @@ let state: AppState = {
     height: 0,
     netStatus: 'off',
     online: 0,
+    kills: 0,
     playSeconds: 0,
     hp: 6,
     toolId: 'none',

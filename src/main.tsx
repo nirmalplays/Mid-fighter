@@ -22,7 +22,7 @@ async function boot() {
     //    whenever the app is backgrounded.
     const save = await saveSystem.load();
     saveSystem.attachLifecycleFlush();
-    store.patch({ playSeconds: Math.floor(save.playSeconds) });
+    store.patch({ playSeconds: Math.floor(save.playSeconds), kills: save.kills });
 
     // 3. Mount React. `phase` starts at 'loading', so this paints the
     //    loading screen (progress bar at 0%).

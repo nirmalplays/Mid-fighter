@@ -17,6 +17,7 @@ import {
 import { store } from '../../state/store.ts';
 import type { Scene } from '../scene.ts';
 import type { Stage } from '../stage.ts';
+import { commands } from '../commands.ts';
 import { net } from '../net/multiplayer.ts';
 import { progress } from '../progress.ts';
 import { createRemotePlayers } from '../net/remotePlayers.ts';
@@ -26,6 +27,7 @@ import {
     CHUNK_TILES, LOAD_RADIUS, MAP_CHUNKS, MAP_TILES, TILE_DX, TILE_DY, ZOOM,
 } from './constants.ts';
 import { createInput, JOY_RADIUS } from './input.ts';
+import { createMonsters } from './monsters.ts';
 import { ISO_FRAMES, ISO_SCALE } from './isoAtlas.ts';
 import { generateWorld, GRASS, MAX_HEIGHT, SAND, STONE, WATER, type Flat, type Prop } from './mapGen.ts';
 
@@ -64,6 +66,10 @@ const PLAZA_TINT = 0x9fffd6;
 const PORTAL_REACH = 1.35;
 const ENTER_MS = 850;
 const FLASH_MS = 350;
+/** Damage a swing does to a monster (they have 6 health), by equipped tool. */
+const TOOL_DAMAGE: Record<string, number> = {
+    none: 1, sword: 3, axe: 2, pickaxe: 2, hammer: 3, shovel: 2, fishingpole: 1, watercan: 1, shield: 1,
+};
 /** Source px of the iso art → atlas px. Top-face centre of a 500 px tile is (250, 139). */
 const ANCHOR_X = 250 * ISO_SCALE;
 const ANCHOR_CUBE_Y = 139 * ISO_SCALE;
@@ -492,6 +498,34 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     let enterFrom = { x: 0, y: 0 };
     let exited = false;
 
+    // Monsters: frogs that hunt the local player (world/monsters.ts).
+    let invuln = 0; // ms of grace after being bitten
+    const hurtPlayer = (n: number) => {
+        if (invuln > 0 || character.dead || entering) return;
+        invuln = 1000;
+        store.patch({ hp: Math.max(0, store.get().hp - n) });
+        character.command({ type: 'hurt' });
+        net.sendAct('hurt');
+    };
+    const monsters = createMonsters({
+        layer: objects,
+        shadowTex,
+        canStand: boxOk,
+        heightAt,
+        toScreen: (u, v) => ({ x: sx(u, v), y: sy(u, v) }),
+        zFor: (u, v) => sy(Math.floor(u) + 0.5, Math.floor(v) + 0.5) + Z_PLAYER,
+        levelH: LEVEL_H,
+        player: () => ({ u: pu, v: pv, alive: !character.dead && !entering }),
+        onBite: hurtPlayer,
+        onKill: () => progress.addKill(),
+    });
+    // A swing that actually started (the character was free) lands a moment later.
+    const strikes: number[] = [];
+    let wasLocked = false;
+    const offStrike = commands.subscribe((c) => {
+        if ((c.type === 'attack' || c.type === 'use') && !wasLocked && character.locked && !character.dead) strikes.push(170);
+    });
+
     pz = heightAt(pu, pv) * LEVEL_H;
     placeCamera();
     syncChunks();
@@ -610,6 +644,16 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         }
         net.sendPose({ scene: 'world', u: pu, v: pv, z: pz, face: character.facing, anim: pu !== fromU || pv !== fromV ? character.anim : 'idle', tool: character.tool });
         remotes.update(ticker.deltaMS);
+        invuln = Math.max(0, invuln - ticker.deltaMS);
+        for (let i = strikes.length - 1; i >= 0; i--) {
+            strikes[i] -= ticker.deltaMS;
+            if (strikes[i] <= 0) {
+                strikes.splice(i, 1);
+                monsters.strike(pu, pv, character.facing, TOOL_DAMAGE[character.tool] ?? 1);
+            }
+        }
+        monsters.update(ticker.deltaMS);
+        wasLocked = character.locked;
 
         placeCamera();
         syncChunks();
@@ -650,6 +694,8 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             offResize();
             input.destroy();
             controls.destroy();
+            offStrike();
+            monsters.destroy();
             remotes.destroy();
             net.sendAway();
             progress.record({ scene: 'world', u: pu, v: pv, tool: character.tool, hp: store.get().hp });

@@ -52,6 +52,15 @@ export const progress = {
         }
     },
 
+    /** One more monster down. */
+    addKill(): void {
+        const d = saveSystem.data;
+        if (!d) return;
+        d.kills += 1;
+        store.patch({ kills: d.kills });
+        saveSystem.save();
+    },
+
     /** Write now (leaving a scene, pressing New game). */
     flush(): void {
         saveSystem.save();
@@ -61,8 +70,8 @@ export const progress = {
     reset(): void {
         const d = saveSystem.data;
         if (!d) return;
-        Object.assign(d, { scene: 'world', world: { u: 128.5, v: 128.5, set: false }, tool: 'none', hp: 6, playSeconds: 0 });
-        store.patch({ playSeconds: 0 });
+        Object.assign(d, { scene: 'world', world: { u: 128.5, v: 128.5, set: false }, tool: 'none', hp: 6, playSeconds: 0, kills: 0 });
+        store.patch({ playSeconds: 0, kills: 0 });
         saveSystem.save();
     },
 };

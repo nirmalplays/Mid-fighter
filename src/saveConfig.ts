@@ -17,6 +17,8 @@ export interface BounceSave {
     hp: number;
     /** Total time played, in seconds. */
     playSeconds: number;
+    /** Monsters defeated. */
+    kills: number;
 }
 
 export function defaultSave(): BounceSave {
@@ -27,6 +29,7 @@ export function defaultSave(): BounceSave {
         tool: 'none',
         hp: 6,
         playSeconds: 0,
+        kills: 0,
     };
 }
 
@@ -43,5 +46,6 @@ export const saveSystem = createSaveSystem<BounceSave>({
         if (typeof s.tool !== 'string') s.tool = def.tool;
         if (!(s.hp >= 0 && s.hp <= 6)) s.hp = def.hp;
         if (!(s.playSeconds >= 0)) s.playSeconds = 0;
+        if (!(s.kills >= 0)) s.kills = 0;
     },
 });
