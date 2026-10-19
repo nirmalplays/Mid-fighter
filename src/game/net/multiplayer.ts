@@ -16,7 +16,26 @@ export interface RemotePose {
     face: number;
     anim: string;
     tool: string;
+    dead?: boolean;
 }
+
+/** The server's combat snapshot (see shared/sim.ts GameSim.snapshot) and when it arrived. */
+export interface SimSnapshot {
+    m: number[][];
+    d: number[][];
+    p: number[] | null;
+    w: number;
+    nx: number;
+    /** performance.now() at arrival. */
+    at: number;
+}
+
+/** Combat events the server sends to this player. */
+export type NetEvent =
+    | { type: 'bite'; damage: number }
+    | { type: 'kill'; kind: string }
+    | { type: 'gain'; skill: string; id: number }
+    | { type: 'wave'; wave: number; u: number; v: number };
 
 export interface Remote {
     id: string;
@@ -31,6 +50,8 @@ type Msg = { type: string } & Record<string, unknown>;
 type Room = Awaited<ReturnType<typeof RundotGameAPI.realtime.joinOrCreateRoom<Msg>>>;
 
 const remotes = new Map<string, Remote>();
+const listeners = new Set<(e: NetEvent) => void>();
+let snap: SimSnapshot | null = null;
 let room: Room | null = null;
 let connecting: Promise<void> | null = null;
 let lastSent = 0;
@@ -75,6 +96,15 @@ function handle(msg: Msg): void {
             if (r) r.pose = null;
             break;
         }
+        case 'sim':
+            snap = { m: msg.m as number[][], d: msg.d as number[][], p: msg.p as number[] | null, w: msg.w as number, nx: msg.nx as number, at: performance.now() };
+            break;
+        case 'bite':
+        case 'kill':
+        case 'gain':
+        case 'wave':
+            for (const l of listeners) l(msg as unknown as NetEvent);
+            break;
     }
 }
 
@@ -102,6 +132,7 @@ function connect(): Promise<void> {
                 onReconnected: () => publish('online'),
                 onDisconnect: () => {
                     room = null;
+                    snap = null;
                     remotes.clear();
                     publish('off');
                 },
@@ -145,6 +176,24 @@ function sendAct(kind: string): void {
     }
 }
 
+/** Propose a swing from (u, v); the server decides who it hits. */
+function sendHit(u: number, v: number, facing: number, damage: number): void {
+    try {
+        room?.send({ type: 'hit', u, v, facing, damage });
+    } catch (err) {
+        console.warn('[multiplayer] send failed', err);
+    }
+}
+
+/** Ask to take a drop; the server answers with a 'gain' event if it is ours. */
+function sendPickup(id: number): void {
+    try {
+        room?.send({ type: 'pickup', id });
+    } catch (err) {
+        console.warn('[multiplayer] send failed', err);
+    }
+}
+
 /** Tell the others we left the scene (so they stop drawing us). */
 function sendAway(): void {
     lastKey = '';
@@ -155,7 +204,18 @@ function sendAway(): void {
     }
 }
 
-export const net = { remotes, connect, sendPose, sendAct, sendAway };
+export const net = {
+    remotes, connect, sendPose, sendAct, sendAway, sendHit, sendPickup,
+    /** True while the shared room is connected (so the server owns the monsters). */
+    online: (): boolean => room !== null,
+    /** The latest combat snapshot from the server, or null. */
+    snap: (): SimSnapshot | null => snap,
+    /** Subscribe to combat events from the server. Returns unsubscribe. */
+    onEvent(l: (e: NetEvent) => void): () => void {
+        listeners.add(l);
+        return () => listeners.delete(l);
+    },
+};
 
 // Debug: with ?spawn= the link is exposed for automated checks.
 if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('spawn')) {

@@ -9,7 +9,8 @@
         "allowReconnect": true,
         "reconnectTimeout": 30,
         "autoPersist": false,
-        "idleTimeout": 120
+        "idleTimeout": 120,
+        "metadata": { "waveEverySec": 120, "firstWaveSec": 20 }
       }
     }
   ]

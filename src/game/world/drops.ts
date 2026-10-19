@@ -1,66 +1,71 @@
 /**
- * Monster drops and floating text. Each kind of monster drops a different gem that
+ * Draws monster drops and floating text. Each kind of monster drops a different gem that
  * permanently raises a skill when picked up by walking over it:
  *   goblin -> ruby (Attack), skeleton -> lapis (Defence), wolf -> emerald (Speed),
  *   slime -> amber (Vitality, one more heart).
- * Drops pop out of the monster, bob, and fade away after about 45 seconds.
+ * The simulation (shared/sim.ts) decides what drops and who takes it; this only shows the
+ * list it is handed, drifts gems that are close toward the player, and asks to take one
+ * once it reaches them.
  */
 import { Assets, Container, Rectangle, Sprite, Text, Texture, type TextStyleOptions } from 'pixi.js';
+import { DROP_LIFE_MS, type Skill } from '../../shared/sim.ts';
 import { DROP_FRAMES } from './dropsAtlas.ts';
 
-export type Skill = 'attack' | 'defence' | 'speed' | 'vitality';
-
+export type { Skill };
 export const SKILL_NAMES: Record<Skill, string> = { attack: 'Attack', defence: 'Defence', speed: 'Speed', vitality: 'Vitality' };
 export const SKILL_CAP: Record<Skill, number> = { attack: 10, defence: 10, speed: 10, vitality: 4 };
-/** What each monster kind drops, and the chance. */
-export const DROP_TABLE: Record<string, { skill: Skill; chance: number }> = {
-    goblin: { skill: 'attack', chance: 0.8 },
-    skeleton: { skill: 'defence', chance: 0.9 },
-    wolf: { skill: 'speed', chance: 0.8 },
-    slime: { skill: 'vitality', chance: 0.6 },
-};
 export const SKILL_COLOR: Record<Skill, number> = { attack: 0xff6b6b, defence: 0x6ba8ff, speed: 0x5ee08a, vitality: 0xffc94d };
 
-const LIFE_MS = 45000;
 const BLINK_MS = 8000;
-const PICKUP_RANGE = 1.15;
-const POP_MS = 420;
-/** Gems this close drift toward the player (tiles) at this speed (tiles / s). */
+/** Gems this close drift toward the player (tiles) at this speed (tiles / s); touching one asks to take it. */
 const MAGNET_RANGE = 2.4;
 const MAGNET_SPEED = 6.5;
+const TOUCH_RANGE = 1.1;
+const POP_MS = 420;
+/** If a pickup request is not answered (someone else got it, or it was lost), ask again after this. */
+const RETRY_MS = 1500;
 
-interface Drop {
+/** A drop as the simulation describes it. */
+export interface ViewDrop {
+    id: number;
     skill: Skill;
     u: number;
     v: number;
-    /** Where it lands after popping out. */
-    tu: number;
-    tv: number;
+    /** Ms since it dropped. */
     age: number;
+}
+
+interface Shown {
+    skill: Skill;
+    u: number;
+    v: number;
+    born: number;
+    age: number;
+    asked: number;
     sprite: Sprite;
     glow: Sprite;
 }
 
-export interface Drops {
-    spawn(skill: Skill, u: number, v: number): void;
-    update(dtMs: number): void;
-    /** Rising text at a screen position in the world layer. */
+export interface DropView {
+    /** Show this list; `wantsSkill` says whether the player can use that gem (not at cap). */
+    sync(list: ViewDrop[], dtMs: number): void;
+    /** Rising text at a position in the world layer. */
     text(x: number, y: number, message: string, color?: number): void;
     destroy(): void;
 }
 
-export function createDrops(opts: {
+export function createDropView(opts: {
     layer: Container;
     glowTex: Texture;
-    canStand: (u: number, v: number) => boolean;
     heightAt: (u: number, v: number) => number;
     toScreen: (u: number, v: number) => { x: number; y: number };
     zFor: (u: number, v: number) => number;
     levelH: number;
     player: () => { u: number; v: number; alive: boolean };
-    /** Return true if the pickup was taken (it is removed), false to leave it. */
-    onPickup: (skill: Skill) => boolean;
-}): Drops {
+    wantsSkill: (skill: Skill) => boolean;
+    /** The player reached a gem: ask the simulation to give it to them. */
+    onTouch: (id: number, skill: Skill) => void;
+}): DropView {
     const sheet = Assets.get<Texture>('drops');
     sheet.source.scaleMode = 'linear';
     const texs = new Map<string, Texture>();
@@ -74,78 +79,76 @@ export function createDrops(opts: {
         return t;
     };
 
-    const drops: Drop[] = [];
+    const shown = new Map<number, Shown>();
     const floats: { text: Text; t: number; y0: number }[] = [];
     let clock = 0;
 
-    const remove = (d: Drop) => {
-        d.sprite.destroy();
-        d.glow.destroy();
+    const dispose = (s: Shown) => {
+        s.sprite.destroy();
+        s.glow.destroy();
     };
 
     return {
-        spawn(skill, u, v) {
-            // Pop out a little to a free spot.
-            let tu = u;
-            let tv = v;
-            for (let n = 0; n < 8; n++) {
-                const cu = u + (Math.random() - 0.5) * 1.6;
-                const cv = v + (Math.random() - 0.5) * 1.6;
-                if (opts.canStand(cu, cv)) { tu = cu; tv = cv; break; }
-            }
-            const sprite = new Sprite(tex(skill));
-            sprite.anchor.set(0.5, 0.85);
-            sprite.scale.set(0.55);
-            const glow = new Sprite(opts.glowTex);
-            glow.anchor.set(0.5);
-            glow.tint = SKILL_COLOR[skill];
-            glow.scale.set(0.45);
-            opts.layer.addChild(glow, sprite);
-            drops.push({ skill, u, v, tu, tv, age: 0, sprite, glow });
-        },
-
-        update(dtMs) {
+        sync(list, dtMs) {
             clock += dtMs;
             const p = opts.player();
-            for (let i = drops.length - 1; i >= 0; i--) {
-                const d = drops[i];
-                d.age += dtMs;
-                if (d.age > LIFE_MS) {
-                    remove(d);
-                    drops.splice(i, 1);
-                    continue;
+            const seen = new Set<number>();
+            for (const d of list) {
+                seen.add(d.id);
+                let s = shown.get(d.id);
+                if (!s) {
+                    const sprite = new Sprite(tex(d.skill));
+                    sprite.anchor.set(0.5, 0.85);
+                    sprite.scale.set(0.55);
+                    const glow = new Sprite(opts.glowTex);
+                    glow.anchor.set(0.5);
+                    glow.tint = SKILL_COLOR[d.skill];
+                    glow.scale.set(0.45);
+                    opts.layer.addChild(glow, sprite);
+                    s = { skill: d.skill, u: d.u, v: d.v, born: clock - d.age, age: d.age, asked: -1e9, sprite, glow };
+                    shown.set(d.id, s);
                 }
-                const k = Math.min(1, d.age / POP_MS);
-                const away = Math.hypot(p.u - d.u, p.v - d.v);
-                if (p.alive && d.age > POP_MS && away < MAGNET_RANGE && away > 0.05) {
-                    // Drift toward the player; keep the landing spot in step so it does not pull back.
+                s.age = d.age;
+                const sinceBorn = clock - s.born;
+
+                // Gems near the player drift toward them.
+                const away = Math.hypot(p.u - s.u, p.v - s.v);
+                const usable = p.alive && opts.wantsSkill(s.skill);
+                if (usable && s.age > POP_MS && away < MAGNET_RANGE && away > 0.05) {
                     const stepLen = Math.min(away, (MAGNET_SPEED * dtMs) / 1000);
-                    d.u += ((p.u - d.u) / away) * stepLen;
-                    d.v += ((p.v - d.v) / away) * stepLen;
-                    d.tu = d.u;
-                    d.tv = d.v;
+                    s.u += ((p.u - s.u) / away) * stepLen;
+                    s.v += ((p.v - s.v) / away) * stepLen;
                 } else {
-                    d.u += (d.tu - d.u) * Math.min(1, dtMs / 90);
-                    d.v += (d.tv - d.v) * Math.min(1, dtMs / 90);
+                    s.u += (d.u - s.u) * Math.min(1, dtMs / 120);
+                    s.v += (d.v - s.v) * Math.min(1, dtMs / 120);
                 }
-                const pos = opts.toScreen(d.u, d.v);
-                const ground = opts.heightAt(d.u, d.v) * opts.levelH;
+
+                const pos = opts.toScreen(s.u, s.v);
+                const ground = opts.heightAt(s.u, s.v) * opts.levelH;
+                const k = Math.min(1, sinceBorn / POP_MS);
                 const arc = k < 1 ? Math.sin(k * Math.PI) * 38 : 0;
                 const bob = k >= 1 ? 6 + Math.sin(clock / 260 + d.u * 3) * 4 : 0;
-                d.sprite.position.set(pos.x, pos.y - ground - arc - bob);
-                d.glow.position.set(pos.x, pos.y - ground);
-                d.glow.alpha = 0.55 + 0.2 * Math.sin(clock / 300);
-                const z = opts.zFor(d.u, d.v);
-                d.sprite.zIndex = z + 0.05;
-                d.glow.zIndex = z - 0.35;
-                const blink = d.age > LIFE_MS - BLINK_MS && Math.floor(d.age / 180) % 2 === 0;
-                d.sprite.alpha = blink ? 0.25 : 1;
+                s.sprite.position.set(pos.x, pos.y - ground - arc - bob);
+                s.glow.position.set(pos.x, pos.y - ground);
+                s.glow.alpha = 0.55 + 0.2 * Math.sin(clock / 300);
+                const z = opts.zFor(s.u, s.v);
+                s.sprite.zIndex = z + 0.05;
+                s.glow.zIndex = z - 0.35;
+                const blink = s.age > DROP_LIFE_MS - BLINK_MS && Math.floor(s.age / 180) % 2 === 0;
+                s.sprite.alpha = blink ? 0.25 : 1;
 
-                if (p.alive && d.age > POP_MS && Math.hypot(p.u - d.u, p.v - d.v) < PICKUP_RANGE && opts.onPickup(d.skill)) {
-                    remove(d);
-                    drops.splice(i, 1);
+                if (usable && sinceBorn > POP_MS && Math.hypot(p.u - s.u, p.v - s.v) < TOUCH_RANGE && clock - s.asked > RETRY_MS) {
+                    s.asked = clock;
+                    opts.onTouch(d.id, s.skill);
                 }
             }
+            for (const [id, s] of shown) {
+                if (!seen.has(id)) {
+                    dispose(s);
+                    shown.delete(id);
+                }
+            }
+
             for (let i = floats.length - 1; i >= 0; i--) {
                 const f = floats[i];
                 f.t += dtMs;
@@ -172,8 +175,8 @@ export function createDrops(opts: {
         },
 
         destroy() {
-            for (const d of drops) remove(d);
-            drops.length = 0;
+            for (const s of shown.values()) dispose(s);
+            shown.clear();
             for (const f of floats) f.text.destroy();
             floats.length = 0;
         },

@@ -221,7 +221,7 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
             saveClock = 0;
             progress.record({ scene: 'base', tool: character.tool, hp: store.get().hp });
         }
-        net.sendPose({ scene: 'base', u: pu, v: pv, z: 0, face: character.facing, anim: pu !== fromU || pv !== fromV ? character.anim : 'idle', tool: character.tool });
+        net.sendPose({ scene: 'base', u: pu, v: pv, z: 0, face: character.facing, anim: pu !== fromU || pv !== fromV ? character.anim : 'idle', tool: character.tool, dead: character.dead });
         remotes.update(ticker.deltaMS);
         placeCamera();
         publish();

@@ -1,0 +1,20 @@
+{
+  "rooms": [
+    {
+      "type": "world",
+      "file": "src/rooms/WorldRoom.ts",
+      "singleton": true,
+      "config": {
+        "maxPlayers": 16,
+        "allowReconnect": true,
+        "reconnectTimeout": 30,
+        "autoPersist": false,
+        "idleTimeout": 120,
+        "metadata": {
+          "waveEverySec": 30,
+          "firstWaveSec": 4
+        }
+      }
+    }
+  ]
+}

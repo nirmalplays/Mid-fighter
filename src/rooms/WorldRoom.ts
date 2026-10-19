@@ -1,12 +1,18 @@
 /**
  * The shared world: one room everybody who opens the game joins (singleton).
- * Each player's client owns its own movement; the server only relays poses and
- * actions to everyone else, after validating them: coordinates are clamped to the
- * scene's bounds, a pose can't move farther than a player could walk since their
- * last one (so nobody teleports), and names, tools and actions are checked
- * against fixed lists. Joining players get a snapshot of who is where.
+ *
+ * Players: each client owns its own movement; the server relays poses and actions to
+ * everyone else after validating them (coordinates clamped, no teleporting, names,
+ * tools and actions checked against fixed lists).
+ *
+ * Combat: the server owns the monsters, the wave portal and the drops (src/shared/sim.ts),
+ * so every player sees the same enemies. It simulates 10 times a second and broadcasts a
+ * compact snapshot. Clients propose swings ('hit') and pickups; the server decides who
+ * is hit, who gets which gem, and tells each player when a monster bit them.
  */
 import { GameRoom, type GameMessage, type LeaveReason, type Player } from '@series-inc/rundot-game-sdk/mp-server';
+import { generateWorld, WATER, type WorldMap } from '../game/world/mapGen.ts';
+import { GameSim, SKILLS, type SimEvent } from '../shared/sim.ts';
 
 type Scene = 'world' | 'base';
 
@@ -22,6 +28,7 @@ interface Pose {
     face: number;
     anim: string;
     tool: string;
+    dead: boolean;
 }
 
 // Client → server.
@@ -29,12 +36,19 @@ interface PoseMsg extends Pose { type: 'pose' }
 interface ActMsg { type: 'act'; kind: string }
 interface AwayMsg { type: 'away' }
 interface HelloMsg { type: 'hello' }
+interface HitMsg { type: 'hit'; u: number; v: number; facing: number; damage: number }
+interface PickupMsg { type: 'pickup'; id: number }
 // Server → client.
 interface SnapshotMsg { type: 'snapshot'; players: Record<string, { name: string; pose: Pose | null }> }
 interface PoseOut extends Pose { type: 'pose'; id: string }
 interface ActOut { type: 'act'; id: string; kind: string }
 interface AwayOut { type: 'away'; id: string }
-type Protocol = PoseMsg | ActMsg | AwayMsg | HelloMsg | SnapshotMsg | PoseOut | ActOut | AwayOut;
+interface SimOut { type: 'sim'; m: number[][]; d: number[][]; p: number[] | null; w: number; nx: number }
+interface BiteOut { type: 'bite'; damage: number }
+interface KillOut { type: 'kill'; kind: string }
+interface GainOut { type: 'gain'; skill: string; id: number }
+interface WaveOut { type: 'wave'; wave: number; u: number; v: number }
+type Protocol = PoseMsg | ActMsg | AwayMsg | HelloMsg | HitMsg | PickupMsg | SnapshotMsg | PoseOut | ActOut | AwayOut | SimOut | BiteOut | KillOut | GainOut | WaveOut;
 
 const MAP_TILES = 256;
 const ROOM_TILES = 8;
@@ -45,6 +59,10 @@ const MIN_POSE_GAP_MS = 40;
 const ANIMS = new Set(['idle', 'walk', 'run']);
 const TOOLS = new Set(['none', 'sword', 'axe', 'pickaxe', 'hammer', 'shovel', 'fishingpole', 'watercan', 'shield', 'hold']);
 const ACTS = new Set(['attack', 'use', 'interact', 'dig', 'fish', 'sit', 'hurt', 'die']);
+const SIM_MS = 100;
+/** The most one swing may do (an Attack-10 hammer does 3 × 2.5 ≈ 8), and the least time between swings. */
+const MAX_HIT_DAMAGE = 14;
+const MIN_HIT_GAP_MS = 140;
 
 interface Tracked extends Pose {
     at: number;
@@ -52,6 +70,50 @@ interface Tracked extends Pose {
 
 export default class WorldRoom extends GameRoom<Protocol> {
     private poses = new Map<string, Tracked>();
+    private lastHit = new Map<string, number>();
+    private map: WorldMap | null = null;
+    private sim: GameSim | null = null;
+    private lastTick = 0;
+    private quietFor = 0;
+
+    onCreate(): void {
+        const map = generateWorld();
+        this.map = map;
+        const blocked = map.blocked;
+        const heightAt = (i: number, j: number) => map.height[j * MAP_TILES + i];
+        const meta = (this.config.metadata ?? {}) as { waveEverySec?: number; firstWaveSec?: number };
+        this.sim = new GameSim(
+            {
+                players: () => {
+                    const out: { id: string; u: number; v: number }[] = [];
+                    for (const [id, p] of this.poses) {
+                        if (p.scene === 'world' && !p.dead && this.players.get(id)?.connected) out.push({ id, u: p.u, v: p.v });
+                    }
+                    return out;
+                },
+                // Enemies push through plants; water, the map edge and cliffs stop them.
+                canMove: (fu, fv, tu, tv) => {
+                    const ti = Math.floor(tu);
+                    const tj = Math.floor(tv);
+                    if (ti < 1 || tj < 1 || ti >= MAP_TILES - 1 || tj >= MAP_TILES - 1) return false;
+                    if (map.terrain[tj * MAP_TILES + ti] === WATER) return false;
+                    return Math.abs(heightAt(ti, tj) - heightAt(Math.floor(fu), Math.floor(fv))) <= 1;
+                },
+                canStand: (u, v) => {
+                    const i = Math.floor(u);
+                    const j = Math.floor(v);
+                    if (i < 4 || j < 4 || i >= MAP_TILES - 4 || j >= MAP_TILES - 4) return false;
+                    const k = j * MAP_TILES + i;
+                    if (map.terrain[k] === WATER || blocked[k] === 1) return false;
+                    return Math.abs(heightAt(i, j) - heightAt(i + 1, j)) <= 1 && Math.abs(heightAt(i, j) - heightAt(i, j + 1)) <= 1;
+                },
+                rand: Math.random,
+            },
+            { everyMs: (meta.waveEverySec ?? 120) * 1000, firstMs: (meta.firstWaveSec ?? 20) * 1000 },
+        );
+        this.lastTick = Date.now();
+        this.clock.setInterval('sim', () => this.tick(), SIM_MS);
+    }
 
     onPlayerJoin(player: Player): void {
         this.sendSnapshot(player.id);
@@ -59,18 +121,17 @@ export default class WorldRoom extends GameRoom<Protocol> {
 
     /** Who is here and where, for one player (on join, and again when their client asks). */
     private sendSnapshot(playerId: string): void {
-        const player = { id: playerId };
         const players: SnapshotMsg['players'] = {};
         // Everyone already here, even those who have not moved yet (so counts are right).
         for (const [id, other] of this.players) {
-            if (id === player.id) continue;
+            if (id === playerId) continue;
             const pose = this.poses.get(id);
             players[id] = {
                 name: other.username,
-                pose: pose ? { scene: pose.scene, u: pose.u, v: pose.v, z: pose.z, face: pose.face, anim: pose.anim, tool: pose.tool } : null,
+                pose: pose ? { scene: pose.scene, u: pose.u, v: pose.v, z: pose.z, face: pose.face, anim: pose.anim, tool: pose.tool, dead: pose.dead } : null,
             };
         }
-        this.sendTo(player.id, { type: 'snapshot', players });
+        this.sendTo(playerId, { type: 'snapshot', players });
     }
 
     onGameMessage(message: GameMessage<Protocol>): void {
@@ -79,7 +140,7 @@ export default class WorldRoom extends GameRoom<Protocol> {
             case 'pose': {
                 const pose = this.validate(sender.id, payload);
                 if (!pose) return;
-                this.broadcast({ type: 'pose', id: sender.id, scene: pose.scene, u: pose.u, v: pose.v, z: pose.z, face: pose.face, anim: pose.anim, tool: pose.tool });
+                this.broadcast({ type: 'pose', id: sender.id, scene: pose.scene, u: pose.u, v: pose.v, z: pose.z, face: pose.face, anim: pose.anim, tool: pose.tool, dead: pose.dead });
                 break;
             }
             case 'act':
@@ -88,6 +149,12 @@ export default class WorldRoom extends GameRoom<Protocol> {
             case 'hello':
                 // The client registers its handlers after joining, so it asks again for the snapshot.
                 this.sendSnapshot(sender.id);
+                break;
+            case 'hit':
+                this.onHit(sender.id, payload);
+                break;
+            case 'pickup':
+                this.onPickup(sender.id, payload.id);
                 break;
             case 'away':
                 this.poses.delete(sender.id);
@@ -100,8 +167,63 @@ export default class WorldRoom extends GameRoom<Protocol> {
 
     onPlayerLeave(player: Player, _reason: LeaveReason): void {
         this.poses.delete(player.id);
+        this.lastHit.delete(player.id);
         this.broadcast({ type: 'away', id: player.id });
     }
+
+    // ---- combat ----
+
+    private tick(): void {
+        const sim = this.sim;
+        if (!sim) return;
+        const now = Date.now();
+        const dt = now - this.lastTick;
+        this.lastTick = now;
+        this.dispatch(sim.update(dt));
+        // Send every tick while there is something moving; once a second otherwise (the wave countdown).
+        const busy = sim.monsters.size > 0 || sim.drops.size > 0 || sim.portal !== null;
+        this.quietFor += dt;
+        if (busy || this.quietFor >= 1000) {
+            this.quietFor = 0;
+            this.broadcast({ type: 'sim', ...sim.snapshot() });
+        }
+    }
+
+    private dispatch(events: SimEvent[]): void {
+        for (const e of events) {
+            if (e.type === 'bite') this.sendTo(e.playerId, { type: 'bite', damage: e.damage });
+            else if (e.type === 'kill') this.sendTo(e.playerId, { type: 'kill', kind: e.kind });
+            else this.broadcast({ type: 'wave', wave: e.wave, u: e.u, v: e.v });
+        }
+    }
+
+    private onHit(id: string, m: HitMsg): void {
+        const sim = this.sim;
+        const pose = this.poses.get(id);
+        if (!sim || !pose || pose.scene !== 'world' || pose.dead) return;
+        const now = Date.now();
+        if (now - (this.lastHit.get(id) ?? 0) < MIN_HIT_GAP_MS) return;
+        this.lastHit.set(id, now);
+        const num = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+        const damage = num(m.damage);
+        const facing = num(m.facing);
+        if (damage === null || facing === null) return;
+        // Swing from where the client says it stood, if that is near its last reported pose.
+        let u = num(m.u) ?? pose.u;
+        let v = num(m.v) ?? pose.v;
+        if (Math.hypot(u - pose.u, v - pose.v) > 4) { u = pose.u; v = pose.v; }
+        this.dispatch(sim.strike(id, u, v, Math.round(facing), Math.min(MAX_HIT_DAMAGE, Math.max(1, damage))));
+    }
+
+    private onPickup(id: string, dropId: number): void {
+        const sim = this.sim;
+        const pose = this.poses.get(id);
+        if (!sim || !pose || pose.scene !== 'world' || pose.dead || typeof dropId !== 'number') return;
+        const skill = sim.pickup(dropId, pose.u, pose.v);
+        if (skill) this.sendTo(id, { type: 'gain', skill: SKILLS.includes(skill) ? skill : 'attack', id: dropId });
+    }
+
+    // ---- poses ----
 
     /** A cleaned pose to relay, or null to drop the message. */
     private validate(id: string, m: PoseMsg): Tracked | null {
@@ -130,7 +252,7 @@ export default class WorldRoom extends GameRoom<Protocol> {
         }
         const clean: Tracked = {
             scene, u: nu, v: nv, z: Math.min(400, Math.max(0, z)),
-            face: Math.min(7, Math.max(0, Math.round(face))), anim: m.anim, tool: m.tool, at: now,
+            face: Math.min(7, Math.max(0, Math.round(face))), anim: m.anim, tool: m.tool, dead: m.dead === true, at: now,
         };
         this.poses.set(id, clean);
         return clean;

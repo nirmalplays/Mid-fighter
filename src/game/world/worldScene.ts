@@ -27,9 +27,10 @@ import {
     CHUNK_TILES, LOAD_RADIUS, MAP_CHUNKS, MAP_TILES, TILE_DX, TILE_DY, ZOOM,
 } from './constants.ts';
 import { createInput, JOY_RADIUS } from './input.ts';
-import { createDrops, DROP_TABLE, SKILL_CAP, SKILL_COLOR, SKILL_NAMES, type Skill } from './drops.ts';
-import { createMonsters } from './monsters.ts';
-import { createWaves } from './waves.ts';
+import { createDropView, SKILL_CAP, SKILL_COLOR, SKILL_NAMES, type Skill } from './drops.ts';
+import { createMonsterView } from './monsters.ts';
+import { createPortalView } from './waves.ts';
+import { createWorldSim } from './worldSim.ts';
 import { ISO_FRAMES, ISO_SCALE } from './isoAtlas.ts';
 import { generateWorld, GRASS, MAX_HEIGHT, SAND, STONE, WATER, type Flat, type Prop } from './mapGen.ts';
 
@@ -500,92 +501,83 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     let enterFrom = { x: 0, y: 0 };
     let exited = false;
 
-    // Monsters: goblins, slimes, wolves and skeletons that hunt the local player (world/monsters.ts).
+    // Monsters, the wave portal and drops: shown from the shared simulation (the server's when
+    // online, a local copy offline) via world/worldSim.ts; swings and pickups are sent to it.
     let invuln = 0; // ms of grace after being bitten
     let bannerId = 0;
     const banner = (text: string) => store.patch({ banner: { text, id: ++bannerId } });
+    const worldPoint = (u: number, v: number) => ({ x: sx(u, v), y: sy(u, v) });
+    const sortZ = (u: number, v: number) => sy(Math.floor(u) + 0.5, Math.floor(v) + 0.5) + Z_PLAYER;
     const hurtPlayer = (n: number) => {
         if (invuln > 0 || character.dead || entering) return;
         invuln = 1500;
         // Defence gives a chance to block a bite outright.
         if (Math.random() < Math.min(0.6, 0.07 * store.get().skills.defence)) {
-            drops.text(player.x, player.y - 70, 'Blocked!', SKILL_COLOR.defence);
+            dropView.text(player.x, player.y - 70, 'Blocked!', SKILL_COLOR.defence);
             return;
         }
         store.patch({ hp: Math.max(0, store.get().hp - n) });
         character.command({ type: 'hurt' });
         net.sendAct('hurt');
     };
-    const stand = (u: number, v: number) => boxOk(u, v);
-    const worldPoint = (u: number, v: number) => ({ x: sx(u, v), y: sy(u, v) });
-    const sortZ = (u: number, v: number) => sy(Math.floor(u) + 0.5, Math.floor(v) + 0.5) + Z_PLAYER;
-    const drops = createDrops({
-        layer: objects,
-        glowTex,
-        canStand: stand,
-        heightAt,
-        toScreen: worldPoint,
-        zFor: sortZ,
-        levelH: LEVEL_H,
-        player: () => ({ u: pu, v: pv, alive: !character.dead && !entering }),
-        onPickup: (skill: Skill) => {
-            const level = store.get().skills[skill];
-            if (level >= SKILL_CAP[skill]) return false; // already maxed: leave it
-            progress.raise(skill);
-            if (skill === 'vitality') store.patch({ hp: Math.min(store.get().maxHp, store.get().hp + 2) });
-            const gain = skill === 'vitality' ? '+1 Heart' : `${SKILL_NAMES[skill]} ${level + 1}`;
-            drops.text(player.x, player.y - 78, gain, SKILL_COLOR[skill]);
-            banner(skill === 'vitality' ? 'Vitality up! +1 heart' : `${SKILL_NAMES[skill]} up! Level ${level + 1}`);
-            return true;
-        },
-    });
-    // Enemies ignore bushes, trees and rocks (they push through); water, the map edge and cliffs stop them.
-    const monsterCanMove = (fu: number, fv: number, tu: number, tv: number): boolean => {
-        const ti = Math.floor(tu);
-        const tj = Math.floor(tv);
-        if (ti < 1 || tj < 1 || ti >= MAP_TILES - 1 || tj >= MAP_TILES - 1) return false;
-        if (map.terrain[tj * MAP_TILES + ti] === WATER) return false;
-        return Math.abs(map.height[tj * MAP_TILES + ti] - map.height[Math.floor(fv) * MAP_TILES + Math.floor(fu)]) <= 1;
-    };
-    const monsters = createMonsters({
-        layer: objects,
-        shadowTex,
-        canMove: monsterCanMove,
-        heightAt,
-        toScreen: (u, v) => ({ x: sx(u, v), y: sy(u, v) }),
-        zFor: (u, v) => sy(Math.floor(u) + 0.5, Math.floor(v) + 0.5) + Z_PLAYER,
-        levelH: LEVEL_H,
-        player: () => ({ u: pu, v: pv, alive: !character.dead && !entering }),
-        onBite: hurtPlayer,
-        onKill: (kind, u, v) => {
-            progress.addKill();
-            const drop = DROP_TABLE[kind];
-            if (drop && Math.random() < drop.chance && store.get().skills[drop.skill] < SKILL_CAP[drop.skill]) drops.spawn(drop.skill, u, v);
-        },
-    });
-    // Debug: with ?spawn= the game exposes a way to drop a gem at the player's feet.
-    if (new URLSearchParams(window.location.search).has('spawn')) {
-        (window as unknown as { __game?: unknown }).__game = { dropAt: (skill: Skill) => drops.spawn(skill, pu + 1.4, pv + 1.4) };
-    }
-    // Debug: ?firstWave=<s>&waveEvery=<s> shorten the portal timers for testing.
     const q = new URLSearchParams(window.location.search);
-    const waves = createWaves({
-        layer: objects,
-        glowTex,
-        canStand: stand,
-        heightAt,
-        toScreen: worldPoint,
-        zFor: sortZ,
-        levelH: LEVEL_H,
-        player: () => ({ u: pu, v: pv, alive: !character.dead }),
-        monsters,
+    const sim = createWorldSim({
+        map,
+        player: () => ({ id: 'me', u: pu, v: pv, alive: !character.dead && !entering }),
+        // Debug: ?firstWave=<s>&waveEvery=<s> shorten the portal timers when playing offline.
         everySec: Number(q.get('waveEvery')) || 120,
         firstSec: Number(q.get('firstWave')) || 20,
-        onWave: (n) => {
-            progress.reachWave(n);
-            banner(`Wave ${n}! A portal has opened`);
+        on: {
+            bite: hurtPlayer,
+            kill: () => progress.addKill(),
+            gain: (skill: Skill) => {
+                const level = store.get().skills[skill];
+                if (level >= SKILL_CAP[skill]) return;
+                progress.raise(skill);
+                if (skill === 'vitality') store.patch({ hp: Math.min(store.get().maxHp, store.get().hp + 2) });
+                const gain = skill === 'vitality' ? '+1 Heart' : `${SKILL_NAMES[skill]} ${level + 1}`;
+                dropView.text(player.x, player.y - 78, gain, SKILL_COLOR[skill]);
+                banner(skill === 'vitality' ? 'Vitality up! +1 heart' : `${SKILL_NAMES[skill]} up! Level ${level + 1}`);
+            },
+            wave: (n) => {
+                progress.reachWave(n);
+                banner(`Wave ${n}! A portal has opened`);
+            },
         },
     });
+    const monsterView = createMonsterView({
+        layer: objects,
+        shadowTex,
+        heightAt,
+        toScreen: worldPoint,
+        zFor: sortZ,
+        levelH: LEVEL_H,
+        player: () => ({ u: pu, v: pv }),
+    });
+    const dropView = createDropView({
+        layer: objects,
+        glowTex,
+        heightAt,
+        toScreen: worldPoint,
+        zFor: sortZ,
+        levelH: LEVEL_H,
+        player: () => ({ u: pu, v: pv, alive: !character.dead && !entering }),
+        wantsSkill: (skill: Skill) => store.get().skills[skill] < SKILL_CAP[skill],
+        onTouch: (id) => sim.take(id),
+    });
+    const portalView = createPortalView({
+        layer: objects,
+        glowTex,
+        heightAt,
+        toScreen: worldPoint,
+        zFor: sortZ,
+        levelH: LEVEL_H,
+    });
+    // Debug: with ?spawn= the game exposes the current combat view for automated checks.
+    if (q.has('spawn')) {
+        (window as unknown as { __game?: unknown }).__game = { view: () => sim.view(), pos: () => ({ u: pu, v: pv }) };
+    }
+    let hudClock = 0;
     // A swing that actually started (the character was free) lands a moment later.
     const strikes: number[] = [];
     let wasLocked = false;
@@ -710,19 +702,35 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             saveClock = 0;
             progress.record({ scene: 'world', u: pu, v: pv, tool: character.tool, hp: store.get().hp });
         }
-        net.sendPose({ scene: 'world', u: pu, v: pv, z: pz, face: character.facing, anim: pu !== fromU || pv !== fromV ? character.anim : 'idle', tool: character.tool });
+        net.sendPose({ scene: 'world', u: pu, v: pv, z: pz, face: character.facing, anim: pu !== fromU || pv !== fromV ? character.anim : 'idle', tool: character.tool, dead: character.dead });
         remotes.update(ticker.deltaMS);
         invuln = Math.max(0, invuln - ticker.deltaMS);
         for (let i = strikes.length - 1; i >= 0; i--) {
             strikes[i] -= ticker.deltaMS;
             if (strikes[i] <= 0) {
                 strikes.splice(i, 1);
-                monsters.strike(pu, pv, character.facing, Math.max(1, Math.round((TOOL_DAMAGE[character.tool] ?? 1) * (1 + 0.15 * store.get().skills.attack))));
+                sim.strike(pu, pv, character.facing, Math.max(1, Math.round((TOOL_DAMAGE[character.tool] ?? 1) * (1 + 0.15 * store.get().skills.attack))));
             }
         }
-        monsters.update(ticker.deltaMS);
-        waves.update(ticker.deltaMS);
-        drops.update(ticker.deltaMS);
+        sim.update(ticker.deltaMS);
+        const view = sim.view();
+        // Online positions arrive ten times a second, so ease between them; offline updates every frame.
+        monsterView.sync(view.monsters, ticker.deltaMS, view.online ? 110 : 0);
+        dropView.sync(view.drops, ticker.deltaMS);
+        portalView.sync(view.portal, ticker.deltaMS);
+        hudClock -= ticker.deltaMS;
+        if (hudClock <= 0) {
+            hudClock = 150;
+            const portal = view.portal;
+            const aim = portal
+                ? (() => {
+                    const dx = (portal.u - pu - (portal.v - pv)) * TILE_DX;
+                    const dy = (portal.u - pu + (portal.v - pv)) * TILE_DY;
+                    return { angle: Math.atan2(dy, dx), dist: Math.hypot(portal.u - pu, portal.v - pv) };
+                })()
+                : null;
+            store.patch({ wave: view.wave, nextWaveIn: view.nextIn, portalAim: aim });
+        }
         wasLocked = character.locked;
 
         placeCamera();
@@ -765,9 +773,10 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             input.destroy();
             controls.destroy();
             offStrike();
-            monsters.destroy();
-            waves.destroy();
-            drops.destroy();
+            sim.destroy();
+            monsterView.destroy();
+            dropView.destroy();
+            portalView.destroy();
             store.patch({ portalAim: null, banner: null });
             remotes.destroy();
             net.sendAway();
