@@ -21,7 +21,9 @@ import { createInput, JOY_RADIUS } from './input.ts';
 const ROOM = 5;
 const FLOOR_SCALE = (ROOM * 2 * TILE_DX) / 650;
 /** Where the floor's top-face centre sits inside the cropped slab image (fractions of its size). */
-const FLOOR_ANCHOR = { x: 0.5, y: 0.45 };
+const FLOOR_ANCHOR = { x: 0.5, y: 0.55 };
+/** The slab's top face is a little taller than 2:1; squash it so it lines up with the iso grid. */
+const FLOOR_SQUASH = 0.9;
 const WALL_H = 175;
 const OUTLINE = 0x2b0f1c;
 
@@ -84,7 +86,7 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
     const floorTex = Assets.get<Texture>('base-floor');
     const floor = new Sprite(floorTex);
     floor.anchor.set(FLOOR_ANCHOR.x, FLOOR_ANCHOR.y);
-    floor.scale.set(FLOOR_SCALE);
+    floor.scale.set(FLOOR_SCALE, FLOOR_SCALE * FLOOR_SQUASH);
     floor.position.set(sx(ROOM / 2, ROOM / 2), sy(ROOM / 2, ROOM / 2));
     floor.zIndex = -1000;
     objects.addChild(floor);
@@ -96,6 +98,8 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
     world.addChild(character.xray);
     const player = character.player;
     const xray = character.xray;
+    // Debug: with ?spawn= the player is exposed for automated checks.
+    if (new URLSearchParams(window.location.search).has('spawn')) (window as unknown as { __player?: Container }).__player = player;
     let pu = ROOM / 2;
     let pv = ROOM / 2 + 0.6;
 
