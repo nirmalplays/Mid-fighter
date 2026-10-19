@@ -12,6 +12,7 @@ import { store } from '../../state/store.ts';
 import type { Scene } from '../scene.ts';
 import type { Stage } from '../stage.ts';
 import { net } from '../net/multiplayer.ts';
+import { progress } from '../progress.ts';
 import { createRemotePlayers } from '../net/remotePlayers.ts';
 import { createCharacter, TOOL_LABELS } from './character.ts';
 import { bindControls } from './controls.ts';
@@ -125,6 +126,7 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
 
     // Player.
     const character = createCharacter((tool) => store.patch({ tool: TOOL_LABELS[tool] }));
+    character.setTool(progress.savedTool());
     const controls = bindControls(character);
     // The other players in the shared room.
     const remotes = createRemotePlayers({
@@ -180,6 +182,7 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
     publish();
 
     let clock = 0;
+    let saveClock = 0;
     const tick = (ticker: Ticker) => {
         clock += ticker.deltaMS;
         const dt = Math.min(ticker.deltaMS / 1000, 0.05);
@@ -212,6 +215,12 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
 
         character.update(ticker.deltaMS, dir, pu !== fromU || pv !== fromV);
         controls.tick();
+        progress.addTime(Math.min(ticker.deltaMS / 1000, 0.25));
+        saveClock += ticker.deltaMS;
+        if (saveClock > 1000) {
+            saveClock = 0;
+            progress.record({ scene: 'base', tool: character.tool, hp: store.get().hp });
+        }
         net.sendPose({ scene: 'base', u: pu, v: pv, z: 0, face: character.facing, anim: pu !== fromU || pv !== fromV ? character.anim : 'idle', tool: character.tool });
         remotes.update(ticker.deltaMS);
         placeCamera();
@@ -234,6 +243,8 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
             controls.destroy();
             remotes.destroy();
             net.sendAway();
+            progress.record({ scene: 'base', tool: character.tool, hp: store.get().hp });
+            progress.flush();
             character.destroy();
             joyGfx.destroy();
             flash.destroy();

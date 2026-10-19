@@ -18,6 +18,7 @@ import { store } from '../../state/store.ts';
 import type { Scene } from '../scene.ts';
 import type { Stage } from '../stage.ts';
 import { net } from '../net/multiplayer.ts';
+import { progress } from '../progress.ts';
 import { createRemotePlayers } from '../net/remotePlayers.ts';
 import { createCharacter, TOOL_LABELS } from './character.ts';
 import { bindControls } from './controls.ts';
@@ -171,6 +172,8 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     // Faint copy above everything, so the player stays visible behind mountains.
     const xray = character.xray;
     world.addChild(xray);
+    // Equip what this player last carried; controls.ts then shows it in the HUD.
+    character.setTool(progress.savedTool());
     // HUD buttons, keyboard shortcuts and the health rules (world/controls.ts).
     const controls = bindControls(character);
     // The other players in the shared room (world/../net).
@@ -190,6 +193,14 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     if (spawn && spawn.length === 2 && spawn.every(Number.isFinite)) {
         pu = Math.min(MAP_TILES - 1, Math.max(0, spawn[0])) + 0.5;
         pv = Math.min(MAP_TILES - 1, Math.max(0, spawn[1])) + 0.5;
+    }
+    // Resume where this player left off (unless they are coming back through the portal).
+    if (store.get().spawnAt === 'center' && progress.saved?.world.set) {
+        const { u, v } = progress.saved.world;
+        if (u >= 0 && v >= 0 && u < MAP_TILES && v < MAP_TILES && map.blocked[Math.floor(v) * MAP_TILES + Math.floor(u)] === 0) {
+            pu = u;
+            pv = v;
+        }
     }
     // Coming back from the base: step out beside the portal.
     if (store.get().spawnAt === 'portal') {
@@ -520,6 +531,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     };
 
     let clock = 0;
+    let saveClock = 0;
     const tick = (ticker: Ticker) => {
         clock += ticker.deltaMS;
         const dt = Math.min(ticker.deltaMS / 1000, 0.05);
@@ -590,6 +602,12 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         // Character animation: face the way the stick points; idle when blocked or still.
         character.update(ticker.deltaMS, dir, pu !== fromU || pv !== fromV);
         controls.tick();
+        progress.addTime(Math.min(ticker.deltaMS / 1000, 0.25));
+        saveClock += ticker.deltaMS;
+        if (saveClock > 1000) {
+            saveClock = 0;
+            progress.record({ scene: 'world', u: pu, v: pv, tool: character.tool, hp: store.get().hp });
+        }
         net.sendPose({ scene: 'world', u: pu, v: pv, z: pz, face: character.facing, anim: pu !== fromU || pv !== fromV ? character.anim : 'idle', tool: character.tool });
         remotes.update(ticker.deltaMS);
 
@@ -634,6 +652,8 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             controls.destroy();
             remotes.destroy();
             net.sendAway();
+            progress.record({ scene: 'world', u: pu, v: pv, tool: character.tool, hp: store.get().hp });
+            progress.flush();
             character.destroy();
             for (const c of chunks.values()) unloadChunk(c);
             chunks.clear();

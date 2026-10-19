@@ -5,6 +5,7 @@
  */
 import { commands, type GameCommand } from '../commands.ts';
 import { net } from '../net/multiplayer.ts';
+import { progress } from '../progress.ts';
 import { store } from '../../state/store.ts';
 import { TOOL_LABELS, type Character } from './character.ts';
 
@@ -21,7 +22,7 @@ export interface Controls {
 }
 
 export function bindControls(character: Character): Controls {
-    store.patch({ tool: TOOL_LABELS[character.tool], hp: 6 });
+    store.patch({ tool: TOOL_LABELS[character.tool], hp: progress.savedHp() });
     const offCommands = commands.subscribe((c) => {
         // Hurt costs a heart; Die empties them all. Getting up from death restores health (see tick).
         if (c.type === 'hurt' && !character.dead) store.patch({ hp: Math.max(0, store.get().hp - 2) });

@@ -8,7 +8,7 @@
  * pointer-events-auto. `pt-safe-top` (see app.css) pads below the RUN host
  * header. Action buttons fire on pointer-down and emit commands the world scene hears.
  */
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { commands, type GameCommand } from '../game/commands.ts';
 import { store, useStore } from '../state/store.ts';
 
@@ -104,13 +104,11 @@ function Heart({ fill }: { fill: 0 | 0.5 | 1 }) {
     );
 }
 
+/** Total play time (from the save), mm:ss, or h:mm:ss past an hour. */
 function Clock() {
-    const [t, setT] = useState(0);
-    useEffect(() => {
-        const id = window.setInterval(() => setT((s) => s + 1), 1000);
-        return () => window.clearInterval(id);
-    }, []);
-    const mm = String(Math.floor(t / 60)).padStart(2, '0');
+    const t = useStore((s) => s.playSeconds);
+    const hh = Math.floor(t / 3600);
+    const mm = String(Math.floor((t % 3600) / 60)).padStart(2, '0');
     const ss = String(t % 60).padStart(2, '0');
     return (
         <div
@@ -127,7 +125,7 @@ function Clock() {
                 textShadow: '0 0 8px rgba(255,74,58,.7)',
             }}
         >
-            {mm}:{ss}
+            {hh > 0 ? `${hh}:` : ''}{mm}:{ss}
         </div>
     );
 }

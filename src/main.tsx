@@ -4,6 +4,7 @@ import App from './ui/App.tsx';
 import { store } from './state/store.ts';
 import { initSdk, registerLifecycles } from './sdk/runSdk.ts';
 import { warmAssets } from './assets/preload.ts';
+import { saveSystem } from './saveConfig.ts';
 import './styles/app.css';
 
 /**
@@ -17,13 +18,11 @@ async function boot() {
     //    Keep boot alive when the host is unavailable.
     await initSdk();
 
-    // 2. ADAPT: load the save before first render, so the first screen can
-    //    reflect real progress instead of popping in after a beat. With
-    //    systems/save from this repo:
-    //        const saveSystem = createSaveSystem({ ... });
-    //        await saveSystem.load();
-    //    If the game is localized (systems/localization), restore the
-    //    language here too — before any UI renders.
+    // 2. Load this player's save before first render (never throws), and flush it
+    //    whenever the app is backgrounded.
+    const save = await saveSystem.load();
+    saveSystem.attachLifecycleFlush();
+    store.patch({ playSeconds: Math.floor(save.playSeconds) });
 
     // 3. Mount React. `phase` starts at 'loading', so this paints the
     //    loading screen (progress bar at 0%).
@@ -61,13 +60,9 @@ async function boot() {
     registerLifecycles({
         onPause: () => store.patch({ paused: true }),
         onResume: () => store.patch({ paused: false }),
-        onSleep: async () => {
-            // ADAPT: flush the save here. With systems/save:
-            //     try { await saveSystem.flush(); } catch (e) { /* guarded */ }
-        },
-        onQuit: async () => {
-            // ADAPT: same flush — but treat onSleep as the reliable one.
-        },
+        // The save system's own lifecycle flush (attachLifecycleFlush above) covers sleep and quit.
+        onSleep: async () => {},
+        onQuit: async () => {},
     });
 
     // 8. ADAPT: post-boot, fire-and-forget work goes here — server time

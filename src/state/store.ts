@@ -25,6 +25,8 @@ export interface AppState {
     /** Multiplayer link to the shared world room, and how many players (including you) are in it */
     netStatus: 'off' | 'connecting' | 'online';
     online: number;
+    /** Total time this player has played, in seconds (from the save) */
+    playSeconds: number;
     /** Health in half hearts, 0..6 */
     hp: number;
     /** Label of the equipped tool */
@@ -48,6 +50,7 @@ let state: AppState = {
     height: 0,
     netStatus: 'off',
     online: 0,
+    playSeconds: 0,
     hp: 6,
     tool: 'Bare hands',
     chunkX: 0,
