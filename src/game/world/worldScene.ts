@@ -498,7 +498,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     let enterFrom = { x: 0, y: 0 };
     let exited = false;
 
-    // Monsters: frogs that hunt the local player (world/monsters.ts).
+    // Monsters: goblins, slimes, wolves and skeletons that hunt the local player (world/monsters.ts).
     let invuln = 0; // ms of grace after being bitten
     const hurtPlayer = (n: number) => {
         if (invuln > 0 || character.dead || entering) return;

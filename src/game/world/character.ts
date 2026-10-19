@@ -21,7 +21,7 @@ export const TOOL_LABELS: Record<Tool, string> = {
 };
 
 /** Facing by 45° sector of the screen-space direction (0 = right, clockwise): sheet row and mirroring. */
-const FACINGS: { row: number; flip: boolean }[] = [
+export const FACINGS: { row: number; flip: boolean }[] = [
     { row: 2, flip: true }, { row: 1, flip: true }, { row: 0, flip: false }, { row: 1, flip: false },
     { row: 2, flip: false }, { row: 3, flip: false }, { row: 4, flip: false }, { row: 3, flip: true },
 ];

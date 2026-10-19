@@ -1,51 +1,65 @@
 /**
- * Angry frogs (the Isometric Frog Character art, tinted red). They spawn out of
- * sight around the player, hop toward them, lunge when close and bite for half a
- * heart. The player's swings hit those in front of them with knockback, and a
- * health bar shows once a frog is hurt. Monsters live only on this device: they
- * hunt the local player, and other players in the room do not see them.
+ * Enemies from the IsometricEnemies pack: goblins, slimes, wolves and skeletons.
+ * They spawn out of sight around the player, hunt them, attack when close (each kind
+ * has its own speed, health, reach and timing) and die with their death animation.
+ * The player's swings hit those in front of them with knockback; a health bar shows
+ * once an enemy is hurt. Enemies live only on this device: they hunt the local
+ * player, and other players in the room do not see them.
  */
 import { Assets, Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
+import { FACINGS } from './character.ts';
 import { TILE_DX, TILE_DY } from './constants.ts';
+import { ENEMY_CELL, ENEMY_FEET, ENEMY_SHEETS } from './enemyAtlas.ts';
 
-/** Frog sheet layout (see tools/build-monsters.py): 133 px cells, back view below the front view. */
-const CELL = 133;
-const BACK_Y0 = 399;
-const FRONT_ANCHOR = { x: 69 / CELL, y: 127 / CELL };
-const BACK_ANCHOR = { x: 70 / CELL, y: 122 / CELL };
-/** (column, row) of each frame. */
-const FRONT_WALK: [number, number][] = [[0, 2], [1, 2], [2, 2], [1, 2]];
-const FRONT_IDLE: [number, number] = [0, 0];
-const FRONT_BITE: [number, number] = [0, 1];
-const BACK_WALK: [number, number][] = [[0, 1], [1, 1], [2, 1], [3, 1]];
-const BACK_IDLE: [number, number] = [0, 0];
+/** Drawn at 2x for sharpness (like the player); this brings enemies to the player's size. */
 const SCALE = 0.5;
-const ANGRY = 0xff9484;
 
-const MAX_HP = 6;
-const SPEED = 2.3; // tiles / s
+interface Kind {
+    hp: number;
+    /** Tiles per second. */
+    speed: number;
+    /** Distance at which it starts an attack, and the farthest a landing attack still hits. */
+    reach: number;
+    /** Time the attack animation plays, ms, and the fraction of it at which the hit lands. */
+    attackMs: number;
+    hitAt: number;
+    recoverMs: number;
+    moveFrameMs: number;
+    /** Sprite scale multiplier, health-bar height above the feet (screen px), and a bounce while moving. */
+    size: number;
+    barY: number;
+    hop: number;
+    weight: number;
+}
+
+const KINDS: Record<string, Kind> = {
+    goblin: { hp: 5, speed: 2.3, reach: 1.05, attackMs: 560, hitAt: 0.55, recoverMs: 900, moveFrameMs: 150, size: 1, barY: 84, hop: 0, weight: 3 },
+    slime: { hp: 4, speed: 1.5, reach: 0.95, attackMs: 640, hitAt: 0.6, recoverMs: 1100, moveFrameMs: 130, size: 1.15, barY: 46, hop: 7, weight: 3 },
+    wolf: { hp: 6, speed: 3.5, reach: 1.15, attackMs: 440, hitAt: 0.5, recoverMs: 750, moveFrameMs: 90, size: 1, barY: 64, hop: 0, weight: 2 },
+    skeleton: { hp: 8, speed: 1.9, reach: 1.1, attackMs: 720, hitAt: 0.6, recoverMs: 1200, moveFrameMs: 150, size: 1.05, barY: 92, hop: 0, weight: 2 },
+};
+const KIND_NAMES = Object.keys(KINDS);
+
 const MAX_ALIVE = 4;
 const SPAWN_EVERY_MS = 6000;
 const FIRST_SPAWN_MS = 3500;
 const SPAWN_MIN = 9;
 const SPAWN_MAX = 13;
 const LEASH = 26;
-const BITE_RANGE = 1.05;
-const WINDUP_MS = 380;
-const RECOVER_MS = 950;
-const DYING_MS = 520;
+const DYING_FADE_MS = 450;
 /** How far in front of the player a swing reaches, and how wide (radians either side of facing). */
 const REACH = 1.9;
 const ARC = 1.3;
 
-type State = 'chase' | 'windup' | 'recover' | 'dying';
+type State = 'chase' | 'attack' | 'recover' | 'dying';
 
 interface Monster {
+    kind: string;
+    def: Kind;
     u: number;
     v: number;
     z: number;
     hp: number;
-    shownHp: number;
     state: State;
     t: number;
     /** Knockback velocity, tiles / s, decaying. */
@@ -53,6 +67,7 @@ interface Monster {
     kv: number;
     flash: number;
     animT: number;
+    hit: boolean;
     /** Which way to sidestep when blocked. */
     side: 1 | -1;
     sprite: Sprite;
@@ -62,7 +77,7 @@ interface Monster {
 
 export interface Monsters {
     update(dtMs: number): void;
-    /** A player swing from (u, v) facing a 0-7 sector: damages frogs in reach; returns how many it killed. */
+    /** A player swing from (u, v) facing a 0-7 sector: damages enemies in reach; returns how many it killed. */
     strike(u: number, v: number, facing: number, damage: number): number;
     destroy(): void;
 }
@@ -80,35 +95,50 @@ export function createMonsters(opts: {
     onBite: (damage: number) => void;
     onKill: () => void;
 }): Monsters {
-    const sheet = Assets.get<Texture>('frog');
-    sheet.source.scaleMode = 'linear';
-    const texCache = new Map<string, Texture>();
-    const tex = (back: boolean, [c, r]: [number, number]): Texture => {
-        const k = `${back ? 'b' : 'f'}${c},${r}`;
-        let t = texCache.get(k);
-        if (!t) {
-            t = new Texture({ source: sheet.source, frame: new Rectangle(c * CELL, (back ? BACK_Y0 : 0) + r * CELL, CELL, CELL) });
-            texCache.set(k, t);
-        }
-        return t;
-    };
+    // Sheets load in the background; a kind spawns once all three of its sheets are in.
+    const frames = new Map<string, Texture[][]>();
+    const ready = new Set<string>();
+    let destroyed = false;
+    for (const kind of KIND_NAMES) {
+        Promise.all((['move', 'attack', 'die'] as const).map(async (anim) => {
+            const key = `${kind}-${anim}`;
+            const sheet = await Assets.load<Texture>({ alias: `enemy:${key}`, src: `images/world/enemy/${key}.png` });
+            const cols = ENEMY_SHEETS[key];
+            frames.set(key, Array.from({ length: 5 }, (_, row) =>
+                Array.from({ length: cols }, (__, col) =>
+                    new Texture({ source: sheet.source, frame: new Rectangle(col * ENEMY_CELL, row * ENEMY_CELL, ENEMY_CELL, ENEMY_CELL) }))));
+        })).then(() => { if (!destroyed) ready.add(kind); }).catch(() => { /* this kind just never spawns */ });
+    }
 
     const monsters: Monster[] = [];
     let spawnClock = FIRST_SPAWN_MS;
 
-    const make = (u: number, v: number): Monster => {
-        const sprite = new Sprite(tex(false, FRONT_IDLE));
-        sprite.anchor.set(FRONT_ANCHOR.x, FRONT_ANCHOR.y);
-        sprite.scale.set(SCALE);
-        sprite.tint = ANGRY;
+    const pickKind = (): string | null => {
+        const pool = KIND_NAMES.filter((k) => ready.has(k));
+        if (!pool.length) return null;
+        let roll = Math.random() * pool.reduce((n, k) => n + KINDS[k].weight, 0);
+        for (const k of pool) {
+            roll -= KINDS[k].weight;
+            if (roll <= 0) return k;
+        }
+        return pool[0];
+    };
+
+    const make = (kind: string, u: number, v: number): Monster => {
+        const def = KINDS[kind];
+        const sprite = new Sprite(frames.get(`${kind}-move`)![0][0]);
+        const [fx, fy] = ENEMY_FEET[kind];
+        sprite.anchor.set(fx / ENEMY_CELL, fy / ENEMY_CELL);
+        sprite.scale.set(SCALE * def.size);
         const shadow = new Sprite(opts.shadowTex);
         shadow.anchor.set(0.5);
-        shadow.scale.set(0.8);
+        shadow.scale.set(0.7 * def.size);
         const bar = new Graphics();
         opts.layer.addChild(shadow, sprite, bar);
         return {
-            u, v, z: opts.heightAt(u, v) * opts.levelH, hp: MAX_HP, shownHp: MAX_HP, state: 'chase', t: 0,
-            ku: 0, kv: 0, flash: 0, animT: Math.random() * 1000, side: Math.random() < 0.5 ? 1 : -1, sprite, shadow, bar,
+            kind, def, u, v, z: opts.heightAt(u, v) * opts.levelH, hp: def.hp, state: 'chase', t: 0,
+            ku: 0, kv: 0, flash: 0, animT: Math.random() * 1000, hit: false, side: Math.random() < 0.5 ? 1 : -1,
+            sprite, shadow, bar,
         };
     };
     const dispose = (m: Monster) => {
@@ -118,6 +148,8 @@ export function createMonsters(opts: {
     };
 
     const trySpawn = () => {
+        const kind = pickKind();
+        if (!kind) return;
         const p = opts.player();
         for (let n = 0; n < 12; n++) {
             const ang = Math.random() * Math.PI * 2;
@@ -125,7 +157,7 @@ export function createMonsters(opts: {
             const u = p.u + Math.cos(ang) * d;
             const v = p.v + Math.sin(ang) * d;
             if (u < 1 || v < 1 || u > 255 || v > 255 || !opts.canStand(u, v)) continue;
-            monsters.push(make(u, v));
+            monsters.push(make(kind, u, v));
             return;
         }
     };
@@ -140,10 +172,10 @@ export function createMonsters(opts: {
 
     const drawBar = (m: Monster, x: number, y: number) => {
         m.bar.clear();
-        if (m.hp >= MAX_HP || m.state === 'dying') return;
+        if (m.hp >= m.def.hp || m.state === 'dying') return;
         const w = 30;
         m.bar.rect(x - w / 2, y, w, 5).fill({ color: 0x1a0c10, alpha: 0.85 });
-        m.bar.rect(x - w / 2 + 1, y + 1, (w - 2) * Math.max(0, m.hp / MAX_HP), 3).fill(0xef4444);
+        m.bar.rect(x - w / 2 + 1, y + 1, (w - 2) * Math.max(0, m.hp / m.def.hp), 3).fill(0xef4444);
     };
 
     return {
@@ -159,10 +191,13 @@ export function createMonsters(opts: {
 
             for (let i = monsters.length - 1; i >= 0; i--) {
                 const m = monsters[i];
+                const def = m.def;
                 const du = p.u - m.u;
                 const dv = p.v - m.v;
                 const dist = Math.hypot(du, dv);
-                if (dist > LEASH || (m.state === 'dying' && m.t > DYING_MS)) {
+                const dieFrames = frames.get(`${m.kind}-die`)![0].length;
+                const dieMs = dieFrames * 110;
+                if (dist > LEASH || (m.state === 'dying' && m.t > dieMs + DYING_FADE_MS)) {
                     dispose(m);
                     monsters.splice(i, 1);
                     continue;
@@ -181,49 +216,60 @@ export function createMonsters(opts: {
 
                 let walking = false;
                 if (m.state === 'chase' && p.alive) {
-                    if (dist < BITE_RANGE) {
-                        m.state = 'windup';
+                    if (dist < def.reach) {
+                        m.state = 'attack';
                         m.t = 0;
+                        m.hit = false;
                     } else {
-                        const k = (SPEED * dt) / dist;
+                        const k = (def.speed * dt) / dist;
                         let moved = step(m, du * k, dv * k);
                         // Blocked: sidestep around whatever is in the way.
                         if (!moved) moved = step(m, -dv * k * m.side, du * k * m.side);
                         if (!moved) m.side = m.side === 1 ? -1 : 1;
                         walking = moved;
                     }
-                } else if (m.state === 'windup') {
-                    if (m.t >= WINDUP_MS) {
-                        if (p.alive && dist < BITE_RANGE + 0.45) opts.onBite(1);
+                } else if (m.state === 'attack') {
+                    if (!m.hit && m.t >= def.attackMs * def.hitAt) {
+                        m.hit = true;
+                        if (p.alive && dist < def.reach + 0.45) opts.onBite(1);
+                    }
+                    if (m.t >= def.attackMs) {
                         m.state = 'recover';
                         m.t = 0;
                     }
-                } else if (m.state === 'recover' && m.t >= RECOVER_MS) {
+                } else if (m.state === 'recover' && m.t >= def.recoverMs) {
                     m.state = 'chase';
                     m.t = 0;
                 }
 
-                // Look: front view when the player is down the screen, back view when up; mirror by side.
-                const down = du + dv >= 0;
-                const toRight = du - dv >= 0;
-                let frame: [number, number];
-                if (m.state === 'windup') frame = down ? FRONT_BITE : BACK_IDLE;
-                else if (walking) frame = (down ? FRONT_WALK : BACK_WALK)[Math.floor(m.animT / 140) % 4];
-                else frame = down ? FRONT_IDLE : BACK_IDLE;
-                const back = !down;
-                m.sprite.texture = tex(back, frame);
-                const a = back ? BACK_ANCHOR : FRONT_ANCHOR;
-                m.sprite.anchor.set(a.x, a.y);
-                const lunge = m.state === 'windup' ? 1 + 0.18 * Math.sin((m.t / WINDUP_MS) * Math.PI) : 1;
-                const fade = m.state === 'dying' ? 1 - m.t / DYING_MS : 1;
-                m.sprite.scale.set(SCALE * (toRight ? -1 : 1) * lunge * (m.state === 'dying' ? 1 + 0.4 * (1 - fade) : 1), SCALE * lunge);
-                m.sprite.alpha = fade;
-                m.sprite.tint = m.flash > 0 ? 0xffffff : ANGRY;
+                // Face the player (the screen-space direction to them), using the five-row sheets.
+                const sx = (du - dv) * TILE_DX;
+                const sy = (du + dv) * TILE_DY;
+                const sector = ((Math.round(Math.atan2(sy, sx) / (Math.PI / 4)) % 8) + 8) % 8;
+                const face = FACINGS[sector];
 
-                // Place on the terrain, with a little hop while walking.
+                let rows: Texture[][];
+                let idx: number;
+                if (m.state === 'dying') {
+                    rows = frames.get(`${m.kind}-die`)!;
+                    idx = Math.min(rows[0].length - 1, Math.floor(m.t / 110));
+                } else if (m.state === 'attack') {
+                    rows = frames.get(`${m.kind}-attack`)!;
+                    idx = Math.min(rows[0].length - 1, Math.floor((m.t / def.attackMs) * rows[0].length));
+                } else {
+                    rows = frames.get(`${m.kind}-move`)!;
+                    idx = walking ? Math.floor(m.animT / def.moveFrameMs) % rows[0].length : 0;
+                }
+                m.sprite.texture = rows[face.row][idx];
+                const fade = m.state === 'dying' ? Math.max(0, 1 - Math.max(0, m.t - dieMs) / DYING_FADE_MS) : 1;
+                m.sprite.scale.set(SCALE * def.size * (face.flip ? -1 : 1), SCALE * def.size);
+                m.sprite.alpha = fade;
+                m.sprite.tint = m.flash > 0 ? 0xffb0b0 : 0xffffff;
+
+                // Place on the terrain, with a little hop while moving.
                 m.z += (opts.heightAt(m.u, m.v) * opts.levelH - m.z) * Math.min(1, 12 * dt);
                 const pos = opts.toScreen(m.u, m.v);
-                const hop = walking ? Math.abs(Math.sin(m.animT / 130)) * 5 : 0;
+                const hop = walking && def.hop ? Math.abs(Math.sin(m.animT / 160)) * def.hop : 0;
                 m.sprite.position.set(pos.x, pos.y - m.z - hop);
                 m.shadow.position.set(pos.x, pos.y - m.z + 2);
                 m.shadow.alpha = fade;
@@ -231,7 +277,7 @@ export function createMonsters(opts: {
                 m.sprite.zIndex = z - 0.1;
                 m.shadow.zIndex = z - 0.3;
                 m.bar.zIndex = 1e6 - 1;
-                drawBar(m, pos.x, pos.y - m.z - 84);
+                drawBar(m, pos.x, pos.y - m.z - def.barY);
             }
         },
 
@@ -244,7 +290,7 @@ export function createMonsters(opts: {
                 const dv = m.v - pv;
                 const dist = Math.hypot(du, dv);
                 if (dist > REACH) continue;
-                // Screen-space direction to the frog, in the same units as the joystick's facing.
+                // Screen-space direction to the enemy, in the same units as the joystick's facing.
                 const sx = (du - dv) * TILE_DX;
                 const sy = (du + dv) * TILE_DY * 2;
                 let diff = Math.abs(Math.atan2(sy, sx) - aim);
@@ -260,8 +306,8 @@ export function createMonsters(opts: {
                     m.t = 0;
                     kills++;
                     opts.onKill();
-                } else if (m.state === 'windup') {
-                    // A hit interrupts the lunge.
+                } else if (m.state === 'attack') {
+                    // A hit interrupts the attack.
                     m.state = 'recover';
                     m.t = 0;
                 }
@@ -270,6 +316,7 @@ export function createMonsters(opts: {
         },
 
         destroy() {
+            destroyed = true;
             for (const m of monsters) dispose(m);
             monsters.length = 0;
         },

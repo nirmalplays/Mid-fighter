@@ -327,10 +327,10 @@ export default function Hud() {
             </div>
 
             {/* World readout, small */}
-            {/* Frogs defeated */}
+            {/* Enemies defeated */}
             {!inBase && kills > 0 && (
                 <div className="absolute bottom-[50px] left-2 rounded-md bg-black/45 px-2 py-0.5 text-[11px] font-bold text-white">
-                    🐸 Defeated · {kills}
+                    ⚔️ Defeated · {kills}
                 </div>
             )}
 
