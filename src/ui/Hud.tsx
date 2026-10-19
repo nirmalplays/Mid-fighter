@@ -130,6 +130,75 @@ function Clock() {
     );
 }
 
+const SKILL_CHIPS: { key: 'attack' | 'defence' | 'speed'; icon: string; color: string }[] = [
+    { key: 'attack', icon: '⚔️', color: '#ff6b6b' },
+    { key: 'defence', icon: '🛡️', color: '#6ba8ff' },
+    { key: 'speed', icon: '👟', color: '#5ee08a' },
+];
+
+/** Skill levels earned from monster drops, as small chips under the health plaque. */
+function SkillChips() {
+    const skills = useStore((s) => s.skills);
+    return (
+        <div className="absolute left-3 flex gap-1" style={{ top: 86 }}>
+            {SKILL_CHIPS.map((c) => (
+                <div
+                    key={c.key}
+                    className="flex items-center gap-1 rounded-md px-1.5 text-[12px] font-black tabular-nums"
+                    style={{ height: 22, background: 'rgba(22,12,16,.7)', border: `2px solid ${c.color}`, color: '#fff' }}
+                >
+                    <span className="text-[12px] leading-none">{c.icon}</span>
+                    {skills[c.key]}
+                </div>
+            ))}
+        </div>
+    );
+}
+
+/** Wave countdown (or the open portal's distance with an arrow pointing to it). */
+function WavePill() {
+    const wave = useStore((s) => s.wave);
+    const next = useStore((s) => s.nextWaveIn);
+    const aim = useStore((s) => s.portalAim);
+    const mm = Math.floor(next / 60);
+    const ss = String(next % 60).padStart(2, '0');
+    return (
+        <div
+            className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-xl px-3 text-[13px] font-black tabular-nums text-white"
+            style={{ top: 8, height: 34, background: aim ? 'rgba(120,20,20,.85)' : 'rgba(22,12,16,.72)', border: `3px solid ${aim ? '#ff6b6b' : '#6b4a52'}` }}
+        >
+            {aim ? (
+                <>
+                    <span style={{ display: 'inline-block', transform: `rotate(${aim.angle}rad)`, fontSize: 16, lineHeight: 1 }}>➤</span>
+                    <span>Wave {wave} portal · {Math.round(aim.dist)} tiles</span>
+                </>
+            ) : (
+                <span>{wave > 0 ? `Wave ${wave + 1}` : 'Wave 1'} in {mm}:{ss}</span>
+            )}
+        </div>
+    );
+}
+
+/** A message that fades after a couple of seconds (wave starts, pickups). */
+function Banner() {
+    const banner = useStore((s) => s.banner);
+    const [shown, setShown] = useState<string | null>(null);
+    useEffect(() => {
+        if (!banner) return;
+        setShown(banner.text);
+        const id = window.setTimeout(() => setShown(null), 2400);
+        return () => window.clearTimeout(id);
+    }, [banner]);
+    return (
+        <div
+            className="pointer-events-none absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-center text-xl font-black text-white transition-opacity duration-500"
+            style={{ top: 52, opacity: shown ? 1 : 0, textShadow: '0 2px 0 #1a0c10, 0 0 8px #1a0c10, 2px 0 0 #1a0c10, -2px 0 0 #1a0c10' }}
+        >
+            {shown ?? ''}
+        </div>
+    );
+}
+
 /** The nine hotbar slots, in the same order as HOTBAR in world/character.ts. */
 const HOTBAR_ITEMS: { tool: string; icon?: string; label: string }[] = [
     { tool: 'none', label: 'Bare hands' },
@@ -213,6 +282,7 @@ export default function Hud() {
     const chunkY = useStore((s) => s.chunkY);
     const loaded = useStore((s) => s.loadedChunks);
     const hp = useStore((s) => s.hp);
+    const maxHp = useStore((s) => s.maxHp);
     const paused = useStore((s) => s.paused);
     const inBase = useStore((s) => s.phase === 'base');
     const netStatus = useStore((s) => s.netStatus);
@@ -248,7 +318,7 @@ export default function Hud() {
                 </div>
                 <div className="flex flex-col gap-1">
                     <div className="flex gap-0.5">
-                        {[0, 1, 2].map((i) => (
+                        {Array.from({ length: Math.ceil(maxHp / 2) }, (_, i) => i).map((i) => (
                             <Heart key={i} fill={hp >= (i + 1) * 2 ? 1 : hp >= i * 2 + 1 ? 0.5 : 0} />
                         ))}
                     </div>
@@ -308,6 +378,9 @@ export default function Hud() {
             </div>
 
             <Hotbar />
+            {!inBase && <SkillChips />}
+            {!inBase && <WavePill />}
+            {!inBase && <Banner />}
 
             {/* Actions, bottom right */}
             <div className="absolute bottom-0 right-0 pb-safe-bottom pr-4">

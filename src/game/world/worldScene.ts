@@ -27,7 +27,9 @@ import {
     CHUNK_TILES, LOAD_RADIUS, MAP_CHUNKS, MAP_TILES, TILE_DX, TILE_DY, ZOOM,
 } from './constants.ts';
 import { createInput, JOY_RADIUS } from './input.ts';
+import { createDrops, DROP_TABLE, SKILL_CAP, SKILL_COLOR, SKILL_NAMES, type Skill } from './drops.ts';
 import { createMonsters } from './monsters.ts';
+import { createWaves } from './waves.ts';
 import { ISO_FRAMES, ISO_SCALE } from './isoAtlas.ts';
 import { generateWorld, GRASS, MAX_HEIGHT, SAND, STONE, WATER, type Flat, type Prop } from './mapGen.ts';
 
@@ -500,13 +502,43 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
 
     // Monsters: goblins, slimes, wolves and skeletons that hunt the local player (world/monsters.ts).
     let invuln = 0; // ms of grace after being bitten
+    let bannerId = 0;
+    const banner = (text: string) => store.patch({ banner: { text, id: ++bannerId } });
     const hurtPlayer = (n: number) => {
         if (invuln > 0 || character.dead || entering) return;
         invuln = 1500;
+        // Defence gives a chance to block a bite outright.
+        if (Math.random() < Math.min(0.6, 0.07 * store.get().skills.defence)) {
+            drops.text(player.x, player.y - 70, 'Blocked!', SKILL_COLOR.defence);
+            return;
+        }
         store.patch({ hp: Math.max(0, store.get().hp - n) });
         character.command({ type: 'hurt' });
         net.sendAct('hurt');
     };
+    const stand = (u: number, v: number) => boxOk(u, v);
+    const worldPoint = (u: number, v: number) => ({ x: sx(u, v), y: sy(u, v) });
+    const sortZ = (u: number, v: number) => sy(Math.floor(u) + 0.5, Math.floor(v) + 0.5) + Z_PLAYER;
+    const drops = createDrops({
+        layer: objects,
+        glowTex,
+        canStand: stand,
+        heightAt,
+        toScreen: worldPoint,
+        zFor: sortZ,
+        levelH: LEVEL_H,
+        player: () => ({ u: pu, v: pv, alive: !character.dead && !entering }),
+        onPickup: (skill: Skill) => {
+            const level = store.get().skills[skill];
+            if (level >= SKILL_CAP[skill]) return false; // already maxed: leave it
+            progress.raise(skill);
+            if (skill === 'vitality') store.patch({ hp: Math.min(store.get().maxHp, store.get().hp + 2) });
+            const gain = skill === 'vitality' ? '+1 Heart' : `${SKILL_NAMES[skill]} ${level + 1}`;
+            drops.text(player.x, player.y - 78, gain, SKILL_COLOR[skill]);
+            banner(skill === 'vitality' ? 'Vitality up! +1 heart' : `${SKILL_NAMES[skill]} up! Level ${level + 1}`);
+            return true;
+        },
+    });
     const monsters = createMonsters({
         layer: objects,
         shadowTex,
@@ -517,7 +549,30 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         levelH: LEVEL_H,
         player: () => ({ u: pu, v: pv, alive: !character.dead && !entering }),
         onBite: hurtPlayer,
-        onKill: () => progress.addKill(),
+        onKill: (kind, u, v) => {
+            progress.addKill();
+            const drop = DROP_TABLE[kind];
+            if (drop && Math.random() < drop.chance && store.get().skills[drop.skill] < SKILL_CAP[drop.skill]) drops.spawn(drop.skill, u, v);
+        },
+    });
+    // Debug: ?firstWave=<s>&waveEvery=<s> shorten the portal timers for testing.
+    const q = new URLSearchParams(window.location.search);
+    const waves = createWaves({
+        layer: objects,
+        glowTex,
+        canStand: stand,
+        heightAt,
+        toScreen: worldPoint,
+        zFor: sortZ,
+        levelH: LEVEL_H,
+        player: () => ({ u: pu, v: pv, alive: !character.dead }),
+        monsters,
+        everySec: Number(q.get('waveEvery')) || 120,
+        firstSec: Number(q.get('firstWave')) || 20,
+        onWave: (n) => {
+            progress.reachWave(n);
+            banner(`Wave ${n}! A portal has opened`);
+        },
     });
     // A swing that actually started (the character was free) lands a moment later.
     const strikes: number[] = [];
@@ -574,8 +629,9 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         const dir = input.read();
         // Actions, sitting, death and the portal pull hold the character in place.
         const walk = character.locked || entering ? { x: 0, y: 0 } : dir;
-        const X = walk.x * SPEED_PX * dt;
-        const Y = walk.y * SPEED_PX * 0.5 * dt;
+        const speed = SPEED_PX * (1 + 0.05 * store.get().skills.speed);
+        const X = walk.x * speed * dt;
+        const Y = walk.y * speed * 0.5 * dt;
         const du = (X / TILE_DX + Y / TILE_DY) / 2;
         const dv = (Y / TILE_DY - X / TILE_DX) / 2;
         const fromU = pu;
@@ -649,10 +705,12 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             strikes[i] -= ticker.deltaMS;
             if (strikes[i] <= 0) {
                 strikes.splice(i, 1);
-                monsters.strike(pu, pv, character.facing, TOOL_DAMAGE[character.tool] ?? 1);
+                monsters.strike(pu, pv, character.facing, Math.max(1, Math.round((TOOL_DAMAGE[character.tool] ?? 1) * (1 + 0.15 * store.get().skills.attack))));
             }
         }
         monsters.update(ticker.deltaMS);
+        waves.update(ticker.deltaMS);
+        drops.update(ticker.deltaMS);
         wasLocked = character.locked;
 
         placeCamera();
@@ -696,6 +754,9 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             controls.destroy();
             offStrike();
             monsters.destroy();
+            waves.destroy();
+            drops.destroy();
+            store.patch({ portalAim: null, banner: null });
             remotes.destroy();
             net.sendAway();
             progress.record({ scene: 'world', u: pu, v: pv, tool: character.tool, hp: store.get().hp });
