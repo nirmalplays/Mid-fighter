@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "pre-command": [
+      {
+        "name": "check-sdk-version",
+        "command": "echo RUN.world SDK v5.28.1",
+        "blocking": false
+      }
+    ]
+  }
+}

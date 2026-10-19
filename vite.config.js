@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 import {
     rundotGameLibrariesPlugin,
     rundotGamePlaygroundPlugin,
+    rundotMultiplayerPlugin,
 } from '@series-inc/rundot-game-sdk/vite';
 
 export default defineConfig(({ mode }) => {
@@ -29,6 +30,9 @@ export default defineConfig(({ mode }) => {
                 // storageCheck is enabled by default to catch blocked browser storage
                 // (localStorage/indexedDB). Pass { storageCheck: false } to disable.
             }),
+            // Builds the multiplayer room code (src/rooms) and registers the room types in
+            // rundot/realtime.config.json; also runs a local room server during `vite dev`.
+            rundotMultiplayerPlugin(),
             rundotGamePlaygroundPlugin({
                 target: sandboxTarget,
                 // No gameId by default: an explicit one asserts the cached game

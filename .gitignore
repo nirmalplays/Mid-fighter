@@ -7,6 +7,6 @@ Thumbs.db
 
 # Installed by `rundot skills install` (regenerable)
 .claude/
-rundot/
+rundot/skills/
 .vite/
 rundot/docs/
