@@ -11,8 +11,10 @@ import { useSyncExternalStore } from 'react';
 
 /** The UI-facing app state. ADAPT: extend alongside the initial state below. */
 export interface AppState {
-    /** 'loading' → 'menu' → 'playing' (ADAPT: add your own screens/phases) */
-    phase: 'loading' | 'menu' | 'playing';
+    /** 'loading' → 'menu' → 'playing' (the world); the home portal leads to 'base' and back. */
+    phase: 'loading' | 'menu' | 'playing' | 'base';
+    /** Where the world scene puts the player: map centre, or beside the home portal (coming back from the base). */
+    spawnAt: 'center' | 'portal';
     /** 0..1 progress of the critical-asset warm during 'loading' */
     loadProgress: number;
     /** Set by the host's onPause/onResume lifecycle hooks */
@@ -35,6 +37,7 @@ const listeners = new Set<() => void>();
 
 let state: AppState = {
     phase: 'loading',
+    spawnAt: 'center',
     loadProgress: 0,
     paused: false,
     tileX: 0,

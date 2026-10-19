@@ -18,9 +18,9 @@ export default function App() {
         <div id="app-frame" className="bg-surface text-white">
             {phase === 'loading' && <LoadingScreen />}
             {phase === 'menu' && <MainMenu />}
-            {phase === 'playing' && (
+            {(phase === 'playing' || phase === 'base') && (
                 <div className="absolute inset-0">
-                    <GameCanvas />
+                    <GameCanvas key={phase} mode={phase === 'base' ? 'base' : 'world'} />
                     <Hud />
                 </div>
             )}

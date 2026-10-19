@@ -30,6 +30,7 @@ export const MANIFEST: Manifest = {
             assets: [
                 { alias: 'iso', src: 'images/world/iso.png' },
                 { alias: 'portal', src: 'images/world/portal.png' },
+                { alias: 'base-floor', src: 'images/base/floor.png' },
                 // Bare-handed movement sheets, so the character is there from the first frame
                 // (everything else loads on demand in world/character.ts).
                 { alias: 'char:idle', src: 'images/world/char/idle.png' },

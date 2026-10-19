@@ -142,6 +142,7 @@ export default function Hud() {
     const tool = useStore((s) => s.tool);
     const hp = useStore((s) => s.hp);
     const paused = useStore((s) => s.paused);
+    const inBase = useStore((s) => s.phase === 'base');
     const [more, setMore] = useState(false);
 
     return (
@@ -188,8 +189,14 @@ export default function Hud() {
                             fontSize: 17,
                         }}
                     >
-                        <span style={{ color: BROWN_DARK }}>LV {height}</span>
-                        <span>{tileX},{tileY}</span>
+                        {inBase ? (
+                            <span style={{ color: BROWN_DARK }}>BASE</span>
+                        ) : (
+                            <>
+                                <span style={{ color: BROWN_DARK }}>LV {height}</span>
+                                <span>{tileX},{tileY}</span>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>
@@ -240,9 +247,11 @@ export default function Hud() {
             </div>
 
             {/* World readout, small */}
-            <div className="absolute bottom-1 left-2 rounded-md bg-black/35 px-2 py-0.5 text-[10px] font-bold tabular-nums text-white/80">
-                Chunk {chunkX},{chunkY} · {loaded} loaded
-            </div>
+            {!inBase && (
+                <div className="absolute bottom-1 left-2 rounded-md bg-black/35 px-2 py-0.5 text-[10px] font-bold tabular-nums text-white/80">
+                    Chunk {chunkX},{chunkY} · {loaded} loaded
+                </div>
+            )}
 
             {paused && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/60">

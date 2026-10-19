@@ -8,17 +8,17 @@
  * terrain hides what is behind it; an x-ray copy of the player shows through.
  * Ground is shaded by height and a noise tone, props cast soft shadows, and
  * water deepens away from the shore with foam along the edge and ripples.
- * A stone plaza holds the home portal, which leads back to the menu.
+ * A stone plaza holds the portal that leads to the base.
  */
 import {
     Assets, Container, Graphics, Rectangle, Sprite, Text, Texture,
     type Application, type Ticker,
 } from 'pixi.js';
-import { commands } from '../commands.ts';
 import { store } from '../../state/store.ts';
 import type { Scene } from '../scene.ts';
 import type { Stage } from '../stage.ts';
 import { createCharacter, TOOL_LABELS } from './character.ts';
+import { bindControls } from './controls.ts';
 import {
     CHUNK_TILES, LOAD_RADIUS, MAP_CHUNKS, MAP_TILES, TILE_DX, TILE_DY, ZOOM,
 } from './constants.ts';
@@ -48,7 +48,7 @@ const KICK = 190;
 const KICK_NEIGHBOUR = 60;
 /** Elevation from which a stone tile is capped with snow. */
 const SNOW_LEVEL = 7;
-/** Home portal: 6 animation frames of 112 × 128, scaled up; the base's centre sits on its tile. */
+/** Portal: 6 animation frames of 112 × 128, scaled up; the base's centre sits on its tile. */
 const PORTAL_FRAMES = 6;
 const PORTAL_W = 112;
 const PORTAL_H = 128;
@@ -169,31 +169,8 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     // Faint copy above everything, so the player stays visible behind mountains.
     const xray = character.xray;
     world.addChild(xray);
-    store.patch({ tool: TOOL_LABELS.none });
-
-    // HUD buttons and keyboard shortcuts both arrive as commands.
-    store.patch({ hp: 6 });
-    const offCommands = commands.subscribe((c) => {
-        // Hurt costs a heart; Die empties them all. Getting up from death restores health (see tick).
-        if (c.type === 'hurt' && !character.dead) store.patch({ hp: Math.max(0, store.get().hp - 2) });
-        if (c.type === 'die' && !character.dead) store.patch({ hp: 0 });
-        character.command(c);
-    });
-    let wasDead = false;
-    const onKey = (e: KeyboardEvent) => {
-        if (e.repeat) return;
-        const k = e.key.toLowerCase();
-        const keys: Record<string, Parameters<typeof commands.emit>[0]> = {
-            ' ': { type: 'attack' }, j: { type: 'attack' }, e: { type: 'use' }, f: { type: 'interact' },
-            c: { type: 'sit' }, h: { type: 'hurt' }, x: { type: 'die' }, g: { type: 'dig' }, r: { type: 'fish' },
-            q: { type: 'tool', delta: -1 }, t: { type: 'tool', delta: 1 },
-        };
-        if (keys[k]) {
-            e.preventDefault();
-            commands.emit(keys[k]);
-        }
-    };
-    window.addEventListener('keydown', onKey);
+    // HUD buttons, keyboard shortcuts and the health rules (world/controls.ts).
+    const controls = bindControls(character);
 
     let pz = 0; // smoothed terrace lift under the player, screen px
     let pu = MAP_TILES / 2 + 0.5;
@@ -203,6 +180,12 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     if (spawn && spawn.length === 2 && spawn.every(Number.isFinite)) {
         pu = Math.min(MAP_TILES - 1, Math.max(0, spawn[0])) + 0.5;
         pv = Math.min(MAP_TILES - 1, Math.max(0, spawn[1])) + 0.5;
+    }
+    // Coming back from the base: step out beside the portal.
+    if (store.get().spawnAt === 'portal') {
+        pu = map.portal.i + 0.5;
+        pv = map.portal.j + 2.5;
+        store.patch({ spawnAt: 'center' });
     }
     // Debug: with ?spawn= the player is exposed for automated checks.
     if (spawn) (window as unknown as { __player?: Container }).__player = player;
@@ -456,7 +439,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         store.patch({ tileX: i, tileY: j, height: map.height[t], chunkX: curCx, chunkY: curCy, loadedChunks: chunks.size });
     };
 
-    // Home portal: walking into it leaves the world for the home (menu) screen.
+    // Portal: walking into it leaves the world for the base.
     const portalSheet = Assets.get<Texture>('portal');
     portalSheet.source.scaleMode = 'nearest';
     const portalTex = Array.from({ length: PORTAL_FRAMES }, (_, n) =>
@@ -474,7 +457,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     portalSprite.position.set(portalX, portalY);
     portalSprite.zIndex = portalY + Z_PROP;
     const portalLabel = new Text({
-        text: 'HOME',
+        text: 'BASE',
         style: { fontFamily: 'sans-serif', fontSize: 26, fontWeight: '900', fill: 0xffffff, stroke: { color: 0x14442a, width: 6 } },
     });
     portalLabel.anchor.set(0.5);
@@ -590,16 +573,13 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             flash.clear().rect(0, 0, app.screen.width, app.screen.height).fill({ color: 0xd9ffd2, alpha: Math.min(1, f) });
             if (enterT > ENTER_MS + FLASH_MS && !exited) {
                 exited = true;
-                store.patch({ phase: 'menu' });
+                store.patch({ phase: 'base' });
             }
         }
 
         // Character animation: face the way the stick points; idle when blocked or still.
         character.update(ticker.deltaMS, dir, pu !== fromU || pv !== fromV);
-        if (wasDead && !character.dead && store.get().hp === 0) store.patch({ hp: 6 });
-        wasDead = character.dead;
-        // Out of hearts: collapse once any action has finished.
-        if (store.get().hp === 0 && !character.dead && !character.locked) character.command({ type: 'die' });
+        controls.tick();
 
         placeCamera();
         syncChunks();
@@ -639,8 +619,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             app.ticker.remove(tick);
             offResize();
             input.destroy();
-            offCommands();
-            window.removeEventListener('keydown', onKey);
+            controls.destroy();
             character.destroy();
             for (const c of chunks.values()) unloadChunk(c);
             chunks.clear();
