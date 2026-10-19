@@ -47,11 +47,11 @@ const publish = (status: 'off' | 'connecting' | 'online') =>
 function handle(msg: Msg): void {
     switch (msg.type) {
         case 'snapshot': {
-            const players = msg.players as Record<string, RemotePose & { name: string }>;
+            const players = msg.players as Record<string, { name: string; pose: RemotePose | null }>;
             for (const [id, p] of Object.entries(players)) {
                 const r = ensure(id);
                 r.name = p.name;
-                r.pose = { scene: p.scene, u: p.u, v: p.v, z: p.z, face: p.face, anim: p.anim, tool: p.tool };
+                r.pose = p.pose;
             }
             publish('online');
             break;
@@ -87,6 +87,8 @@ function connect(): Promise<void> {
             const r = await RundotGameAPI.realtime.joinOrCreateRoom<Msg>('world');
             r.on({
                 onMessage: handle,
+                // sendTo() replies (the snapshot) arrive here, not in onMessage.
+                onPrivateMessage: handle,
                 onPlayerJoined: (p) => {
                     if (p.id === r.playerId) return;
                     ensure(p.id).name = p.username;
@@ -107,6 +109,8 @@ function connect(): Promise<void> {
             });
             room = r;
             publish('online');
+            // The join-time snapshot can arrive before the handlers above exist; ask again.
+            r.send({ type: 'hello' });
         } catch (err) {
             console.warn('[multiplayer] unavailable', err);
             publish('off');
@@ -152,3 +156,8 @@ function sendAway(): void {
 }
 
 export const net = { remotes, connect, sendPose, sendAct, sendAway };
+
+// Debug: with ?spawn= the link is exposed for automated checks.
+if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('spawn')) {
+    (window as unknown as { __net?: typeof net }).__net = net;
+}

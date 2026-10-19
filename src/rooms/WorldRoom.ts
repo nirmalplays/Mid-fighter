@@ -28,12 +28,13 @@ interface Pose {
 interface PoseMsg extends Pose { type: 'pose' }
 interface ActMsg { type: 'act'; kind: string }
 interface AwayMsg { type: 'away' }
+interface HelloMsg { type: 'hello' }
 // Server → client.
-interface SnapshotMsg { type: 'snapshot'; players: Record<string, Pose & { name: string }> }
+interface SnapshotMsg { type: 'snapshot'; players: Record<string, { name: string; pose: Pose | null }> }
 interface PoseOut extends Pose { type: 'pose'; id: string }
 interface ActOut { type: 'act'; id: string; kind: string }
 interface AwayOut { type: 'away'; id: string }
-type Protocol = PoseMsg | ActMsg | AwayMsg | SnapshotMsg | PoseOut | ActOut | AwayOut;
+type Protocol = PoseMsg | ActMsg | AwayMsg | HelloMsg | SnapshotMsg | PoseOut | ActOut | AwayOut;
 
 const MAP_TILES = 256;
 const ROOM_TILES = 8;
@@ -53,10 +54,21 @@ export default class WorldRoom extends GameRoom<Protocol> {
     private poses = new Map<string, Tracked>();
 
     onPlayerJoin(player: Player): void {
+        this.sendSnapshot(player.id);
+    }
+
+    /** Who is here and where, for one player (on join, and again when their client asks). */
+    private sendSnapshot(playerId: string): void {
+        const player = { id: playerId };
         const players: SnapshotMsg['players'] = {};
-        for (const [id, pose] of this.poses) {
+        // Everyone already here, even those who have not moved yet (so counts are right).
+        for (const [id, other] of this.players) {
             if (id === player.id) continue;
-            players[id] = { name: this.players.get(id)?.username ?? 'Player', scene: pose.scene, u: pose.u, v: pose.v, z: pose.z, face: pose.face, anim: pose.anim, tool: pose.tool };
+            const pose = this.poses.get(id);
+            players[id] = {
+                name: other.username,
+                pose: pose ? { scene: pose.scene, u: pose.u, v: pose.v, z: pose.z, face: pose.face, anim: pose.anim, tool: pose.tool } : null,
+            };
         }
         this.sendTo(player.id, { type: 'snapshot', players });
     }
@@ -72,6 +84,10 @@ export default class WorldRoom extends GameRoom<Protocol> {
             }
             case 'act':
                 if (ACTS.has(payload.kind)) this.broadcast({ type: 'act', id: sender.id, kind: payload.kind });
+                break;
+            case 'hello':
+                // The client registers its handlers after joining, so it asks again for the snapshot.
+                this.sendSnapshot(sender.id);
                 break;
             case 'away':
                 this.poses.delete(sender.id);
