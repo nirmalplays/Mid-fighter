@@ -143,7 +143,10 @@ const HOTBAR_ITEMS: { tool: string; icon?: string; label: string }[] = [
     { tool: 'shield', icon: 'shield', label: 'Shield' },
 ];
 
-/** A Minecraft-style hotbar: tap a slot (or press 1-9) to hold that item; its name shows briefly. */
+/**
+ * A Minecraft-style hotbar: tap a slot (or press 1-9) to hold that item; its name shows briefly.
+ * It sits between the left info pills and the action buttons, never under either.
+ */
 function Hotbar() {
     const toolId = useStore((s) => s.toolId);
     const [name, setName] = useState<string | null>(null);
@@ -159,7 +162,7 @@ function Hotbar() {
     }, [toolId]);
 
     return (
-        <div className="pointer-events-none absolute bottom-2 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1 pb-safe-bottom">
+        <div className="pointer-events-none absolute bottom-2 flex flex-col items-center gap-1 pb-safe-bottom" style={{ left: 150, right: 276 }}>
             <div className="h-5 text-sm font-bold text-white transition-opacity duration-300" style={{ textShadow: '0 1px 3px #000', opacity: name ? 1 : 0 }}>
                 {name ?? ''}
             </div>
@@ -173,8 +176,9 @@ function Hotbar() {
                             aria-label={it.label}
                             className="pointer-events-auto relative flex touch-none items-center justify-center"
                             style={{
-                                width: 42,
-                                height: 42,
+                                // Shrinks on narrow screens so nine slots always fit the gap.
+                                width: 'min(40px, calc((100vw - 450px) / 9))',
+                                height: 'min(40px, calc((100vw - 450px) / 9))',
                                 background: 'rgba(72,72,72,.72)',
                                 border: selected ? '3px solid #fff' : '3px solid #5a5a5a',
                                 boxShadow: selected ? '0 0 0 2px #000' : 'none',
