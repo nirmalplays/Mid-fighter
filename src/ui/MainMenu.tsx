@@ -6,7 +6,7 @@ import { store } from '../state/store.ts';
 
 export default function MainMenu() {
     return (
-        <div className="flex h-full flex-col items-center justify-center gap-10 px-10">
+        <div className="flex h-full flex-col items-center justify-center gap-6 px-10">
             <h1 className="text-4xl font-bold tracking-wide text-primary">Bounce Lab</h1>
             <button
                 type="button"
@@ -14,6 +14,13 @@ export default function MainMenu() {
                 onClick={() => store.patch({ phase: 'playing' })}
             >
                 Play
+            </button>
+            <button
+                type="button"
+                className="rounded-2xl border-2 border-primary px-10 py-3 text-lg font-bold text-primary transition-transform active:scale-95"
+                onClick={() => store.patch({ phase: 'base' })}
+            >
+                Workshop
             </button>
         </div>
     );

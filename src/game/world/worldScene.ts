@@ -8,7 +8,7 @@
  * terrain hides what is behind it; an x-ray copy of the player shows through.
  * Ground is shaded by height and a noise tone, props cast soft shadows, and
  * water deepens away from the shore with foam along the edge and ripples.
- * A stone plaza holds the portal that leads to the base.
+ * A stone plaza holds the portal that leads to the workshop (the base).
  */
 import {
     Assets, Container, Graphics, Rectangle, Sprite, Text, Texture,
@@ -457,7 +457,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     portalSprite.position.set(portalX, portalY);
     portalSprite.zIndex = portalY + Z_PROP;
     const portalLabel = new Text({
-        text: 'BASE',
+        text: 'WORKSHOP',
         style: { fontFamily: 'sans-serif', fontSize: 26, fontWeight: '900', fill: 0xffffff, stroke: { color: 0x14442a, width: 6 } },
     });
     portalLabel.anchor.set(0.5);

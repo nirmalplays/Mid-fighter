@@ -190,7 +190,7 @@ export default function Hud() {
                         }}
                     >
                         {inBase ? (
-                            <span style={{ color: BROWN_DARK }}>BASE</span>
+                            <span style={{ color: BROWN_DARK }}>WORKSHOP</span>
                         ) : (
                             <>
                                 <span style={{ color: BROWN_DARK }}>LV {height}</span>
@@ -207,6 +207,29 @@ export default function Hud() {
                 <PixelBtn size={50} onPress={() => store.patch({ phase: 'menu' })}>
                     <Icon.Pause />
                 </PixelBtn>
+            </div>
+
+            {/* Dev shortcut: jump between the world and the workshop (the base). */}
+            <div className="absolute right-3 top-[66px] pt-safe-top">
+                <button
+                    type="button"
+                    className="pointer-events-auto touch-none rounded-xl px-3 font-black active:translate-y-[3px]"
+                    style={{
+                        height: 34,
+                        background: `linear-gradient(${TAN_LIGHT}, ${TAN})`,
+                        border: `4px solid ${BROWN}`,
+                        boxShadow: `inset 0 0 0 2px ${TAN_LIGHT}, 0 3px 0 ${BROWN_DARK}`,
+                        color: INK,
+                        fontSize: 14,
+                    }}
+                    onPointerDown={(e) => {
+                        e.preventDefault();
+                        if (inBase) store.patch({ spawnAt: 'portal', phase: 'playing' });
+                        else store.patch({ phase: 'base' });
+                    }}
+                >
+                    {inBase ? 'World' : 'Workshop'}
+                </button>
             </div>
 
             {/* Tool switcher */}
