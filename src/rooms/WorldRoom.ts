@@ -84,7 +84,7 @@ export default class WorldRoom extends GameRoom<Protocol> {
         this.map = map;
         const blocked = map.blocked;
         const heightAt = (i: number, j: number) => map.height[j * MAP_TILES + i];
-        const meta = (this.config.metadata ?? {}) as { waveEverySec?: number; firstWaveSec?: number; safeEverySec?: number; swordMul?: number; safeForSec?: number; safeFirstSec?: number };
+        const meta = (this.config.metadata ?? {}) as { waveEverySec?: number; firstWaveSec?: number; safeEverySec?: number; swordMul?: number; potionMul?: number; safeForSec?: number; safeFirstSec?: number };
         this.sim = new GameSim(
             {
                 players: () => {
@@ -133,6 +133,7 @@ export default class WorldRoom extends GameRoom<Protocol> {
                 everyMs: (meta.waveEverySec ?? 120) * 1000,
                 firstMs: (meta.firstWaveSec ?? 20) * 1000,
                 swordMul: meta.swordMul ?? 1,
+                potionMul: meta.potionMul ?? 1,
                 safeEveryMs: (meta.safeEverySec ?? 120) * 1000,
                 safeForMs: (meta.safeForSec ?? 20) * 1000,
                 safeFirstMs: (meta.safeFirstSec ?? 45) * 1000,

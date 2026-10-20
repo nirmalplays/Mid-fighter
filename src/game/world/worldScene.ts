@@ -28,7 +28,7 @@ import {
     CHUNK_TILES, LOAD_RADIUS, MAP_CHUNKS, MAP_TILES, TILE_DX, TILE_DY, ZOOM,
 } from './constants.ts';
 import { createInput, JOY_RADIUS } from './input.ts';
-import { createDropView, SKILL_CAP, SKILL_COLOR, SKILL_NAMES, type DropKind } from './drops.ts';
+import { createDropView, POTION_COLOR, SKILL_CAP, SKILL_COLOR, SKILL_NAMES, type DropKind, type Skill } from './drops.ts';
 import { createMonsterView } from './monsters.ts';
 import { createSafeView } from './safeZone.ts';
 import { createWorldSim } from './worldSim.ts';
@@ -468,9 +468,18 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     const banner = (text: string) => store.patch({ banner: { text, id: ++bannerId } });
     const worldPoint = (u: number, v: number) => ({ x: sx(u, v), y: sy(u, v) });
     const sortZ = (u: number, v: number) => sy(Math.floor(u) + 0.5, Math.floor(v) + 0.5) + Z_PLAYER;
+    // Potion boosts: ms left for each (red heals at once, so it has none).
+    const buffMs: Record<string, number> = { blue: 0, yellow: 0, purple: 0, black: 0 };
+    const BUFF_MS: Record<string, number> = { blue: 20000, yellow: 15000, purple: 12000, black: 15000 };
+    let buffShown = '';
     const hurtPlayer = (n: number) => {
         if (invuln > 0 || character.dead || entering) return;
         invuln = 1500;
+        if (buffMs.purple > 0) {
+            dropView.text(player.x, player.y - 70, 'Shielded!', POTION_COLOR.purple);
+            return;
+        }
+        if (buffMs.black > 0) n *= 2;
         // Defence gives a chance to block a bite outright.
         if (Math.random() < Math.min(0.6, 0.07 * store.get().skills.defence)) {
             dropView.text(player.x, player.y - 70, 'Blocked!', SKILL_COLOR.defence);
@@ -489,10 +498,26 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         firstSec: Number(q.get('firstWave')) || 20,
         // Debug: ?swordMul=40 makes sword drops common when playing offline, for testing.
         swordMul: Number(q.get('swordMul')) || 1,
+        potionMul: Number(q.get('potionMul')) || 1,
         on: {
             bite: hurtPlayer,
             kill: () => progress.addKill(),
             gain: (kind: DropKind, sword: number) => {
+                if (kind.startsWith('potion_')) {
+                    const c = kind.slice(7);
+                    const colour = POTION_COLOR[c];
+                    if (c === 'red') {
+                        store.patch({ hp: Math.min(store.get().maxHp, store.get().hp + 3) });
+                        dropView.text(player.x, player.y - 78, '+3 Health', colour);
+                        banner('Red potion: healed 3');
+                    } else {
+                        buffMs[c] = BUFF_MS[c];
+                        const what = { blue: 'Attack x1.5', yellow: 'Speed x1.4', purple: 'Shield: bites blocked', black: 'Rage: double damage, double bites' }[c];
+                        dropView.text(player.x, player.y - 78, what ?? c, colour);
+                        banner(`${c[0].toUpperCase()}${c.slice(1)} potion: ${what} for ${BUFF_MS[c] / 1000}s`);
+                    }
+                    return;
+                }
                 if (kind === 'sword') {
                     // A rare sword: new ones are kept and held at once; a duplicate becomes an Attack level instead.
                     if (progress.addSword(sword)) {
@@ -510,7 +535,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                     }
                     return;
                 }
-                const skill = kind;
+                const skill = kind as Skill;
                 const level = store.get().skills[skill];
                 if (level >= SKILL_CAP[skill]) return;
                 progress.raise(skill);
@@ -547,7 +572,10 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         zFor: sortZ,
         levelH: LEVEL_H,
         player: () => ({ u: pu, v: pv, alive: !character.dead && !entering }),
-        wantsSkill: (kind: DropKind) => kind === 'sword' || store.get().skills[kind] < SKILL_CAP[kind],
+        wantsSkill: (kind: DropKind) => {
+            if (kind === 'potion_red') return store.get().hp < store.get().maxHp;
+            return kind === 'sword' || kind.startsWith('potion_') || store.get().skills[kind as Skill] < SKILL_CAP[kind as Skill];
+        },
         onTouch: (id) => sim.take(id),
     });
     const safeView = createSafeView({
@@ -617,7 +645,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         const dir = input.read();
         // Actions, sitting, death and the portal pull hold the character in place.
         const walk = character.locked || entering ? { x: 0, y: 0 } : dir;
-        const speed = SPEED_PX * (1 + 0.05 * store.get().skills.speed);
+        const speed = SPEED_PX * (1 + 0.05 * store.get().skills.speed) * (buffMs.yellow > 0 ? 1.4 : 1);
         const X = walk.x * speed * dt;
         const Y = walk.y * speed * 0.5 * dt;
         const du = (X / TILE_DX + Y / TILE_DY) / 2;
@@ -687,11 +715,17 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         net.sendPose({ scene: 'world', u: pu, v: pv, z: pz, face: character.facing, anim: pu !== fromU || pv !== fromV ? character.anim : 'idle', tool: character.tool, dead: character.dead, sword: character.sword });
         remotes.update(ticker.deltaMS);
         invuln = Math.max(0, invuln - ticker.deltaMS);
+        for (const c in buffMs) buffMs[c] = Math.max(0, buffMs[c] - ticker.deltaMS);
+        const buffNow = Object.keys(buffMs).filter((c) => buffMs[c] > 0).map((c) => `${c}:${Math.ceil(buffMs[c] / 1000)}`).join(',');
+        if (buffNow !== buffShown) {
+            buffShown = buffNow;
+            store.patch({ buffs: Object.keys(buffMs).filter((c) => buffMs[c] > 0).map((c) => ({ key: c, left: Math.ceil(buffMs[c] / 1000) })) });
+        }
         for (let i = strikes.length - 1; i >= 0; i--) {
             strikes[i] -= ticker.deltaMS;
             if (strikes[i] <= 0) {
                 strikes.splice(i, 1);
-                sim.strike(pu, pv, character.facing, Math.max(1, Math.round((TOOL_DAMAGE[character.tool] ?? 1) * (1 + 0.15 * store.get().skills.attack))));
+                sim.strike(pu, pv, character.facing, Math.max(1, Math.round((TOOL_DAMAGE[character.tool] ?? 1) * (1 + 0.15 * store.get().skills.attack) * (buffMs.blue > 0 ? 1.5 : 1) * (buffMs.black > 0 ? 2 : 1))));
             }
         }
         sim.update(ticker.deltaMS);

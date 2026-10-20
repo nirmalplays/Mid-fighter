@@ -65,6 +65,8 @@ export function createWorldSim(opts: {
     safeFirstSec: number;
     /** Multiplies sword drop chances (1 normally; the ?swordMul= debug option raises it offline). */
     swordMul?: number;
+    /** Multiplies the potion drop chance (the ?potionMul= debug option raises it offline). */
+    potionMul?: number;
 }): WorldSim {
     const { map } = opts;
     const heightAt = (i: number, j: number) => map.height[j * MAP_TILES + i];
@@ -112,6 +114,7 @@ export function createWorldSim(opts: {
             everyMs: opts.everySec * 1000,
             firstMs: opts.firstSec * 1000,
             swordMul: opts.swordMul,
+            potionMul: opts.potionMul,
             safeEveryMs: opts.safeEverySec * 1000,
             safeForMs: opts.safeForSec * 1000,
             safeFirstMs: opts.safeFirstSec * 1000,

@@ -16,6 +16,11 @@ export const SKILL_NAMES: Record<Skill, string> = { attack: 'Attack', defence: '
 export const SKILL_CAP: Record<Skill, number> = { attack: 10, defence: 10, speed: 10, vitality: 4 };
 export const SKILL_COLOR: Record<Skill, number> = { attack: 0xff6b6b, defence: 0x6ba8ff, speed: 0x5ee08a, vitality: 0xffc94d };
 
+/** Glow colour of each potion drop. */
+export const POTION_COLOR: Record<string, number> = { red: 0xff5a5a, blue: 0x5aa8ff, yellow: 0xffd84d, purple: 0xb070ff, black: 0x9a8ab0 };
+const isPotion = (k: DropKind) => k.startsWith('potion_');
+const colorOf = (k: DropKind): number => (k === 'sword' ? 0xffe27a : isPotion(k) ? POTION_COLOR[k.slice(7)] : SKILL_COLOR[k as Skill]);
+
 const BLINK_MS = 8000;
 /** Gems this close drift toward the player (tiles) at this speed (tiles / s); touching one asks to take it. */
 const MAGNET_RANGE = 2.4;
@@ -112,12 +117,13 @@ export function createDropView(opts: {
                 let s = shown.get(d.id);
                 if (!s) {
                     const isSword = d.skill === 'sword';
-                    const sprite = new Sprite(isSword ? swordTex(d.sword) : tex(d.skill as Skill));
-                    sprite.anchor.set(0.5, isSword ? 0.5 : 0.85);
-                    sprite.scale.set(isSword ? 2.2 : 0.55);
+                    const potion = isPotion(d.skill);
+                    const sprite = new Sprite(isSword ? swordTex(d.sword) : potion ? Assets.get<Texture>(d.skill) : tex(d.skill as Skill));
+                    sprite.anchor.set(0.5, isSword ? 0.5 : potion ? 0.9 : 0.85);
+                    sprite.scale.set(isSword ? 2.2 : potion ? 0.3 : 0.55);
                     const glow = new Sprite(opts.glowTex);
                     glow.anchor.set(0.5);
-                    glow.tint = isSword ? 0xffe27a : SKILL_COLOR[d.skill as Skill];
+                    glow.tint = colorOf(d.skill);
                     glow.scale.set(isSword ? 0.8 : 0.45);
                     opts.layer.addChild(glow, sprite);
                     s = { skill: d.skill, u: d.u, v: d.v, born: clock - d.age, age: d.age, asked: -1e9, sprite, glow };

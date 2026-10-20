@@ -28,10 +28,15 @@ export const KINDS: Record<string, KindDef> = {
 export const KIND_NAMES = ['goblin', 'slime', 'wolf', 'skeleton'] as const;
 export const SKILLS = ['attack', 'defence', 'speed', 'vitality'] as const;
 export type Skill = (typeof SKILLS)[number];
-/** What a drop can be: a skill gem, or a rare sword. */
-export type DropKind = Skill | 'sword';
-/** Order of drop kinds on the wire (a sword is index 4). */
-export const DROP_KINDS: readonly DropKind[] = [...SKILLS, 'sword'];
+/** Potions: a drink that gives a short boost (red heals, blue Attack, yellow Speed, purple a shield, black Rage). */
+export const POTIONS = ['red', 'blue', 'yellow', 'purple', 'black'] as const;
+export type Potion = (typeof POTIONS)[number];
+/** What a drop can be: a skill gem, a rare sword, or a potion (named 'potion_<colour>'). */
+export type DropKind = Skill | 'sword' | `potion_${Potion}`;
+/** Order of drop kinds on the wire (a sword is index 4, potions 5-9). */
+export const DROP_KINDS: readonly DropKind[] = [...SKILLS, 'sword', ...POTIONS.map((p) => `potion_${p}` as const)];
+/** Chance a kill also drops a random potion (before the wave bonus). */
+export const POTION_CHANCE = 0.12;
 /** How many swords exist (src/assets/File.png is 6 x 5). */
 export const SWORD_COUNT = 30;
 /** Chance a kill also drops a random sword, by monster kind (before the wave bonus). */
@@ -73,11 +78,11 @@ export function waveSpec(n: number, players = 1) {
     if (n >= 3) kinds.push('skeleton');
     const extra = Math.max(0, players - 1);
     return {
-        count: Math.min(28, Math.round((3 + 2 * (n - 1)) * (1 + 0.6 * extra))),
+        count: Math.min(34, Math.round((3 + 2.5 * (n - 1)) * (1 + 0.6 * extra))),
         kinds,
-        hpMul: (1 + 0.3 * (n - 1)) * (1 + 0.25 * extra),
+        hpMul: (1 + 0.4 * (n - 1)) * (1 + 0.25 * extra),
         speedMul: Math.min(1.5, 1 + 0.05 * (n - 1)),
-        damage: n >= 5 ? 2 : 1,
+        damage: n >= 9 ? 3 : n >= 4 ? 2 : 1,
     };
 }
 
@@ -158,6 +163,8 @@ export interface SimOptions {
     firstMs: number;
     /** Multiplies every sword drop chance (1 normally; raised only for testing). */
     swordMul?: number;
+    /** Multiplies the potion drop chance (1 normally; raised only for testing). */
+    potionMul?: number;
     /** The safe portal opens about every `safeEveryMs` for `safeForMs`; the first one after about `safeFirstMs`. */
     safeEveryMs: number;
     safeForMs: number;
@@ -277,6 +284,10 @@ export class GameSim {
                 // A rare chance of a random sword on top, a little likelier in later waves.
                 const rare = (SWORD_CHANCE[m.kind] ?? 0.02) * (1 + 0.04 * this.wave) * (this.opts.swordMul ?? 1);
                 if (this.env.rand() < rare) this.addDrop('sword', m.u, m.v, Math.floor(this.env.rand() * SWORD_COUNT));
+                // A moderate chance of a random potion.
+                if (this.env.rand() < POTION_CHANCE * (this.opts.potionMul ?? 1)) {
+                    this.addDrop(`potion_${POTIONS[Math.floor(this.env.rand() * POTIONS.length)]}`, m.u, m.v);
+                }
             } else if (m.state === 'attack') {
                 m.state = 'recover'; // a hit interrupts the attack
                 m.t = 0;

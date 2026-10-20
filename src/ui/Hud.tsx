@@ -240,6 +240,32 @@ function Banner() {
     );
 }
 
+const BUFF_INFO: Record<string, { label: string; color: string }> = {
+    blue: { label: 'Attack x1.5', color: '#5aa8ff' },
+    yellow: { label: 'Speed x1.4', color: '#ffd84d' },
+    purple: { label: 'Shield', color: '#b070ff' },
+    black: { label: 'Rage', color: '#c9b8e0' },
+};
+
+/** Potion boosts that are running, with seconds left. */
+function Buffs() {
+    const buffs = useStore((s) => s.buffs);
+    if (buffs.length === 0) return null;
+    return (
+        <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 gap-2" style={{ top: 120 }}>
+            {buffs.map((b) => (
+                <div
+                    key={b.key}
+                    className="whitespace-nowrap rounded-full px-3 text-sm font-black text-white"
+                    style={{ background: 'rgba(20,16,30,.85)', border: `3px solid ${BUFF_INFO[b.key]?.color ?? '#fff'}`, lineHeight: '24px' }}
+                >
+                    {BUFF_INFO[b.key]?.label} · {b.left}s
+                </div>
+            ))}
+        </div>
+    );
+}
+
 /** The nine hotbar slots, in the same order as HOTBAR in world/character.ts. */
 const HOTBAR_ITEMS: { tool: string; icon?: string; label: string }[] = [
     { tool: 'none', label: 'Bare hands' },
@@ -433,6 +459,7 @@ export default function Hud() {
             {!inBase && <WavePill />}
             {!inBase && <SafePill />}
             {!inBase && <Banner />}
+            {!inBase && <Buffs />}
 
             {/* Actions, bottom right, in the thumb's arc: Attack (big), Use (the held tool), Actions menu */}
             <div className="absolute bottom-0 right-0 pb-safe-bottom pr-4">

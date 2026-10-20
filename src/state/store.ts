@@ -46,6 +46,8 @@ export interface AppState {
     safeAim: { angle: number; dist: number; left: number } | null;
     /** Short message shown near the top (wave start, pickups), cleared by the HUD */
     banner: { text: string; id: number } | null;
+    /** Potion boosts running: potion colour and whole seconds left */
+    buffs: { key: string; left: number }[];
     /** The sword held (0-29, or -1 for the original iron sword), and every sword found */
     swordIdx: number;
     swordsOwned: number[];
@@ -81,6 +83,7 @@ let state: AppState = {
     waveLeft: null,
     safeAim: null,
     banner: null,
+    buffs: [],
     toolId: 'none',
     swordIdx: -1,
     swordsOwned: [],
