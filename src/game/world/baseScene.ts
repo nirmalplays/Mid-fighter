@@ -1,8 +1,8 @@
 /**
- * The workshop (the base): a room reached from the world's portal or the HUD's
- * Workshop button. Its floor is the store building's floor slab (Isometric RPG
- * Buildings, 2x2Tile_Store/Layer4_Floor), scaled up to an 8 × 8 tile floor, with
- * two back walls drawn in the same outlined style. The player walks on the same
+ * The workshop (the base): a room reached from the safe portal or the HUD's Workshop button.
+ * Its floor is drawn in the colours of the store building's floor slab (Isometric RPG Buildings,
+ * 2x2Tile_Store/Layer4_Floor) on a clean 8 × 8 tile diamond (the slab itself has notched corners
+ * made for a small shop), with two back walls drawn in the same outlined style. The player walks on the same
  * iso grid as the world, and the camera follows them around the room. It is
  * furnished with the Ultimate Isometric Pack's placeable items (see
  * workshopLayout.ts). There is no exit portal: the HUD's World button leads back.
@@ -21,17 +21,14 @@ import { createInput, JOY_RADIUS } from './input.ts';
 import { ITEM_FRAMES } from './workshopAtlas.ts';
 import { WORKSHOP_ITEMS } from './workshopLayout.ts';
 
-/** Room size in tiles, and the floor art's scale to match it (the slab's top face is ~650 px wide). */
+/** Room size in tiles. */
 const ROOM = 8;
-const FLOOR_SCALE = (ROOM * 2 * TILE_DX) / 650;
-/** Where the floor's top-face centre sits inside the cropped slab image (fractions of its size). */
-const FLOOR_ANCHOR = { x: 0.5, y: 0.55 };
-/** The slab's top face is a little taller than 2:1; squash it so it lines up with the iso grid. */
-const FLOOR_SQUASH = 0.9;
 const WALL_H = 190;
 const OUTLINE = 0x2b0f1c;
-/** The camera's zoom while following the player. */
-const ZOOM = 1.4;
+/** The floor art's outline colour. */
+const FLOOR_OUTLINE = 0x2f0528;
+/** The camera's zoom while following the player (debug: ?roomzoom=0.6 shows the whole room). */
+const ZOOM = Number(new URLSearchParams(window.location.search).get('roomzoom')) || 1.4;
 
 const SPEED_PX = 340;
 const RADIUS = 0.28;
@@ -72,18 +69,48 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
     };
     wallQuad(left, top, 0xd7b48f, 0xa87d5c);
     wallQuad(top, right, 0xe9cfae, 0xb88a66);
-    // Windows of about one tile's width, spaced along each wall.
+    // Windows of about one tile's width: the left wall keeps its middle free for the tool rack.
     const winW = 1 / ROOM;
-    for (const f of [0.14, 0.4, 0.66]) windowOn(left, top, f, f + winW);
-    for (const f of [0.2, 0.46, 0.72]) windowOn(top, right, f, f + winW);
+    for (const f of [0.05, 0.84]) windowOn(left, top, f, f + winW);
+    for (const f of [0.16, 0.42, 0.62]) windowOn(top, right, f, f + winW);
+    // The tool rack: a wooden bar on the left wall, with the tools hung below it.
+    const wallPt = (v: number, h: number) => [sx(0, v), sy(0, v) - h];
+    walls.poly([...wallPt(2.35, 98), ...wallPt(5.75, 98), ...wallPt(5.75, 112), ...wallPt(2.35, 112)])
+        .fill({ color: 0x8b5a3c }).stroke({ width: 3, color: OUTLINE, join: 'round' });
+    for (const v of [2.45, 5.65]) {
+        walls.poly([...wallPt(v - 0.07, 98), ...wallPt(v + 0.07, 98), ...wallPt(v + 0.07, 76), ...wallPt(v - 0.07, 76)])
+            .fill({ color: 0x6f452e }).stroke({ width: 2, color: OUTLINE, join: 'round' });
+    }
     walls.zIndex = -2000;
     objects.addChild(walls);
 
-    // The floor: the store's floor slab.
-    const floor = new Sprite(Assets.get<Texture>('base-floor'));
-    floor.anchor.set(FLOOR_ANCHOR.x, FLOOR_ANCHOR.y);
-    floor.scale.set(FLOOR_SCALE, FLOOR_SCALE * FLOOR_SQUASH);
-    floor.position.set(sx(ROOM / 2, ROOM / 2), sy(ROOM / 2, ROOM / 2));
+    // The floor: a clean wood diamond in the floor art's own colours (warm wood top, plum outline,
+    // reddish front edge), checkered a little so it reads as boards, with a rug under the workbench.
+    const gp = (u: number, v: number): [number, number] => [sx(u, v), sy(u, v)];
+    const floor = new Graphics();
+    const EDGE = 16;
+    const L = gp(0, ROOM);
+    const Bm = gp(ROOM, ROOM);
+    const R = gp(ROOM, 0);
+    floor.poly([L[0], L[1], Bm[0], Bm[1], Bm[0], Bm[1] + EDGE, L[0], L[1] + EDGE]).fill({ color: 0x7a3c3b }).stroke({ width: 5, color: FLOOR_OUTLINE, join: 'round' });
+    floor.poly([Bm[0], Bm[1], R[0], R[1], R[0], R[1] + EDGE, Bm[0], Bm[1] + EDGE]).fill({ color: 0x663030 }).stroke({ width: 5, color: FLOOR_OUTLINE, join: 'round' });
+    for (let j = 0; j < ROOM; j++) {
+        for (let i = 0; i < ROOM; i++) {
+            const c = (i + j) % 2 === 0 ? 0xba7c4d : 0xb27447;
+            floor.poly([...gp(i, j), ...gp(i + 1, j), ...gp(i + 1, j + 1), ...gp(i, j + 1)]).fill({ color: c });
+        }
+    }
+    // Board seams: a faint line along every tile edge.
+    for (let k = 1; k < ROOM; k++) {
+        floor.moveTo(...gp(k, 0)).lineTo(...gp(k, ROOM)).stroke({ width: 2, color: 0x8e5a35, alpha: 0.55 });
+        floor.moveTo(...gp(0, k)).lineTo(...gp(ROOM, k)).stroke({ width: 2, color: 0x8e5a35, alpha: 0.55 });
+    }
+    floor.poly([...gp(0, 0), ...gp(ROOM, 0), ...gp(ROOM, ROOM), ...gp(0, ROOM)]).stroke({ width: 6, color: FLOOR_OUTLINE, join: 'round' });
+    // The rug: red with a gold stripe, under the workbench.
+    const rug = (u0: number, v0: number, u1: number, v1: number, fill: number, line: number, width: number) =>
+        floor.poly([...gp(u0, v0), ...gp(u1, v0), ...gp(u1, v1), ...gp(u0, v1)]).fill({ color: fill }).stroke({ width, color: line, join: 'round' });
+    rug(2.2, 2.4, 5.8, 5.6, 0x7a2f40, FLOOR_OUTLINE, 4);
+    rug(2.5, 2.7, 5.5, 5.3, 0x9c4558, 0xe6b84a, 3);
     floor.zIndex = -1000;
     objects.addChild(floor);
 
@@ -107,13 +134,13 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
         const s = it.s ?? 0.5;
         const lift = it.lift ?? 0;
         const sp = new Sprite(itemTexture(it.name));
-        sp.anchor.set(0.5, 0.82);
+        sp.anchor.set(0.5, it.wall ? 0.5 : 0.82);
         sp.scale.set(s);
         sp.position.set(sx(it.u, it.v), sy(it.u, it.v) - lift);
-        // Lifted items (stacked, or resting on the table) sort above what they sit on.
-        sp.zIndex = sy(it.u, it.v) + 0.3 + Math.min(lift, 30) + lift * 0.001;
+        // Lifted items (stacked, or resting on the table) sort above what they sit on; wall items sit above the wall.
+        sp.zIndex = it.wall ? -900 : sy(it.u, it.v) + 0.3 + Math.min(lift, 30) + lift * 0.001;
         objects.addChild(sp);
-        if (!it.flat && lift === 0) {
+        if (!it.flat && !it.wall && lift === 0) {
             const sh = new Sprite(shadowTex);
             sh.anchor.set(0.5);
             sh.scale.set((sp.width * 0.85) / 80);
@@ -121,7 +148,7 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
             sh.zIndex = sy(it.u, it.v) + 0.2;
             objects.addChild(sh);
         }
-        if (it.block) solid.add(Math.floor(it.v) * ROOM + Math.floor(it.u));
+        for (const [ci, cj] of it.cells ?? []) solid.add(cj * ROOM + ci);
     }
 
     // Player.
@@ -142,7 +169,7 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
     // Debug: with ?spawn= the player is exposed for automated checks.
     if (new URLSearchParams(window.location.search).has('spawn')) (window as unknown as { __player?: Container }).__player = player;
     let pu = ROOM / 2;
-    let pv = ROOM - 2;
+    let pv = ROOM - 1.4;
 
     const joyGfx = new Graphics();
     app.stage.addChild(joyGfx);
