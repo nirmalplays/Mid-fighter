@@ -86,7 +86,7 @@ function handle(msg: Msg): void {
         case 'pose': {
             const id = msg.id as string;
             if (id === room?.playerId) return;
-            ensure(id).pose = { scene: msg.scene as 'world' | 'base', u: msg.u as number, v: msg.v as number, z: msg.z as number, face: msg.face as number, anim: msg.anim as string, tool: msg.tool as string };
+            ensure(id).pose = { scene: msg.scene as 'world' | 'base', u: msg.u as number, v: msg.v as number, z: msg.z as number, face: msg.face as number, anim: msg.anim as string, tool: msg.tool as string, dead: msg.dead === true, sword: typeof msg.sword === 'number' ? msg.sword : -1 };
             break;
         }
         case 'act': {
