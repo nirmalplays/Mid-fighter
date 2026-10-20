@@ -239,9 +239,9 @@ function sendAct(kind: string): void {
 }
 
 /** Propose a swing from (u, v); the server decides who it hits. */
-function sendHit(u: number, v: number, facing: number, damage: number): void {
+function sendHit(u: number, v: number, facing: number, damage: number, r = 0): void {
     try {
-        room?.send({ type: 'hit', u, v, facing, damage });
+        room?.send({ type: 'hit', u, v, facing, damage, r });
     } catch (err) {
         console.warn('[multiplayer] send failed', err);
     }

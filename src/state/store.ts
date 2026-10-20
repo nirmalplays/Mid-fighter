@@ -48,6 +48,8 @@ export interface AppState {
     banner: { text: string; id: number } | null;
     /** Potion boosts running: potion colour and whole seconds left */
     buffs: { key: string; left: number }[];
+    /** Whole seconds left before each spell can be cast again */
+    spellCd: number[];
     /** The sword held (0-29, or -1 for the original iron sword), and every sword found */
     swordIdx: number;
     swordsOwned: number[];
@@ -84,6 +86,7 @@ let state: AppState = {
     safeAim: null,
     banner: null,
     buffs: [],
+    spellCd: [0, 0, 0, 0],
     toolId: 'none',
     swordIdx: -1,
     swordsOwned: [],

@@ -28,6 +28,7 @@ import {
     CHUNK_TILES, LOAD_RADIUS, MAP_CHUNKS, MAP_TILES, TILE_DX, TILE_DY, ZOOM,
 } from './constants.ts';
 import { createInput, JOY_RADIUS } from './input.ts';
+import { SPELLS } from './spells.ts';
 import { createDropView, POTION_COLOR, SKILL_CAP, SKILL_COLOR, SKILL_NAMES, type DropKind, type Skill } from './drops.ts';
 import { createMonsterView } from './monsters.ts';
 import { createSafeView } from './safeZone.ts';
@@ -593,7 +594,47 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     // A swing that actually started (the character was free) lands a moment later.
     const strikes: number[] = [];
     let wasLocked = false;
+    // Spells (the chest menu): a ring or bolt drawn at the blast, and a cooldown per spell.
+    const spellCd = SPELLS.map(() => 0);
+    let spellShown = '';
+    const fx: { g: Graphics; t: number; life: number; rx: number; ry: number; bolt: boolean }[] = [];
+    const castSpell = (index: number) => {
+        const sp = SPELLS[index];
+        if (!sp || spellCd[index] > 0 || character.dead || entering) return;
+        spellCd[index] = sp.cooldownMs;
+        if (sp.heal) {
+            store.patch({ hp: Math.min(store.get().maxHp, store.get().hp + sp.heal) });
+            dropView.text(player.x, player.y - 78, `+${sp.heal} Health`, sp.color);
+        }
+        let cu = pu;
+        let cv = pv;
+        if (sp.radius > 0) {
+            if (sp.seek > 0) {
+                let best = sp.seek;
+                for (const m of sim.view().monsters) {
+                    if (m.state === 'dying') continue;
+                    const d = Math.hypot(m.u - pu, m.v - pv);
+                    if (d < best) { best = d; cu = m.u; cv = m.v; }
+                }
+                if (cu === pu && cv === pv) {
+                    spellCd[index] = 0; // nothing in range: the spell is not spent
+                    dropView.text(player.x, player.y - 78, 'No target', 0xffffff);
+                    return;
+                }
+            }
+            const dmg = Math.max(1, Math.round(sp.damage * (1 + 0.15 * store.get().skills.attack) * (buffMs.blue > 0 ? 1.5 : 1) * (buffMs.black > 0 ? 2 : 1)));
+            sim.strike(cu, cv, character.facing, dmg, sp.radius);
+        }
+        const g = new Graphics();
+        g.zIndex = 1e5;
+        objects.addChild(g);
+        const at = worldPoint(cu, cv);
+        g.position.set(at.x, at.y - heightAt(cu, cv) * LEVEL_H);
+        fx.push({ g, t: 0, life: sp.heal ? 700 : 450, rx: Math.max(0.8, sp.radius) * 88, ry: Math.max(0.8, sp.radius) * 44, bolt: sp.seek > 0 });
+        (g as Graphics & { color?: number }).color = sp.color;
+    };
     const offStrike = commands.subscribe((c) => {
+        if (c.type === 'spell') castSpell(c.index);
         if ((c.type === 'attack' || c.type === 'use') && !wasLocked && character.locked && !character.dead) strikes.push(170);
     });
 
@@ -715,6 +756,29 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         net.sendPose({ scene: 'world', u: pu, v: pv, z: pz, face: character.facing, anim: pu !== fromU || pv !== fromV ? character.anim : 'idle', tool: character.tool, dead: character.dead, sword: character.sword });
         remotes.update(ticker.deltaMS);
         invuln = Math.max(0, invuln - ticker.deltaMS);
+        for (let i = 0; i < spellCd.length; i++) spellCd[i] = Math.max(0, spellCd[i] - ticker.deltaMS);
+        const cdNow = spellCd.map((ms) => Math.ceil(ms / 1000));
+        if (cdNow.join() !== spellShown) {
+            spellShown = cdNow.join();
+            store.patch({ spellCd: cdNow });
+        }
+        for (let i = fx.length - 1; i >= 0; i--) {
+            const f = fx[i];
+            f.t += ticker.deltaMS;
+            const k = Math.min(1, f.t / f.life);
+            const col = (f.g as Graphics & { color?: number }).color ?? 0xffffff;
+            f.g.clear();
+            if (f.bolt) {
+                f.g.moveTo(0, -420 * (1 - k)).lineTo(10, -300 * (1 - k)).lineTo(-8, -170 * (1 - k)).lineTo(0, 0).stroke({ width: 9 * (1 - k) + 2, color: col, alpha: 1 - k });
+                f.g.ellipse(0, 0, f.rx * (0.4 + 0.6 * k), f.ry * (0.4 + 0.6 * k)).stroke({ width: 5, color: col, alpha: 1 - k });
+            } else {
+                f.g.ellipse(0, 0, f.rx * (0.25 + 0.75 * k), f.ry * (0.25 + 0.75 * k)).fill({ color: col, alpha: 0.28 * (1 - k) }).stroke({ width: 6 * (1 - k) + 1, color: col, alpha: 1 - k });
+            }
+            if (k >= 1) {
+                f.g.destroy();
+                fx.splice(i, 1);
+            }
+        }
         for (const c in buffMs) buffMs[c] = Math.max(0, buffMs[c] - ticker.deltaMS);
         const buffNow = Object.keys(buffMs).filter((c) => buffMs[c] > 0).map((c) => `${c}:${Math.ceil(buffMs[c] / 1000)}`).join(',');
         if (buffNow !== buffShown) {

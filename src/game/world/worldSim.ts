@@ -38,7 +38,7 @@ export interface WorldSim {
     update(dtMs: number): void;
     view(): WorldView;
     /** The local player swung from (u, v) facing a 0-7 sector. */
-    strike(u: number, v: number, facing: number, damage: number): void;
+    strike(u: number, v: number, facing: number, damage: number, radius?: number): void;
     /** The local player reached a drop. */
     take(dropId: number): void;
     destroy(): void;
@@ -207,9 +207,9 @@ export function createWorldSim(opts: {
             };
         },
 
-        strike(u, v, facing, damage) {
-            if (net.online()) net.sendHit(u, v, facing, damage);
-            else handle(local.strike(opts.player().id, u, v, facing, damage));
+        strike(u, v, facing, damage, radius = 0) {
+            if (net.online()) net.sendHit(u, v, facing, damage, radius);
+            else handle(local.strike(opts.player().id, u, v, facing, damage, radius));
         },
 
         take(dropId) {

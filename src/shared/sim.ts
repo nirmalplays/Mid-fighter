@@ -255,8 +255,8 @@ export class GameSim {
         return events;
     }
 
-    /** A player swing from (u, v) facing a 0-7 sector. Returns events (kills). */
-    strike(playerId: string, pu: number, pv: number, facing: number, damage: number): SimEvent[] {
+    /** A player swing from (u, v) facing a 0-7 sector, or with a `radius` a spell blast hitting everything within it. Returns events (kills). */
+    strike(playerId: string, pu: number, pv: number, facing: number, damage: number, radius = 0): SimEvent[] {
         const events: SimEvent[] = [];
         const aim = (facing * Math.PI) / 4;
         for (const m of this.monsters.values()) {
@@ -264,17 +264,17 @@ export class GameSim {
             const du = m.u - pu;
             const dv = m.v - pv;
             const dist = Math.hypot(du, dv);
-            if (dist > REACH) continue;
+            if (dist > (radius || REACH)) continue;
             // Screen-space direction to the monster, in the same units as the joystick's facing.
             const sx = (du - dv) * 62;
             const sy = (du + dv) * 31 * 2;
             let diff = Math.abs(Math.atan2(sy, sx) - aim);
             if (diff > Math.PI) diff = Math.PI * 2 - diff;
-            if (dist > 0.9 && diff > ARC) continue;
+            if (!radius && dist > 0.9 && diff > ARC) continue;
             m.hp -= damage;
             const kd = dist || 1;
-            m.ku = (du / kd) * 7;
-            m.kv = (dv / kd) * 7;
+            m.ku = (du / kd) * (radius ? 10 : 7);
+            m.kv = (dv / kd) * (radius ? 10 : 7);
             if (m.hp <= 0) {
                 m.state = 'dying';
                 m.t = 0;

@@ -38,7 +38,7 @@ interface PoseMsg extends Pose { type: 'pose' }
 interface ActMsg { type: 'act'; kind: string }
 interface AwayMsg { type: 'away' }
 interface HelloMsg { type: 'hello' }
-interface HitMsg { type: 'hit'; u: number; v: number; facing: number; damage: number }
+interface HitMsg { type: 'hit'; u: number; v: number; facing: number; damage: number; r?: number }
 interface PickupMsg { type: 'pickup'; id: number }
 // Server → client.
 interface SnapshotMsg { type: 'snapshot'; players: Record<string, { name: string; pose: Pose | null }> }
@@ -240,8 +240,10 @@ export default class WorldRoom extends GameRoom<Protocol> {
         // Swing from where the client says it stood, if that is near its last reported pose.
         let u = num(m.u) ?? pose.u;
         let v = num(m.v) ?? pose.v;
-        if (Math.hypot(u - pose.u, v - pose.v) > 4) { u = pose.u; v = pose.v; }
-        this.dispatch(sim.strike(id, u, v, Math.round(facing), Math.min(MAX_HIT_DAMAGE, Math.max(1, damage))));
+        // A spell blast (`r`, tiles) may be centred on a monster up to 10 tiles off (the Bolt); a swing only near the player.
+        const radius = Math.min(5, Math.max(0, num(m.r) ?? 0));
+        if (Math.hypot(u - pose.u, v - pose.v) > (radius ? 10 : 4)) { u = pose.u; v = pose.v; }
+        this.dispatch(sim.strike(id, u, v, Math.round(facing), Math.min(MAX_HIT_DAMAGE, Math.max(1, damage)), radius));
     }
 
     private onPickup(id: string, dropId: number): void {

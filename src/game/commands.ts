@@ -7,7 +7,9 @@ export type GameCommand =
     | { type: 'tool'; delta: number }
     | { type: 'equip'; tool: string }
     /** Cycle through the swords you own (-1 = the original iron sword). */
-    | { type: 'sword'; delta: number };
+    | { type: 'sword'; delta: number }
+    /** Cast a spell (an index into SPELLS in world/spells.ts) */
+    | { type: 'spell'; index: number };
 
 const listeners = new Set<(c: GameCommand) => void>();
 

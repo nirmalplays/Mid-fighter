@@ -11,6 +11,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { commands, type GameCommand } from '../game/commands.ts';
 import { store, useStore } from '../state/store.ts';
+import { SPELLS } from '../game/world/spells.ts';
 
 const TAN = '#e9bf9a';
 const TAN_LIGHT = '#f6d9ba';
@@ -366,6 +367,7 @@ export default function Hud() {
     const kills = useStore((s) => s.kills);
     const [more, setMore] = useState(false);
     const toolId = useStore((s) => s.toolId);
+    const spellCd = useStore((s) => s.spellCd);
 
     return (
         <div className="pointer-events-none absolute inset-0 pt-safe-top">
@@ -465,10 +467,19 @@ export default function Hud() {
             <div className="absolute bottom-0 right-0 pb-safe-bottom pr-4">
                 {more && (
                     <div className="absolute flex gap-2 rounded-2xl p-2" style={{ bottom: 168, right: 30, background: 'rgba(31,14,38,.78)', border: `3px solid ${PLUM}` }}>
-                        {([['Dig', 'dig', 'shovel'], ['Fish', 'fish', 'fishingpole'], ['Sit', 'sit', 'log']] as const).map(([label, type, pic]) => (
-                            <div key={type} className="flex flex-col items-center gap-0.5">
-                                <RoundBtn size={52} label={label} onPress={emit({ type })}><Pic name={pic} size={32} /></RoundBtn>
-                                <span className="text-[11px] font-black text-white" style={{ textShadow: '0 1px 0 #000' }}>{label}</span>
+                        {SPELLS.map((sp, i) => (
+                            <div key={sp.name} className="flex flex-col items-center gap-0.5">
+                                <div className="relative">
+                                    <RoundBtn size={52} label={sp.name} onPress={() => { commands.emit({ type: 'spell', index: i }); setMore(false); }}>
+                                        <img src={`images/${sp.icon}`} width={32} height={32} draggable={false} alt="" style={{ opacity: spellCd[i] > 0 ? 0.35 : 1, objectFit: 'contain' }} />
+                                    </RoundBtn>
+                                    {spellCd[i] > 0 && (
+                                        <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-lg font-black text-white" style={{ textShadow: '0 2px 0 #000, 0 0 6px #000' }}>
+                                            {spellCd[i]}
+                                        </span>
+                                    )}
+                                </div>
+                                <span className="text-[11px] font-black text-white" style={{ textShadow: '0 1px 0 #000' }}>{sp.name}</span>
                             </div>
                         ))}
                     </div>
@@ -483,7 +494,7 @@ export default function Hud() {
                         </RoundBtn>
                     </div>
                     <div className="absolute bottom-[104px] right-[56px]">
-                        <RoundBtn size={52} label="More actions" onPress={() => setMore((m) => !m)}><Pic name="chest" size={34} /></RoundBtn>
+                        <RoundBtn size={52} label="Spells" onPress={() => setMore((m) => !m)}><Pic name="chest" size={34} /></RoundBtn>
                     </div>
                 </div>
             </div>
