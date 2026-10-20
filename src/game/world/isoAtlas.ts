@@ -373,26 +373,44 @@ export const ISO_FRAMES: Record<string, [number, number, number, number]> = {
         153,
         153
     ],
-    "snow": [
+    "sandpile": [
         1530,
         1068,
         153,
         153
     ],
-    "dbush_blue": [
+    "driftwood1": [
         1683,
         1068,
+        153,
+        153
+    ],
+    "driftwood2": [
+        1836,
+        1068,
+        153,
+        153
+    ],
+    "snow": [
+        0,
+        1373,
+        153,
+        153
+    ],
+    "dbush_blue": [
+        153,
+        1373,
         153,
         305
     ],
     "dbush_orange": [
-        1836,
-        1068,
+        306,
+        1373,
         153,
         305
     ],
     "dbush_pink": [
-        0,
+        459,
         1373,
         153,
         305

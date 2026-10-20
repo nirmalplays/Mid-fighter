@@ -79,11 +79,29 @@ export function generateWorld(seed = 1337): WorldMap {
 
     const nearSpawn = (i: number, j: number, r: number) => Math.abs(i - SPAWN) <= r && Math.abs(j - SPAWN) <= r;
 
-    // ---- Ocean: a jittered band of water around the edge.
+    // ---- The beach: a big flat sandy stretch along the south coast (high j), between two headlands.
+    // beachAmt is 1 on the beach, 0 inland, and fades smoothly at its ends and inland edge.
+    const smooth = (a: number, b: number, x: number) => {
+        const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+        return t * t * (3 - 2 * t);
+    };
+    const BEACH_SEA = 11; // extra tiles of open sea in front of the beach
+    const BEACH_DEEP = 36; // how far inland the sand reaches from the waterline
+    const beachSpan = (i: number) => smooth(52, 80, i) * (1 - smooth(186, 214, i));
+    const beachAmt = (i: number, j: number): number => {
+        const span = beachSpan(i);
+        if (span <= 0) return 0;
+        const fromEdge = N - 1 - j;
+        const inner = OCEAN + BEACH_SEA + BEACH_DEEP + 4 * Math.sin(i * 0.09) + 3 * Math.sin(i * 0.23 + 1);
+        return span * (1 - smooth(inner - 5, inner + 6, fromEdge));
+    };
+
+    // ---- Ocean: a jittered band of water around the edge, wider in front of the beach.
     for (let j = 0; j < N; j++) {
         for (let i = 0; i < N; i++) {
             const edge = Math.min(i, j, N - 1 - i, N - 1 - j);
-            const depth = OCEAN + 1.4 * Math.sin(i * 0.17 + j * 0.05) + 1.4 * Math.sin(j * 0.13 - i * 0.07);
+            const sea = j > N / 2 ? BEACH_SEA * beachSpan(i) : 0;
+            const depth = OCEAN + sea + 1.4 * Math.sin(i * 0.17 + j * 0.05) + 1.4 * Math.sin(j * 0.13 - i * 0.07);
             if (edge < depth) terrain[at(i, j)] = WATER;
         }
     }
@@ -105,7 +123,7 @@ export function generateWorld(seed = 1337): WorldMap {
         if (terrain[at(i, j)] !== WATER || t === WATER) terrain[at(i, j)] = t;
     };
     const farFrom = (ci: number, cj: number, r: number) =>
-        Math.min(ci, cj, N - 1 - ci, N - 1 - cj) > OCEAN + r + 3 && !nearSpawn(ci, cj, r + 12);
+        Math.min(ci, cj, N - 1 - ci, N - 1 - cj) > OCEAN + r + 3 && !nearSpawn(ci, cj, r + 12) && beachAmt(ci, cj) < 0.02 && beachAmt(ci, cj + r + 6) < 0.02;
 
     // ---- Rocky ground and dirt patches (under the lakes so water wins).
     for (let n = 0, tries = 0; n < 9 && tries < 200; tries++) {
@@ -197,7 +215,10 @@ export function generateWorld(seed = 1337): WorldMap {
             const level = raw > 4.5 ? 4.5 + (raw - 4.5) * 0.62 : raw;
             const hillness = sstep(5, 22, Math.hypot(i - SPAWN, j - SPAWN));
             const k = at(i, j);
-            height[k] = Math.max(0, Math.min(MAX_HEIGHT, Math.floor(level * hillness + 0.5)));
+            const beach = beachAmt(i, j);
+            height[k] = Math.max(0, Math.min(MAX_HEIGHT, Math.floor(level * hillness * (1 - beach) + 0.5)));
+            // Low dunes: a few ridges one level high on the middle of the beach.
+            if (beach > 0.85 && fbm(i * 0.11 + 7, j * 0.16 + 3, 2, 60) > 0.74) height[k] = Math.max(height[k], 1);
             if (terrain[k] === WATER) height[k] = 0;
         }
     }
@@ -233,6 +254,16 @@ export function generateWorld(seed = 1337): WorldMap {
         if (t !== GRASS && t !== DIRT) continue;
         const i = k % N, j = (k - i) / N;
         if (height[k] >= 6 || (height[k] >= 4 && vnoise(i * 0.25, j * 0.25, 70) > 0.5)) terrain[k] = STONE;
+    }
+
+    // The beach itself is sand (grass pokes through at its ragged inland edge).
+    for (let j = 0; j < N; j++) {
+        for (let i = 0; i < N; i++) {
+            const k = at(i, j);
+            if (terrain[k] === WATER) continue;
+            const amt = beachAmt(i, j);
+            if (amt > 0.5 + 0.25 * (vnoise(i * 0.35, j * 0.35, 80) - 0.5)) terrain[k] = SAND;
+        }
     }
 
     // Spawn clearing is always flat grass.
@@ -356,6 +387,11 @@ export function generateWorld(seed = 1337): WorldMap {
         );
         if (k !== null) waypoints.push(k);
     }
+    // One waypoint on the beach itself, so a road leads down to it.
+    for (let dj = 0; dj < 30; dj++) {
+        const bj = N - 1 - (OCEAN + BEACH_SEA + 20) - dj, bi = 130;
+        if (inMap(bi, bj) && terrain[at(bi, bj)] === SAND && height[at(bi, bj)] === 0) { waypoints.push(at(bi, bj)); break; }
+    }
     const nodes = [spawnCell, ...waypoints];
     const linked = new Set<number>([0]);
     // Connect each node to its nearest already-linked node (a spanning tree), plus two cross-links.
@@ -398,7 +434,7 @@ export function generateWorld(seed = 1337): WorldMap {
     }
     // A dirt bed with stones set in it.
     for (const k of road) {
-        terrain[k] = DIRT;
+        if (terrain[k] !== SAND) terrain[k] = DIRT;
         if (rand() < 0.7) flats.push({ name: `path${intIn(1, 3)}`, i: k % N, j: Math.floor(k / N) });
     }
 
@@ -453,6 +489,20 @@ export function generateWorld(seed = 1337): WorldMap {
     scatter(900, 1, (i, j) => place(`rock${intIn(1, 5)}`, i, j, true), [GRASS, STONE, DIRT]);
     scatter(1100, 1, (i, j) => place(pick(['dbush_blue', 'dbush_orange', 'dbush_pink']), i, j, false), [GRASS], 6, 320, 0.45);
     scatter(9000, 0, (i, j) => place(`tallgrass${intIn(1, 4)}`, i, j, false), [GRASS, DIRT], 6, 330, 0.35);
+    // The beach: driftwood, rocks and reeds (no trees or bushes); sand piles and pebbles on the ground.
+    scatter(120, 3, (i, j) => place(rand() < 0.6 ? 'driftwood1' : 'driftwood2', i, j, true), [SAND], 1, 340, 0.3);
+    scatter(60, 3, (i, j) => place(`rock${intIn(1, 5)}`, i, j, true), [SAND], 1);
+    scatter(260, 1, (i, j) => place(`tallgrass${intIn(1, 4)}`, i, j, false), [SAND], 1, 350, 0.55);
+    for (let j = 0; j < N; j++) {
+        for (let i = 0; i < N; i++) {
+            const k = at(i, j);
+            if (terrain[k] !== SAND || beachAmt(i, j) < 0.5 || road.has(k) || occupied.has(k)) continue;
+            const r = rand();
+            if (r < 0.035) flats.push({ name: 'sandpile', i, j });
+            else if (r < 0.075) flats.push({ name: 'pebbles', i, j });
+        }
+    }
+
     // Reeds along the shore, and stones breaking the surface of shallow water.
     for (let k = 0; k < terrain.length; k++) {
         const i = k % N, j = (k - i) / N;

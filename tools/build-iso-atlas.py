@@ -47,6 +47,19 @@ for name, file in {
 }.items():
     sprites[f"tree_{name}"] = src(f"Trees/{file}.png")
 sprites["stump"] = src("Trees/Tree_Root.png")
+sprites["sandpile"] = src("Ground/TileOverlay_SandPile.png")
+
+def on_tile(path, scale=1.35, drop=24):
+    """A placeable item (about 250 px) set on a 500 px tile canvas: bottom centre just below the tile centre."""
+    item = Image.open(path).convert("RGBA")
+    item = item.resize((round(item.width * scale), round(item.height * scale)), Image.LANCZOS)
+    canvas = Image.new("RGBA", (500, 500), (0, 0, 0, 0))
+    canvas.alpha_composite(item, (250 - item.width // 2, 139 + drop - item.height))
+    return canvas
+
+PACK = "src/assets/Ultimate_Isometric_Pack (1)/PlacebleItems/"
+sprites["driftwood1"] = on_tile(PACK + "Wood/Wood_OldLog.png")
+sprites["driftwood2"] = on_tile(PACK + "Wood/Wood_Log.png", 1.2)
 sprites["snow"] = src("Water/TileOverlayDiscreet_Snow.png")
 for color in ("Blue", "Orange", "Pink"):
     sprites[f"dbush_{color.lower()}"] = src(f"Bushes/Bush_DecorativeBush_{color}.png")
