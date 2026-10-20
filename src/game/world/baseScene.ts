@@ -152,7 +152,7 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
     }
 
     // Player.
-    const character = createCharacter((tool) => store.patch({ toolId: tool }));
+    const character = createCharacter((tool) => store.patch({ toolId: tool }), (i) => store.patch({ swordIdx: i }));
     character.setTool(progress.savedTool());
     const controls = bindControls(character);
     // The other players in the shared room.

@@ -168,7 +168,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     stage.root.addChild(world);
 
     // Player: the Character0 art with tools and actions (world/character.ts).
-    const character = createCharacter((tool) => store.patch({ toolId: tool }));
+    const character = createCharacter((tool) => store.patch({ toolId: tool }), (i) => store.patch({ swordIdx: i }));
     const player = character.player;
     objects.addChild(player);
     // Faint copy above everything, so the player stays visible behind mountains.

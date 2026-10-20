@@ -7,6 +7,8 @@
 import { Assets, Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
 import type { GameCommand } from '../commands.ts';
 import { CHAR_CELL, CHAR_FEET_X, CHAR_FEET_Y, CHAR_SHEETS } from './characterAtlas.ts';
+import { SWORD_NATIVE } from './swordNative.ts';
+import { SWORD_POSE } from './swordPose.ts';
 
 /** Drawn at 2x for sharpness on dense phone screens; this brings it to ~66 world px tall. */
 const SCALE = 0.5;
@@ -25,6 +27,11 @@ export const FACINGS: { row: number; flip: boolean }[] = [
     { row: 2, flip: true }, { row: 1, flip: true }, { row: 0, flip: false }, { row: 1, flip: false },
     { row: 2, flip: false }, { row: 3, flip: false }, { row: 4, flip: false }, { row: 3, flip: true },
 ];
+
+/** Number of swords in public/images/swords.png (6 x 5 cells of 32 px). */
+export const SWORD_COUNT = 30;
+/** Drawn this much larger than the iron sword's length, so the pixel art reads at world size. */
+const SWORD_SCALE = 1.4;
 
 /** Milliseconds per frame, by action. */
 const FRAME_MS: Record<string, number> = {
@@ -70,6 +77,9 @@ export interface Character {
     readonly locked: boolean;
     readonly dead: boolean;
     readonly seated: boolean;
+    /** Index of the sword drawn in the hand (0-29), or -1 for the original iron sword. */
+    readonly sword: number;
+    setSword(index: number): void;
     readonly tool: Tool;
     /** Facing sector 0-7 (0 = right, clockwise), and the current movement animation. */
     readonly facing: number;
@@ -83,7 +93,7 @@ export interface Character {
     destroy(): void;
 }
 
-export function createCharacter(onTool: (tool: Tool) => void): Character {
+export function createCharacter(onTool: (tool: Tool) => void, onSword: (index: number) => void = () => {}): Character {
     const frames = new Map<string, Texture[][]>();
     const loading = new Map<string, Promise<void>>();
 
@@ -111,7 +121,17 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
     loadTool('none');
 
     /** Best loaded sheet for an action with the current tool, falling back to bare hands. */
+    // A custom sword replaces the iron one: use the animations drawn without a sword (the "carrying
+    // a tool" pose, plain run and plain attack) and draw the chosen sword over the hand ourselves.
+    let swordIdx = -1;
+    const skinned = (t: Tool): boolean => t === 'sword' && swordIdx >= 0;
+    const mapKey = (key: string, t: Tool): string => {
+        if (!skinned(t)) return key;
+        if (key === 'attack:sword') return 'attack';
+        return key.endsWith(':sword') ? key.replace(':sword', ':hold') : key;
+    };
     const resolve = (action: string, tool: Tool): Texture[][] | undefined => {
+        if (skinned(tool)) tool = 'hold';
         const chain: string[] = [];
         if (tool !== 'none') {
             chain.push(`${action}:${tool}`);
@@ -126,7 +146,8 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
         }
         return sheetOf('idle');
     };
-    const resolveKey = (key: string, tool: Tool): Texture[][] | undefined => {
+    const resolveKey = (rawKey: string, tool: Tool): Texture[][] | undefined => {
+        const key = mapKey(rawKey, tool);
         // A fully-specified key ("swing:axe"); fall back to its bare action.
         if (CHAR_SHEETS[key]) void load(key);
         return sheetOf(key) ?? resolve(key.split(':')[0], 'none');
@@ -138,6 +159,24 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
         b.scale.set(SCALE);
         return b;
     };
+    // The custom sword: one sprite on the body and one on the x-ray copy, positioned in the sheet's cell space.
+    const swordSheet = Assets.get<Texture>('swords');
+    swordSheet.source.scaleMode = 'nearest';
+    const swordTex = new Map<number, Texture>();
+    const swordTexture = (i: number): Texture => {
+        let t = swordTex.get(i);
+        if (!t) {
+            t = new Texture({ source: swordSheet.source, frame: new Rectangle((i % 6) * 32, Math.floor(i / 6) * 32, 32, 32) });
+            swordTex.set(i, t);
+        }
+        return t;
+    };
+    const makeSwordSprite = (parent: Sprite): Sprite => {
+        const s = new Sprite(Texture.EMPTY);
+        s.visible = false;
+        parent.addChild(s);
+        return s;
+    };
     const player = new Container();
     const body = makeBody();
     const shadow = new Graphics().ellipse(0, 0, 20, 9).fill({ color: 0x000000, alpha: 0.3 });
@@ -146,6 +185,27 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
     const xrayBody = makeBody();
     xray.addChild(xrayBody);
     xray.alpha = 0.3;
+    const swordSprites = [makeSwordSprite(body), makeSwordSprite(xrayBody)];
+    /** Place the custom sword for the frame being shown (or hide it when there is none). */
+    const showSword = (anim: string | null, row: number, idx: number) => {
+        const pose = skinned(tool) && anim ? SWORD_POSE[anim]?.[row]?.[idx] : null;
+        if (!pose) {
+            for (const s of swordSprites) s.visible = false;
+            return;
+        }
+        const [gx, gy, ang, len] = pose;
+        const [hx, hy, tx, ty] = SWORD_NATIVE[swordIdx];
+        const nativeLen = Math.hypot(tx - hx, ty - hy) || 1;
+        const nativeAng = Math.atan2(ty - hy, tx - hx);
+        for (const s of swordSprites) {
+            s.texture = swordTexture(swordIdx);
+            s.anchor.set(hx / 32, hy / 32);
+            s.position.set(gx - CHAR_FEET_X, gy - CHAR_FEET_Y);
+            s.rotation = (ang * Math.PI) / 180 - nativeAng;
+            s.scale.set((len / nativeLen) * SWORD_SCALE);
+            s.visible = true;
+        }
+    };
 
     let tool: Tool = 'none';
     let facing = 2; // front
@@ -163,6 +223,21 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
     const getUpKey = () => (tool === 'none' ? 'getup' : `getup:${tool}`);
 
     const command = (c: GameCommand) => {
+        // Dev: cycle the sword drawn in the hand, and take it out so the change is visible.
+        if (c.type === 'sword') {
+            if (mode === 'dead') return;
+            const n = SWORD_COUNT + 1; // -1 (iron) .. 29
+            swordIdx = ((swordIdx + 1 + c.delta + n) % n) - 1;
+            if (swordIdx >= 0) loadTool('hold');
+            if (tool !== 'sword') {
+                tool = 'sword';
+                loadTool('sword');
+                onTool(tool);
+            }
+            if (!skinned(tool)) for (const s of swordSprites) s.visible = false;
+            onSword(swordIdx);
+            return;
+        }
         if (c.type === 'tool' || c.type === 'equip') {
             if (mode === 'dead') return;
             if (c.type === 'equip') {
@@ -173,6 +248,7 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
                 tool = HOTBAR[(at + c.delta + HOTBAR.length) % HOTBAR.length];
             }
             loadTool(tool);
+            if (skinned(tool)) loadTool('hold');
             onTool(tool);
             return;
         }
@@ -198,7 +274,8 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
         }
     };
 
-    const setFrame = (tex: Texture | undefined, flip: boolean, tint: number) => {
+    const setFrame = (tex: Texture | undefined, flip: boolean, tint: number, poseAnim: string | null = null, row = 0, idx = 0) => {
+        showSword(poseAnim, row, idx);
         if (tex && tex !== shown) {
             shown = tex;
             body.texture = tex;
@@ -231,7 +308,7 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
             const idx = Math.floor(act.clock / ms);
             if (row && idx >= row.length) {
                 if (act.hold) {
-                    setFrame(row[row.length - 1], face.flip, 0xffffff);
+                    setFrame(row[row.length - 1], face.flip, 0xffffff, action, face.row, row.length - 1);
                     mode = act.then;
                     act = null;
                     return;
@@ -240,7 +317,7 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
                 act = null;
                 clock = 0;
             } else if (row) {
-                setFrame(row[idx], face.flip, act.tint ?? 0xffffff);
+                setFrame(row[idx], face.flip, act.tint ?? 0xffffff, action, face.row, idx);
                 return;
             }
             if (mode === 'act') return; // sheet still loading: wait on the fallback frame
@@ -255,7 +332,10 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
         clock += dtMs;
         const sheet = resolve(anim, tool);
         const row = sheet?.[face.row];
-        if (row) setFrame(row[Math.floor(clock / FRAME_MS[anim]) % row.length], face.flip, 0xffffff);
+        if (row) {
+            const frame = Math.floor(clock / FRAME_MS[anim]) % row.length;
+            setFrame(row[frame], face.flip, 0xffffff, anim, face.row, frame);
+        }
     };
 
     return {
@@ -266,10 +346,17 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
         get seated() { return mode === 'seated'; },
         get facing() { return facing; },
         get anim() { return lastAnim as 'idle' | 'walk' | 'run'; },
+        get sword() { return swordIdx; },
+        setSword(i: number) {
+            swordIdx = Math.max(-1, Math.min(SWORD_COUNT - 1, Math.round(i)));
+            if (swordIdx >= 0) loadTool('hold'); // the no-sword poses the custom sword is drawn over
+            if (!skinned(tool)) for (const s of swordSprites) s.visible = false;
+        },
         setTool(t: Tool) {
             if (t === tool) return;
             tool = t;
             loadTool(t);
+            if (skinned(t)) loadTool('hold');
         },
         setFacing(sector: number) {
             facing = ((Math.round(sector) % 8) + 8) % 8;

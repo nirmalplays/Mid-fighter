@@ -46,6 +46,8 @@ export interface AppState {
     safeAim: { angle: number; dist: number; left: number } | null;
     /** Short message shown near the top (wave start, pickups), cleared by the HUD */
     banner: { text: string; id: number } | null;
+    /** Dev: which of the 30 swords is drawn in the hand (-1 = the original iron sword) */
+    swordIdx: number;
     /** Equipped tool id (a hotbar slot: see world/character.ts HOTBAR) */
     toolId: string;
     /** Terrace level the player stands on */
@@ -79,6 +81,7 @@ let state: AppState = {
     safeAim: null,
     banner: null,
     toolId: 'none',
+    swordIdx: -1,
     chunkX: 0,
     chunkY: 0,
     loadedChunks: 0,

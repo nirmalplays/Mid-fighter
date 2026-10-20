@@ -13,6 +13,7 @@ const KEYS: Record<string, GameCommand> = {
     ' ': { type: 'attack' }, j: { type: 'attack' }, e: { type: 'use' }, f: { type: 'interact' },
     c: { type: 'sit' }, h: { type: 'hurt' }, x: { type: 'die' }, g: { type: 'dig' }, r: { type: 'fish' },
     q: { type: 'tool', delta: -1 }, t: { type: 'tool', delta: 1 },
+    '[': { type: 'sword', delta: -1 }, ']': { type: 'sword', delta: 1 },
     // Number keys pick a hotbar slot.
     ...Object.fromEntries(HOTBAR.map((tool, i) => [String(i + 1), { type: 'equip', tool } as GameCommand])),
 };

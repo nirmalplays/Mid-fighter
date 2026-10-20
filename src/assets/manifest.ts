@@ -29,6 +29,7 @@ export const MANIFEST: Manifest = {
             name: 'critical',
             assets: [
                 { alias: 'iso', src: 'images/world/iso.png' },
+                { alias: 'swords', src: 'images/swords.png' },
                 { alias: 'portal', src: 'images/world/portal.png' },
                 { alias: 'drops', src: 'images/world/drops.png' },
                 { alias: 'base-floor', src: 'images/base/floor.png' },
