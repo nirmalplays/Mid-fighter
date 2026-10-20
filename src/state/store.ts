@@ -11,7 +11,7 @@ import { useSyncExternalStore } from 'react';
 
 /** The UI-facing app state. ADAPT: extend alongside the initial state below. */
 export interface AppState {
-    /** 'loading' → 'menu' → 'playing' (the world); the home portal leads to 'base' and back. */
+    /** 'loading' → 'menu' → 'playing' (the world); the safe portal leads to 'base' and back. */
     phase: 'loading' | 'menu' | 'playing' | 'base';
     /** 0..1 progress of the critical-asset warm during 'loading' */
     loadProgress: number;
@@ -35,12 +35,13 @@ export interface AppState {
     hp: number;
     /** Maximum health in half hearts (6, plus 2 per Vitality level) */
     maxHp: number;
-    /** Skill levels from drops, and the wave the portal has reached (0 before the first) */
+    /** Skill levels from drops, and the wave reached (0 before the first) */
     skills: { attack: number; defence: number; speed: number; vitality: number };
     wave: number;
-    /** Seconds until the next portal opens, and the portal's bearing/distance for the HUD arrow (null if none) */
+    /** Seconds until the next wave starts */
     nextWaveIn: number;
-    portalAim: { angle: number; dist: number } | null;
+    /** Monsters left in the current wave (alive plus still to spawn), or null between waves */
+    waveLeft: number | null;
     /** The workshop (safe) portal while open: bearing, distance in tiles and seconds left */
     safeAim: { angle: number; dist: number; left: number } | null;
     /** Short message shown near the top (wave start, pickups), cleared by the HUD */
@@ -74,7 +75,7 @@ let state: AppState = {
     skills: { attack: 0, defence: 0, speed: 0, vitality: 0 },
     wave: 0,
     nextWaveIn: 0,
-    portalAim: null,
+    waveLeft: null,
     safeAim: null,
     banner: null,
     toolId: 'none',

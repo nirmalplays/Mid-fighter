@@ -162,19 +162,19 @@ const SKILL_CHIPS: { key: 'attack' | 'defence' | 'speed'; color: string; label: 
     { key: 'speed', color: '#5ee08a', label: 'Speed' },
 ];
 
-/** Skill levels earned from monster drops (shown with the gem that raises them), under the health plaque. */
+/** Skill levels earned from monster drops: just the gem and the number, under the health plaque. */
 function SkillChips() {
     const skills = useStore((s) => s.skills);
     return (
-        <div className="absolute left-3 flex gap-1" style={{ top: 82 }}>
+        <div className="absolute left-3 flex gap-3" style={{ top: 80 }}>
             {SKILL_CHIPS.map((c) => (
                 <div
                     key={c.key}
                     aria-label={`${c.label} ${skills[c.key]}`}
-                    className="flex items-center gap-1 rounded-full pl-1 pr-2 text-[13px] font-black tabular-nums"
-                    style={{ height: 30, background: 'rgba(31,14,38,.85)', border: `2px solid ${c.color}`, color: '#fff' }}
+                    className="flex items-center gap-0.5 text-[17px] font-black tabular-nums text-white"
+                    style={{ textShadow: '0 2px 0 #1a0c10, 0 0 4px #1a0c10, 2px 0 0 #1a0c10, -2px 0 0 #1a0c10' }}
                 >
-                    <img src={`images/hud/gem-${c.key}.png`} width={26} height={26} draggable={false} alt="" />
+                    <img src={`images/hud/gem-${c.key}.png`} width={30} height={30} draggable={false} alt="" style={{ filter: 'drop-shadow(0 2px 0 rgba(26,12,16,.6))' }} />
                     {skills[c.key]}
                 </div>
             ))}
@@ -182,24 +182,22 @@ function SkillChips() {
     );
 }
 
-/** Wave countdown (or the open portal's distance with an arrow pointing to it). */
+/** Wave countdown, or how many monsters are left while a wave is on. */
 function WavePill() {
     const wave = useStore((s) => s.wave);
     const next = useStore((s) => s.nextWaveIn);
-    const aim = useStore((s) => s.portalAim);
+    const left = useStore((s) => s.waveLeft);
     const shared = useStore((s) => s.sharedMonsters);
     const mm = Math.floor(next / 60);
     const ss = String(next % 60).padStart(2, '0');
+    const fighting = left !== null && left > 0;
     return (
         <div
             className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-xl px-3 text-[13px] font-black tabular-nums text-white"
-            style={{ top: 8, height: 34, background: aim ? 'rgba(120,20,20,.85)' : 'rgba(22,12,16,.72)', border: `3px solid ${aim ? '#ff6b6b' : '#6b4a52'}` }}
+            style={{ top: 8, height: 34, background: fighting ? 'rgba(120,20,20,.85)' : 'rgba(22,12,16,.72)', border: `3px solid ${fighting ? '#ff6b6b' : '#6b4a52'}` }}
         >
-            {aim ? (
-                <>
-                    <span style={{ display: 'inline-block', transform: `rotate(${aim.angle}rad)`, fontSize: 16, lineHeight: 1 }}>➤</span>
-                    <span>Wave {wave} portal · {Math.round(aim.dist)} tiles{shared ? ' · shared' : ''}</span>
-                </>
+            {fighting ? (
+                <span>Wave {wave} · {left} left{shared ? ' · shared' : ''}</span>
             ) : (
                 <span>{wave > 0 ? `Wave ${wave + 1}` : 'Wave 1'} in {mm}:{ss}{shared ? ' · shared' : ''}</span>
             )}

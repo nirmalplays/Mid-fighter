@@ -1,5 +1,5 @@
 /**
- * The shared combat simulation: monsters, the wave portal and drops. Plain TypeScript
+ * The shared combat simulation: monsters, waves and drops. Plain TypeScript
  * with no graphics, so the same code runs on the server (src/rooms/WorldRoom.ts, one
  * simulation for everyone in the room) and in the browser (offline play). Clients only
  * draw what it produces. Positions are grid tiles (u, v).
@@ -45,11 +45,11 @@ const LEASH = 60;
 /** A player swing reaches this far, within this many radians of where they face. */
 const REACH = 1.9;
 const ARC = 1.3;
-const PORTAL_SPAWN_WINDOW_MS = 26000;
-const PORTAL_LINGER_MS = 2500;
-const PORTAL_CLOSE_MS = 700;
-const DIST_MIN = 12;
-const DIST_MAX = 19;
+/** A wave sends in its monsters over this long. */
+const WAVE_SPAWN_WINDOW_MS = 26000;
+/** Monsters appear this far from a player (tiles), just outside the screen. */
+const DIST_MIN = 10;
+const DIST_MAX = 16;
 /** A player must be this close (tiles) to a drop to take it (a little slack for lag). */
 const PICKUP_SLACK = 2.6;
 /** The safe zone around the workshop portal, in tiles. Monsters never enter it. */
@@ -126,23 +126,21 @@ export interface SimSafe {
     lasts: number;
 }
 
-export interface SimPortal {
-    u: number;
-    v: number;
+/** A wave while it is still sending in monsters (there is no portal: they just appear off-screen). */
+export interface SimWave {
     wave: number;
     age: number;
+    /** Monsters still to come, ms until the next one, and the average gap. */
     toSpawn: number;
     nextIn: number;
     every: number;
-    /** Age at which it starts closing, or null while it is still spawning. */
-    doneAt: number | null;
 }
 
 /** Things the host must act on. */
 export type SimEvent =
     | { type: 'bite'; playerId: string; damage: number }
     | { type: 'kill'; playerId: string; kind: string }
-    | { type: 'wave'; wave: number; u: number; v: number }
+    | { type: 'wave'; wave: number }
     | { type: 'safe'; u: number; v: number };
 
 export interface SimOptions {
@@ -157,12 +155,13 @@ export interface SimOptions {
 export class GameSim {
     monsters = new Map<number, SimMonster>();
     drops = new Map<number, SimDrop>();
-    portal: SimPortal | null = null;
+    /** The wave that is currently spawning, or null between waves. */
+    run: SimWave | null = null;
     safe: SimSafe | null = null;
     /** Ms until the safe portal next opens. */
     safeClock: number;
     wave = 0;
-    /** Ms until the next portal opens. */
+    /** Ms until the next wave starts. */
     clock: number;
     private nextId = 1;
     private readonly env: SimEnv;
@@ -175,11 +174,11 @@ export class GameSim {
         this.safeClock = opts.safeFirstMs * (0.7 + 0.6 * env.rand());
     }
 
-    /** Remove every monster, drop and portal (the wave counter and timer stay). */
+    /** Remove every monster, drop and any running wave (the wave counter and timer stay). */
     clear(): void {
         this.monsters.clear();
         this.drops.clear();
-        this.portal = null;
+        this.run = null;
         this.safe = null;
     }
 
@@ -194,22 +193,17 @@ export class GameSim {
         const players = this.env.players();
 
         // The wave timer runs only while someone is in the world to fight.
-        if (!this.portal && players.length > 0) {
+        if (!this.run && players.length > 0) {
             this.clock -= dtMs;
             if (this.clock <= 0) {
-                const next = this.wave + 1;
-                const portal = this.openPortal(next, players);
-                if (portal) {
-                    this.wave = next;
-                    this.portal = portal;
-                    this.clock = this.opts.everyMs;
-                    events.push({ type: 'wave', wave: next, u: portal.u, v: portal.v });
-                } else {
-                    this.clock = 8000; // no room near anyone; try again shortly
-                }
+                this.wave += 1;
+                const spec = waveSpec(this.wave, players.length);
+                this.run = { wave: this.wave, age: 0, toSpawn: spec.count, nextIn: 800, every: WAVE_SPAWN_WINDOW_MS / spec.count };
+                this.clock = this.opts.everyMs;
+                events.push({ type: 'wave', wave: this.wave });
             }
         }
-        if (this.portal) this.updatePortal(this.portal, dtMs, players);
+        if (this.run) this.updateWave(this.run, dtMs, players);
 
         // The safe portal: opens at a random spot near a random player, stays a short while, then closes.
         if (this.safe) {
@@ -309,13 +303,13 @@ export class GameSim {
 
     /** Compact snapshot for the wire (arrays keep it small at 10 per second). */
     snapshot() {
-        const p = this.portal;
+        const p = this.run;
         return {
             m: [...this.monsters.values()].map((m) => [
                 m.id, KIND_NAMES.indexOf(m.kind as (typeof KIND_NAMES)[number]), round(m.u), round(m.v), m.hp, m.max, STATES.indexOf(m.state), Math.round(m.t),
             ]),
             d: [...this.drops.values()].map((d) => [d.id, SKILLS.indexOf(d.skill), round(d.u), round(d.v), Math.round(d.age)]),
-            p: p ? [round(p.u), round(p.v), p.wave, Math.round(p.age), p.doneAt === null ? -1 : Math.round(p.doneAt)] : null,
+            p: p ? [p.wave, Math.round(p.age), p.toSpawn] : null,
             s: this.safe ? [round(this.safe.u), round(this.safe.v), Math.round(this.safe.age), this.safe.lasts] : null,
             w: this.wave,
             nx: p ? 0 : Math.max(0, Math.ceil(this.clock / 1000)),
@@ -324,41 +318,41 @@ export class GameSim {
 
     // ---- internals ----
 
-    private openPortal(wave: number, players: SimPlayer[]): SimPortal | null {
+    /** Send in the wave's monsters one by one, each appearing off-screen around a random player. */
+    private updateWave(w: SimWave, dtMs: number, players: SimPlayer[]): void {
+        w.age += dtMs;
+        if (w.toSpawn > 0 && players.length > 0) {
+            w.nextIn -= dtMs;
+            if (w.nextIn <= 0) {
+                const spec = waveSpec(w.wave, players.length);
+                const spot = this.findSpawnSpot(players);
+                if (spot) {
+                    const kind = spec.kinds[Math.floor(this.env.rand() * spec.kinds.length)];
+                    this.spawn(kind, spot.u, spot.v, { hpMul: spec.hpMul, speedMul: spec.speedMul, damage: spec.damage });
+                    w.toSpawn -= 1;
+                    w.nextIn = w.every * (0.7 + this.env.rand() * 0.6);
+                } else {
+                    w.nextIn = 500; // no free ground just now; try again shortly
+                }
+            }
+        }
+        if (w.toSpawn <= 0) this.run = null; // everyone is out; the next wave starts after the usual gap
+    }
+
+    /** A spot 10-16 tiles from a random player (and 9+ from all): free ground, outside any safe zone. */
+    private findSpawnSpot(players: SimPlayer[]): { u: number; v: number } | null {
         const anchor = players[Math.floor(this.env.rand() * players.length)];
-        const spec = waveSpec(wave, players.length);
-        for (let n = 0; n < 40; n++) {
+        for (let n = 0; n < 30; n++) {
             const ang = this.env.rand() * Math.PI * 2;
             const d = DIST_MIN + this.env.rand() * (DIST_MAX - DIST_MIN);
             const u = anchor.u + Math.cos(ang) * d;
             const v = anchor.v + Math.sin(ang) * d;
-            if (u < 4 || v < 4 || u > 252 || v > 252 || !this.env.canStand(u, v)) continue;
-            return { u, v, wave, age: 0, toSpawn: spec.count, nextIn: 600, every: PORTAL_SPAWN_WINDOW_MS / spec.count, doneAt: null };
+            if (u < 4 || v < 4 || u > 252 || v > 252 || !this.env.canStand(u, v) || this.inSafe(u, v)) continue;
+            // Never right next to anyone: at least 9 tiles from every player.
+            if (players.some((p) => Math.hypot(p.u - u, p.v - v) < DIST_MIN - 1)) continue;
+            return { u, v };
         }
         return null;
-    }
-
-    private updatePortal(p: SimPortal, dtMs: number, players: SimPlayer[]): void {
-        p.age += dtMs;
-        if (p.toSpawn > 0 && players.length > 0) {
-            p.nextIn -= dtMs;
-            if (p.nextIn <= 0) {
-                const spec = waveSpec(p.wave, players.length);
-                const kind = spec.kinds[Math.floor(this.env.rand() * spec.kinds.length)];
-                let u = p.u;
-                let v = p.v;
-                for (let n = 0; n < 8; n++) {
-                    const cu = p.u + (this.env.rand() - 0.5) * 2.4;
-                    const cv = p.v + (this.env.rand() - 0.5) * 2.4;
-                    if (this.env.canStand(cu, cv)) { u = cu; v = cv; break; }
-                }
-                this.spawn(kind, u, v, { hpMul: spec.hpMul, speedMul: spec.speedMul, damage: spec.damage });
-                p.toSpawn -= 1;
-                p.nextIn = p.every * (0.7 + this.env.rand() * 0.6);
-            }
-        }
-        if (p.toSpawn <= 0 && p.doneAt === null) p.doneAt = p.age + PORTAL_LINGER_MS;
-        if (p.doneAt !== null && p.age >= p.doneAt + PORTAL_CLOSE_MS) this.portal = null;
     }
 
     private findSafeSpot(players: SimPlayer[]): { u: number; v: number } | null {

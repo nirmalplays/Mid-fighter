@@ -5,7 +5,7 @@
  * everyone else after validating them (coordinates clamped, no teleporting, names,
  * tools and actions checked against fixed lists).
  *
- * Combat: the server owns the monsters, the wave portal and the drops (src/shared/sim.ts),
+ * Combat: the server owns the monsters, the waves and the drops (src/shared/sim.ts),
  * so every player sees the same enemies. It simulates 10 times a second and broadcasts a
  * compact snapshot. Clients propose swings ('hit') and pickups; the server decides who
  * is hit, who gets which gem, and tells each player when a monster bit them.
@@ -47,7 +47,7 @@ interface SimOut { type: 'sim'; m: number[][]; d: number[][]; p: number[] | null
 interface BiteOut { type: 'bite'; damage: number }
 interface KillOut { type: 'kill'; kind: string }
 interface GainOut { type: 'gain'; skill: string; id: number }
-interface WaveOut { type: 'wave'; wave: number; u: number; v: number }
+interface WaveOut { type: 'wave'; wave: number }
 interface SafeOut { type: 'safe'; u: number; v: number }
 type Protocol = PoseMsg | ActMsg | AwayMsg | HelloMsg | HitMsg | PickupMsg | SnapshotMsg | PoseOut | ActOut | AwayOut | SimOut | BiteOut | KillOut | GainOut | WaveOut | SafeOut;
 
@@ -205,7 +205,7 @@ export default class WorldRoom extends GameRoom<Protocol> {
         this.lastTick = now;
         this.dispatch(sim.update(dt));
         // Send every tick while there is something moving; once a second otherwise (the wave countdown).
-        const busy = sim.monsters.size > 0 || sim.drops.size > 0 || sim.portal !== null || sim.safe !== null;
+        const busy = sim.monsters.size > 0 || sim.drops.size > 0 || sim.run !== null || sim.safe !== null;
         this.quietFor += dt;
         if (busy || this.quietFor >= 1000) {
             this.quietFor = 0;
@@ -217,7 +217,7 @@ export default class WorldRoom extends GameRoom<Protocol> {
         for (const e of events) {
             if (e.type === 'bite') this.sendTo(e.playerId, { type: 'bite', damage: e.damage });
             else if (e.type === 'kill') this.sendTo(e.playerId, { type: 'kill', kind: e.kind });
-            else if (e.type === 'wave') this.broadcast({ type: 'wave', wave: e.wave, u: e.u, v: e.v });
+            else if (e.type === 'wave') this.broadcast({ type: 'wave', wave: e.wave });
             else this.broadcast({ type: 'safe', u: e.u, v: e.v });
         }
     }

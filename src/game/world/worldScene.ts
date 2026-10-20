@@ -31,7 +31,6 @@ import { createInput, JOY_RADIUS } from './input.ts';
 import { createDropView, SKILL_CAP, SKILL_COLOR, SKILL_NAMES, type Skill } from './drops.ts';
 import { createMonsterView } from './monsters.ts';
 import { createSafeView } from './safeZone.ts';
-import { createPortalView } from './waves.ts';
 import { createWorldSim } from './worldSim.ts';
 import { ISO_FRAMES, ISO_SCALE } from './isoAtlas.ts';
 import { generateWorld, GRASS, MAX_HEIGHT, SAND, STONE, WATER, type Flat, type Prop } from './mapGen.ts';
@@ -462,7 +461,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     let enterTo = { x: 0, y: 0 };
     let exited = false;
 
-    // Monsters, the wave portal and drops: shown from the shared simulation (the server's when
+    // Monsters, waves and drops: shown from the shared simulation (the server's when
     // online, a local copy offline) via world/worldSim.ts; swings and pickups are sent to it.
     let invuln = 0; // ms of grace after being bitten
     let bannerId = 0;
@@ -485,7 +484,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     const sim = createWorldSim({
         map,
         player: () => ({ id: 'me', u: pu, v: pv, alive: !character.dead && !entering }),
-        // Debug: ?firstWave=<s>&waveEvery=<s> shorten the portal timers when playing offline.
+        // Debug: ?firstWave=<s>&waveEvery=<s> shorten the wave timers when playing offline.
         everySec: Number(q.get('waveEvery')) || 120,
         firstSec: Number(q.get('firstWave')) || 20,
         on: {
@@ -502,7 +501,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             },
             wave: (n) => {
                 progress.reachWave(n);
-                banner(`Wave ${n}! A portal has opened`);
+                banner(`Wave ${n}! Monsters are coming`);
             },
             safe: () => banner('Safe portal open! Reach it to rest in the workshop'),
         },
@@ -533,14 +532,6 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     });
     const safeView = createSafeView({
         layer: objects,
-        heightAt,
-        toScreen: worldPoint,
-        zFor: sortZ,
-        levelH: LEVEL_H,
-    });
-    const portalView = createPortalView({
-        layer: objects,
-        glowTex,
         heightAt,
         toScreen: worldPoint,
         zFor: sortZ,
@@ -688,19 +679,14 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         // Online positions arrive ten times a second, so ease between them; offline updates every frame.
         monsterView.sync(view.monsters, ticker.deltaMS, view.online ? 110 : 0);
         dropView.sync(view.drops, ticker.deltaMS);
-        portalView.sync(view.portal, ticker.deltaMS);
         safeView.sync(view.safe, ticker.deltaMS);
         hudClock -= ticker.deltaMS;
         if (hudClock <= 0) {
             hudClock = 150;
-            const portal = view.portal;
-            const aim = portal
-                ? (() => {
-                    const dx = (portal.u - pu - (portal.v - pv)) * TILE_DX;
-                    const dy = (portal.u - pu + (portal.v - pv)) * TILE_DY;
-                    return { angle: Math.atan2(dy, dx), dist: Math.hypot(portal.u - pu, portal.v - pv) };
-                })()
-                : null;
+            // Monsters left in the wave: those alive and fighting plus those still to arrive.
+            let alive = 0;
+            for (const m of view.monsters) if (m.state !== 'dying') alive++;
+            const waveLeft = view.run || alive > 0 ? alive + (view.run?.toSpawn ?? 0) : null;
             const sf = view.safe;
             const safeAim = sf
                 ? {
@@ -709,7 +695,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                     left: Math.max(0, Math.ceil((sf.lasts - sf.age) / 1000)),
                 }
                 : null;
-            store.patch({ wave: view.wave, nextWaveIn: view.nextIn, portalAim: aim, safeAim, sharedMonsters: view.online });
+            store.patch({ wave: view.wave, nextWaveIn: view.nextIn, waveLeft, safeAim, sharedMonsters: view.online });
         }
         wasLocked = character.locked;
 
@@ -756,9 +742,8 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             sim.destroy();
             monsterView.destroy();
             dropView.destroy();
-            portalView.destroy();
             safeView.destroy();
-            store.patch({ portalAim: null, safeAim: null, banner: null });
+            store.patch({ waveLeft: null, safeAim: null, banner: null });
             remotes.destroy();
             net.sendAway();
             progress.record({ scene: 'world', u: pu, v: pv, tool: character.tool, hp: store.get().hp });

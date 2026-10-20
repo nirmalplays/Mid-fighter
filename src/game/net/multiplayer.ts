@@ -23,6 +23,7 @@ export interface RemotePose {
 export interface SimSnapshot {
     m: number[][];
     d: number[][];
+    /** The running wave: [wave, age ms, monsters still to come], or null between waves. */
     p: number[] | null;
     /** The safe (workshop) portal: [u, v, age ms, lasts ms], or null. */
     s: number[] | null;
@@ -37,7 +38,7 @@ export type NetEvent =
     | { type: 'bite'; damage: number }
     | { type: 'kill'; kind: string }
     | { type: 'gain'; skill: string; id: number }
-    | { type: 'wave'; wave: number; u: number; v: number }
+    | { type: 'wave'; wave: number }
     | { type: 'safe'; u: number; v: number };
 
 export interface Remote {

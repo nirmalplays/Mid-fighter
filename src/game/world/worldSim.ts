@@ -10,7 +10,6 @@ import { net, type SimSnapshot } from '../net/multiplayer.ts';
 import type { WorldMap } from './mapGen.ts';
 import type { ViewDrop } from './drops.ts';
 import type { ViewMonster } from './monsters.ts';
-import type { ViewPortal } from './waves.ts';
 
 const MAP_TILES = 256;
 
@@ -26,10 +25,11 @@ export interface ViewSafe {
 export interface WorldView {
     monsters: ViewMonster[];
     drops: ViewDrop[];
-    portal: ViewPortal | null;
+    /** The wave that is still sending in monsters (how many are still to come), or null. */
+    run: { wave: number; toSpawn: number } | null;
     safe: ViewSafe | null;
     wave: number;
-    /** Seconds until the next portal (0 while one is open). */
+    /** Seconds until the next wave (0 while one is spawning). */
     nextIn: number;
     online: boolean;
 }
@@ -56,7 +56,7 @@ export function createWorldSim(opts: {
         bite: (damage: number) => void;
         kill: (kind: string) => void;
         gain: (skill: Skill) => void;
-        wave: (n: number, u: number, v: number) => void;
+        wave: (n: number) => void;
         safe: () => void;
     };
     safeEverySec: number;
@@ -129,7 +129,7 @@ export function createWorldSim(opts: {
         for (const e of events) {
             if (e.type === 'bite' && e.playerId === me) opts.on.bite(e.damage);
             else if (e.type === 'kill' && e.playerId === me) opts.on.kill(e.kind);
-            else if (e.type === 'wave') opts.on.wave(e.wave, e.u, e.v);
+            else if (e.type === 'wave') opts.on.wave(e.wave);
             else if (e.type === 'safe') opts.on.safe();
         }
     };
@@ -139,7 +139,7 @@ export function createWorldSim(opts: {
         if (e.type === 'bite') opts.on.bite(e.damage);
         else if (e.type === 'kill') opts.on.kill(e.kind);
         else if (e.type === 'gain') opts.on.gain((SKILLS as readonly string[]).includes(e.skill) ? (e.skill as Skill) : 'attack');
-        else if (e.type === 'wave') opts.on.wave(e.wave, e.u, e.v);
+        else if (e.type === 'wave') opts.on.wave(e.wave);
         else opts.on.safe();
     });
 
@@ -166,7 +166,7 @@ export function createWorldSim(opts: {
         view() {
             if (net.online()) {
                 const s = net.snap();
-                if (!s) return { monsters: [], drops: [], portal: null, safe: null, wave: 0, nextIn: 0, online: true };
+                if (!s) return { monsters: [], drops: [], run: null, safe: null, wave: 0, nextIn: 0, online: true };
                 if (s !== cachedSnap) {
                     cachedSnap = s;
                     cachedMonsters = s.m.map((m) => ({
@@ -182,17 +182,17 @@ export function createWorldSim(opts: {
                     safe: sf ? { u: sf[0], v: sf[1], age: sf[2] + since, lasts: sf[3] } : null,
                     monsters: cachedMonsters,
                     drops: cachedDrops,
-                    portal: p ? { u: p[0], v: p[1], wave: p[2], age: p[3] + since, doneAt: p[4] } : null,
+                    run: p ? { wave: p[0], toSpawn: p[2] } : null,
                     wave: s.w,
                     nextIn: s.nx,
                     online: true,
                 };
             }
-            const p = local.portal;
+            const p = local.run;
             return {
                 monsters: [...local.monsters.values()].map((m) => ({ id: m.id, kind: m.kind, u: m.u, v: m.v, hp: m.hp, max: m.max, state: m.state, t: m.t })),
                 drops: [...local.drops.values()].map((d) => ({ id: d.id, skill: d.skill, u: d.u, v: d.v, age: d.age })),
-                portal: p ? { u: p.u, v: p.v, wave: p.wave, age: p.age, doneAt: p.doneAt === null ? -1 : p.doneAt } : null,
+                run: p ? { wave: p.wave, toSpawn: p.toSpawn } : null,
                 safe: local.safe ? { u: local.safe.u, v: local.safe.v, age: local.safe.age, lasts: local.safe.lasts } : null,
                 wave: local.wave,
                 nextIn: p ? 0 : Math.max(0, Math.ceil(local.clock / 1000)),

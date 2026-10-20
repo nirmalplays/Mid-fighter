@@ -1,5 +1,6 @@
 /**
- * Draws the monsters (the IsometricEnemies pack: goblins, slimes, wolves, skeletons).
+ * Draws the monsters (the IsometricEnemies pack: goblins, slimes, wolves, skeletons). New ones
+ * simply fade in where the simulation puts them (there is no portal).
  * It owns no game logic: each frame it is handed the list of monsters from the
  * simulation (the server's when online, a local one offline) and shows them, easing
  * positions between updates, picking move / attack / die animations from their state,
@@ -24,6 +25,8 @@ const LOOK: Record<string, { size: number; barY: number; hop: number; moveFrameM
 const KIND_LIST = Object.keys(LOOK);
 const DIE_FRAME_MS = 110;
 const DYING_FADE_MS = 450;
+/** A monster fades in and pops up over this long when it first appears. */
+const SPAWN_IN_MS = 550;
 
 /** A monster as the simulation describes it. */
 export interface ViewMonster {
@@ -47,6 +50,8 @@ interface Shown {
     state: ViewMonster['state'];
     t: number;
     animT: number;
+    /** Ms since it appeared (drives the fade-in). */
+    born: number;
     flash: number;
     walking: boolean;
     sprite: Sprite;
@@ -102,7 +107,7 @@ export function createMonsterView(opts: {
         opts.layer.addChild(shadow, sprite, bar);
         return {
             kind: m.kind, u: m.u, v: m.v, z: opts.heightAt(m.u, m.v) * opts.levelH, hp: m.hp, state: m.state, t: m.t,
-            animT: Math.random() * 1000, flash: 0, walking: false, sprite, shadow, bar,
+            animT: Math.random() * 1000, born: 0, flash: 0, walking: false, sprite, shadow, bar,
         };
     };
     const dispose = (s: Shown) => {
@@ -149,6 +154,7 @@ export function createMonsterView(opts: {
                     s.t += dtMs;
                 }
                 s.animT += dtMs;
+                s.born += dtMs;
                 s.flash = Math.max(0, s.flash - dtMs);
 
                 const look = LOOK[s.kind];
@@ -177,8 +183,11 @@ export function createMonsterView(opts: {
                     idx = s.walking ? Math.floor(s.animT / look.moveFrameMs) % rows[0].length : 0;
                 }
                 s.sprite.texture = rows[face.row][idx];
-                s.sprite.scale.set(SCALE * look.size * (face.flip ? -1 : 1), SCALE * look.size);
-                s.sprite.alpha = fade;
+                // Just appeared: fade in with a small overshoot pop.
+                const inK = Math.min(1, s.born / SPAWN_IN_MS);
+                const pop = 0.7 + 0.3 * inK + 0.12 * Math.sin(inK * Math.PI);
+                s.sprite.scale.set(SCALE * look.size * pop * (face.flip ? -1 : 1), SCALE * look.size * pop);
+                s.sprite.alpha = fade * inK;
                 s.sprite.tint = s.flash > 0 ? 0xffb0b0 : 0xffffff;
 
                 // Place on the terrain, with a little hop while moving.
@@ -187,7 +196,7 @@ export function createMonsterView(opts: {
                 const hop = s.walking && look.hop ? Math.abs(Math.sin(s.animT / 160)) * look.hop : 0;
                 s.sprite.position.set(pos.x, pos.y - s.z - hop);
                 s.shadow.position.set(pos.x, pos.y - s.z + 2);
-                s.shadow.alpha = fade;
+                s.shadow.alpha = fade * inK;
                 const z = opts.zFor(s.u, s.v);
                 s.sprite.zIndex = z - 0.1;
                 s.shadow.zIndex = z - 0.3;
