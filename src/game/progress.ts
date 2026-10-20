@@ -4,8 +4,10 @@
  * cheap — the save system batches them and flushes at most every few seconds, plus
  * when the app is backgrounded.
  */
+import type { Skill } from '../shared/sim.ts';
 import { saveSystem } from '../saveConfig.ts';
 import { store } from '../state/store.ts';
+import { GEM_CAP, SKILL_CAP, upgradeCost } from './skills.ts';
 import { HOTBAR, type Tool } from './world/character.ts';
 
 let fraction = 0;
@@ -36,14 +38,28 @@ export const progress = {
         return saveSystem.data?.skills ?? { attack: 0, defence: 0, speed: 0, vitality: 0 };
     },
 
-    /** Raise a skill by one level (a drop was picked up). Returns the new level. */
-    raise(skill: 'attack' | 'defence' | 'speed' | 'vitality'): number {
+    /** Keep a gem from a drop (it does nothing until spent). Returns false if that colour is full. */
+    addGem(skill: Skill, n = 1): boolean {
         const d = saveSystem.data;
-        if (!d) return 0;
-        d.skills[skill] += 1;
-        store.patch({ skills: { ...d.skills }, maxHp: 6 + 2 * d.skills.vitality });
+        if (!d || d.gems[skill] >= GEM_CAP) return false;
+        d.gems[skill] = Math.min(GEM_CAP, d.gems[skill] + n);
+        store.patch({ gems: { ...d.gems } });
         saveSystem.save();
-        return d.skills[skill];
+        return true;
+    },
+
+    /** Spend gems on one level of a skill. Returns true if it was bought. */
+    buy(skill: Skill): boolean {
+        const d = saveSystem.data;
+        if (!d || d.skills[skill] >= SKILL_CAP[skill]) return false;
+        const cost = upgradeCost(d.skills[skill]);
+        if (d.gems[skill] < cost) return false;
+        d.gems[skill] -= cost;
+        d.skills[skill] += 1;
+        const maxHp = 6 + 2 * d.skills.vitality;
+        store.patch({ gems: { ...d.gems }, skills: { ...d.skills }, maxHp, ...(skill === 'vitality' ? { hp: Math.min(maxHp, store.get().hp + 2) } : {}) });
+        saveSystem.save();
+        return true;
     },
 
     /** Swords this player has found. */
@@ -124,8 +140,8 @@ export const progress = {
     reset(): void {
         const d = saveSystem.data;
         if (!d) return;
-        Object.assign(d, { scene: 'world', world: { u: 128.5, v: 128.5, set: false }, tool: 'none', hp: 6, playSeconds: 0, kills: 0, bestWave: 0, swords: [], sword: -1, skills: { attack: 0, defence: 0, speed: 0, vitality: 0 } });
-        store.patch({ playSeconds: 0, kills: 0, swordsOwned: [], swordIdx: -1, maxHp: 6, hp: 6, skills: { attack: 0, defence: 0, speed: 0, vitality: 0 } });
+        Object.assign(d, { scene: 'world', world: { u: 128.5, v: 128.5, set: false }, tool: 'none', hp: 6, playSeconds: 0, kills: 0, bestWave: 0, swords: [], sword: -1, skills: { attack: 0, defence: 0, speed: 0, vitality: 0 }, gems: { attack: 0, defence: 0, speed: 0, vitality: 0 } });
+        store.patch({ playSeconds: 0, kills: 0, swordsOwned: [], swordIdx: -1, maxHp: 6, hp: 6, skills: { attack: 0, defence: 0, speed: 0, vitality: 0 }, gems: { attack: 0, defence: 0, speed: 0, vitality: 0 } });
         saveSystem.save();
     },
 };

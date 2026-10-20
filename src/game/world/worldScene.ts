@@ -28,8 +28,9 @@ import {
     CHUNK_TILES, LOAD_RADIUS, MAP_CHUNKS, MAP_TILES, TILE_DX, TILE_DY, ZOOM,
 } from './constants.ts';
 import { createInput, JOY_RADIUS } from './input.ts';
+import { GEM_CAP } from '../skills.ts';
 import { SPELLS } from './spells.ts';
-import { createDropView, POTION_COLOR, SKILL_CAP, SKILL_COLOR, SKILL_NAMES, type DropKind, type Skill } from './drops.ts';
+import { createDropView, POTION_COLOR, SKILL_COLOR, SKILL_NAMES, type DropKind, type Skill } from './drops.ts';
 import { createMonsterView } from './monsters.ts';
 import { createSafeView } from './safeZone.ts';
 import { createWorldSim } from './worldSim.ts';
@@ -474,7 +475,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     const BUFF_MS: Record<string, number> = { blue: 20000, yellow: 15000, purple: 12000, black: 15000 };
     let buffShown = '';
     const hurtPlayer = (n: number) => {
-        if (invuln > 0 || character.dead || entering) return;
+        if (invuln > 0 || character.dead || entering || store.get().shop) return; // no bites while shopping
         invuln = 1500;
         if (buffMs.purple > 0) {
             dropView.text(player.x, player.y - 70, 'Shielded!', POTION_COLOR.purple);
@@ -527,23 +528,17 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                         commands.emit({ type: 'equip', tool: 'sword' });
                         dropView.text(player.x, player.y - 78, 'New sword!', 0xffe27a);
                         banner('Rare drop! You found a new sword');
-                    } else if (store.get().skills.attack < SKILL_CAP.attack) {
-                        progress.raise('attack');
-                        dropView.text(player.x, player.y - 78, 'Duplicate · Attack +1', SKILL_COLOR.attack);
-                        banner('You already have that sword: Attack +1');
                     } else {
-                        dropView.text(player.x, player.y - 78, 'Duplicate sword', 0xffe27a);
+                        progress.addGem('attack');
+                        dropView.text(player.x, player.y - 78, 'Duplicate · Attack gem +1', SKILL_COLOR.attack);
+                        banner('You already have that sword: +1 Attack gem');
                     }
                     return;
                 }
+                // A gem: kept until you spend it on an upgrade at the workshop or a visiting frog.
                 const skill = kind as Skill;
-                const level = store.get().skills[skill];
-                if (level >= SKILL_CAP[skill]) return;
-                progress.raise(skill);
-                if (skill === 'vitality') store.patch({ hp: Math.min(store.get().maxHp, store.get().hp + 2) });
-                const gain = skill === 'vitality' ? '+1 Heart' : `${SKILL_NAMES[skill]} ${level + 1}`;
-                dropView.text(player.x, player.y - 78, gain, SKILL_COLOR[skill]);
-                banner(skill === 'vitality' ? 'Vitality up! +1 heart' : `${SKILL_NAMES[skill]} up! Level ${level + 1}`);
+                if (!progress.addGem(skill)) return;
+                dropView.text(player.x, player.y - 78, `+1 ${SKILL_NAMES[skill]} gem`, SKILL_COLOR[skill]);
             },
             wave: (n) => {
                 progress.reachWave(n);
@@ -575,7 +570,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         player: () => ({ u: pu, v: pv, alive: !character.dead && !entering }),
         wantsSkill: (kind: DropKind) => {
             if (kind === 'potion_red') return store.get().hp < store.get().maxHp;
-            return kind === 'sword' || kind.startsWith('potion_') || store.get().skills[kind as Skill] < SKILL_CAP[kind as Skill];
+            return kind === 'sword' || kind.startsWith('potion_') || store.get().gems[kind as Skill] < GEM_CAP;
         },
         onTouch: (id) => sim.take(id),
     });
@@ -662,6 +657,94 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         objects.addChild(s);
         slashes.push({ s, t: 0, row });
         slashFlip = -slashFlip;
+    };
+    // A frog shopkeeper visits now and then: walk up to it to spend gems on upgrades (the workshop works too).
+    const frogSheet = Assets.get<Texture>('frog');
+    frogSheet.source.scaleMode = 'linear';
+    const frogTex = [0, 1, 2].map((n) => new Texture({ source: frogSheet.source, frame: new Rectangle(n * 175, 0, 175, 175) }));
+    const frogSprite = new Sprite(frogTex[0]);
+    frogSprite.anchor.set(0.5, 0.92);
+    frogSprite.scale.set(0.85);
+    const frogGlow = new Sprite(glowTex);
+    frogGlow.anchor.set(0.5);
+    frogGlow.tint = 0x7cfc8a;
+    frogGlow.scale.set(0.7);
+    const frogShadow = new Sprite(shadowTex);
+    frogShadow.anchor.set(0.5);
+    frogSprite.visible = frogGlow.visible = frogShadow.visible = false;
+    objects.addChild(frogGlow, frogShadow, frogSprite);
+    // Debug: ?frogFirst=<s>&frogEvery=<s> change the timing.
+    const FROG_FIRST = (Number(q.get('frogFirst')) || 70) * 1000;
+    const FROG_EVERY = (Number(q.get('frogEvery')) || 170) * 1000;
+    const FROG_STAYS = 40000;
+    let frog: { u: number; v: number; age: number } | null = null;
+    let frogClock = FROG_FIRST;
+    let frogSeen = false;
+    const findFrogSpot = (): { u: number; v: number } | null => {
+        const free = (i: number, j: number) => {
+            for (let dj = -1; dj <= 1; dj++) {
+                for (let di = -1; di <= 1; di++) {
+                    const k = (j + dj) * MAP_TILES + (i + di);
+                    if (map.terrain[k] === 4 || map.blocked[k] === 1) return false;
+                }
+            }
+            return true;
+        };
+        for (let n = 0; n < 60; n++) {
+            const ang = Math.random() * Math.PI * 2;
+            const d = 7 + Math.random() * 7;
+            const u = pu + Math.cos(ang) * d;
+            const v = pv + Math.sin(ang) * d;
+            const i = Math.floor(u);
+            const j = Math.floor(v);
+            if (i < 6 || j < 6 || i > MAP_TILES - 7 || j > MAP_TILES - 7 || !free(i, j)) continue;
+            if (Math.abs(heightAt(i, j) - heightAt(i + 1, j)) > 1 || Math.abs(heightAt(i, j) - heightAt(i, j + 1)) > 1) continue;
+            return { u: i + 0.5, v: j + 0.5 };
+        }
+        return null;
+    };
+    const updateFrog = (dtMs: number) => {
+        if (!frog) {
+            if (!character.dead && !entering) frogClock -= dtMs;
+            if (frogClock <= 0) {
+                const spot = findFrogSpot();
+                if (spot) {
+                    frog = { ...spot, age: 0 };
+                    frogSeen = false;
+                    banner('A frog is here! Find it to spend your gems');
+                } else {
+                    frogClock = 5000;
+                }
+            }
+        } else {
+            frog.age += dtMs;
+            if (frog.age >= FROG_STAYS) {
+                frog = null;
+                frogClock = FROG_EVERY * (0.8 + Math.random() * 0.4);
+            } else if (!character.dead && !entering) {
+                const near = Math.hypot(frog.u - pu, frog.v - pv);
+                if (near < 1.9 && !frogSeen && !store.get().shop) {
+                    frogSeen = true;
+                    store.patch({ shop: true });
+                } else if (near > 3.8) frogSeen = false;
+            }
+        }
+        frogSprite.visible = frogGlow.visible = frogShadow.visible = frog !== null;
+        if (!frog) return;
+        const at = worldPoint(frog.u, frog.v);
+        const ground = heightAt(frog.u, frog.v) * LEVEL_H;
+        const hop = Math.max(0, Math.sin(clock / 330)) * 10;
+        frogSprite.texture = frogTex[Math.floor(clock / 450) % 3 === 2 ? 2 : Math.floor(clock / 900) % 2];
+        frogSprite.position.set(at.x, at.y - ground - hop);
+        frogShadow.position.set(at.x, at.y - ground);
+        frogGlow.position.set(at.x, at.y - ground);
+        frogGlow.alpha = 0.55 + 0.2 * Math.sin(clock / 260);
+        const z = sortZ(frog.u, frog.v);
+        frogSprite.zIndex = z + 0.05;
+        frogShadow.zIndex = z - 0.3;
+        frogGlow.zIndex = z - 0.35;
+        // Blink away in the last few seconds.
+        frogSprite.alpha = frog.age > FROG_STAYS - 5000 && Math.floor(frog.age / 200) % 2 === 0 ? 0.35 : 1;
     };
     const offStrike = commands.subscribe((c) => {
         if ((c.type === 'attack' || c.type === 'use') && !wasLocked && character.locked && !character.dead && character.tool === 'sword') slashAt();
@@ -787,6 +870,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         net.sendPose({ scene: 'world', u: pu, v: pv, z: pz, face: character.facing, anim: pu !== fromU || pv !== fromV ? character.anim : 'idle', tool: character.tool, dead: character.dead, sword: character.sword });
         remotes.update(ticker.deltaMS);
         invuln = Math.max(0, invuln - ticker.deltaMS);
+        updateFrog(ticker.deltaMS);
         for (let i = slashes.length - 1; i >= 0; i--) {
             const sl = slashes[i];
             sl.t += ticker.deltaMS;
@@ -854,7 +938,14 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                     left: Math.max(0, Math.ceil((sf.lasts - sf.age) / 1000)),
                 }
                 : null;
-            store.patch({ wave: view.wave, nextWaveIn: view.nextIn, waveLeft, safeAim, sharedMonsters: view.online });
+            const frogAim = frog
+                ? {
+                    angle: Math.atan2((frog.u - pu + (frog.v - pv)) * TILE_DY, (frog.u - pu - (frog.v - pv)) * TILE_DX),
+                    dist: Math.hypot(frog.u - pu, frog.v - pv),
+                    left: Math.max(0, Math.ceil((FROG_STAYS - frog.age) / 1000)),
+                }
+                : null;
+            store.patch({ wave: view.wave, nextWaveIn: view.nextIn, waveLeft, safeAim, frogAim, sharedMonsters: view.online });
         }
         wasLocked = character.locked;
 
@@ -902,7 +993,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             monsterView.destroy();
             dropView.destroy();
             safeView.destroy();
-            store.patch({ waveLeft: null, safeAim: null, banner: null });
+            store.patch({ waveLeft: null, safeAim: null, frogAim: null, shop: false, banner: null });
             remotes.destroy();
             net.sendAway();
             progress.record({ scene: 'world', u: pu, v: pv, tool: character.tool, hp: store.get().hp });

@@ -11,6 +11,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { commands, type GameCommand } from '../game/commands.ts';
 import { store, useStore } from '../state/store.ts';
+import { progress } from '../game/progress.ts';
+import { SKILL_BLURB, SKILL_CAP, upgradeCost } from '../game/skills.ts';
+import type { Skill } from '../shared/sim.ts';
 import { SPELLS } from '../game/world/spells.ts';
 
 const TAN = '#e9bf9a';
@@ -157,21 +160,22 @@ function Clock() {
     );
 }
 
-const SKILL_CHIPS: { key: 'attack' | 'defence' | 'speed'; color: string; label: string }[] = [
+const SKILL_CHIPS: { key: Skill; color: string; label: string }[] = [
     { key: 'attack', color: '#ff6b6b', label: 'Attack' },
     { key: 'defence', color: '#6ba8ff', label: 'Defence' },
     { key: 'speed', color: '#5ee08a', label: 'Speed' },
+    { key: 'vitality', color: '#ffc94d', label: 'Vitality' },
 ];
 
-/** Skill levels earned from monster drops: just the gem and the number, under the health plaque. */
+/** Gems collected from monster drops and not yet spent: just the gem and the number, under the health plaque. */
 function SkillChips() {
-    const skills = useStore((s) => s.skills);
+    const skills = useStore((s) => s.gems);
     return (
         <div className="absolute left-3 flex gap-3" style={{ top: 80 }}>
             {SKILL_CHIPS.map((c) => (
                 <div
                     key={c.key}
-                    aria-label={`${c.label} ${skills[c.key]}`}
+                    aria-label={`${c.label} gems ${skills[c.key]}`}
                     className="flex items-center gap-0.5 text-[17px] font-black tabular-nums text-white"
                     style={{ textShadow: '0 2px 0 #1a0c10, 0 0 4px #1a0c10, 2px 0 0 #1a0c10, -2px 0 0 #1a0c10' }}
                 >
@@ -179,6 +183,74 @@ function SkillChips() {
                     {skills[c.key]}
                 </div>
             ))}
+        </div>
+    );
+}
+
+/** A visiting frog while it is around: an arrow to it, distance and seconds left. */
+function FrogPill() {
+    const aim = useStore((s) => s.frogAim);
+    const safe = useStore((s) => s.safeAim);
+    if (!aim) return null;
+    return (
+        <div
+            className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-xl px-3 text-[13px] font-black tabular-nums text-white"
+            style={{ top: safe ? 82 : 46, height: 30, background: 'rgba(40,90,20,.88)', border: '3px solid #a3e635' }}
+        >
+            <span style={{ display: 'inline-block', transform: `rotate(${aim.angle}rad)`, fontSize: 15, lineHeight: 1 }}>➤</span>
+            <span>Frog · {Math.round(aim.dist)} tiles · {aim.left}s</span>
+        </div>
+    );
+}
+
+/** Spend gems on skill levels (opened by the frog, or from the workshop). */
+function UpgradePanel() {
+    const open = useStore((s) => s.shop);
+    const gems = useStore((s) => s.gems);
+    const skills = useStore((s) => s.skills);
+    if (!open) return null;
+    return (
+        <div className="pointer-events-auto absolute inset-0 z-20 flex items-center justify-center" style={{ background: 'rgba(10,6,16,.45)' }}>
+            <div
+                className="flex flex-col gap-2 rounded-2xl p-3"
+                style={{ width: 360, background: `linear-gradient(${TAN_LIGHT}, ${TAN})`, border: `4px solid ${BROWN}`, boxShadow: `inset 0 0 0 2px ${TAN_LIGHT}, 0 4px 0 ${BROWN_DARK}`, color: INK }}
+            >
+                <div className="flex items-center justify-between">
+                    <span className="text-lg font-black" style={{ color: BROWN_DARK }}>Spend gems</span>
+                    <button
+                        type="button"
+                        className="rounded-lg px-3 font-black active:translate-y-[2px]"
+                        style={{ height: 32, background: '#fff', border: `3px solid ${BROWN}`, fontSize: 14 }}
+                        onPointerDown={(e) => { e.preventDefault(); store.patch({ shop: false }); }}
+                    >
+                        Close
+                    </button>
+                </div>
+                {SKILL_CHIPS.map((c) => {
+                    const level = skills[c.key];
+                    const maxed = level >= SKILL_CAP[c.key];
+                    const cost = upgradeCost(level);
+                    const can = !maxed && gems[c.key] >= cost;
+                    return (
+                        <div key={c.key} className="flex items-center gap-2 rounded-xl px-2 py-1" style={{ background: 'rgba(255,255,255,.55)', border: `2px solid ${BROWN}` }}>
+                            <img src={`images/hud/gem-${c.key}.png`} width={34} height={34} draggable={false} alt="" />
+                            <div className="flex-1 leading-tight">
+                                <div className="text-[15px] font-black">{c.label} · Lv {level}/{SKILL_CAP[c.key]}</div>
+                                <div className="text-[12px] font-bold" style={{ color: BROWN_DARK }}>{SKILL_BLURB[c.key]} · you have {gems[c.key]}</div>
+                            </div>
+                            <button
+                                type="button"
+                                disabled={!can}
+                                className="rounded-lg px-3 font-black active:translate-y-[2px]"
+                                style={{ height: 36, minWidth: 74, background: can ? '#7ee081' : '#cfc3b8', border: `3px solid ${BROWN}`, fontSize: 14, opacity: can ? 1 : 0.7 }}
+                                onPointerDown={(e) => { e.preventDefault(); progress.buy(c.key); }}
+                            >
+                                {maxed ? 'Max' : `${cost} gem${cost > 1 ? 's' : ''}`}
+                            </button>
+                        </div>
+                    );
+                })}
+            </div>
         </div>
     );
 }
@@ -455,7 +527,31 @@ export default function Hud() {
                     {inBase ? 'World' : 'Workshop'}
                 </button>
             </div>
+            {inBase && (
+                <div className="absolute right-3 top-[106px] pt-safe-top">
+                    <button
+                        type="button"
+                        className="pointer-events-auto touch-none rounded-xl px-3 font-black active:translate-y-[3px]"
+                        style={{
+                            height: 34,
+                            background: `linear-gradient(${TAN_LIGHT}, ${TAN})`,
+                            border: `4px solid ${BROWN}`,
+                            boxShadow: `inset 0 0 0 2px ${TAN_LIGHT}, 0 3px 0 ${BROWN_DARK}`,
+                            color: INK,
+                            fontSize: 14,
+                        }}
+                        onPointerDown={(e) => {
+                            e.preventDefault();
+                            store.patch({ shop: true });
+                        }}
+                    >
+                        Upgrades
+                    </button>
+                </div>
+            )}
 
+            {!inBase && <FrogPill />}
+            <UpgradePanel />
             <Hotbar />
             {!inBase && <SkillChips />}
             {!inBase && <WavePill />}

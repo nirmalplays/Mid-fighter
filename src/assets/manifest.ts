@@ -31,6 +31,7 @@ export const MANIFEST: Manifest = {
                 { alias: 'iso', src: 'images/world/iso.png' },
                 { alias: 'swords', src: 'images/swords.png' },
                 { alias: 'slashes', src: 'images/slashes.png' },
+                { alias: 'frog', src: 'images/world/frog.png' },
                 { alias: 'potion_red', src: 'images/potions/red.png' },
                 { alias: 'potion_blue', src: 'images/potions/blue.png' },
                 { alias: 'potion_yellow', src: 'images/potions/yellow.png' },

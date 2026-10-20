@@ -28,6 +28,7 @@ async function boot() {
         swordsOwned: save.swords,
         swordIdx: save.sword,
         skills: { ...save.skills },
+        gems: { ...save.gems },
         maxHp: 6 + 2 * save.skills.vitality,
     });
 

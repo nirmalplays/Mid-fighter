@@ -37,6 +37,12 @@ export interface AppState {
     maxHp: number;
     /** Skill levels from drops, and the wave reached (0 before the first) */
     skills: { attack: number; defence: number; speed: number; vitality: number };
+    /** Gems held (spent on skills at the workshop or a frog) */
+    gems: { attack: number; defence: number; speed: number; vitality: number };
+    /** Is the upgrade panel open? */
+    shop: boolean;
+    /** A visiting frog: bearing, distance in tiles and seconds left */
+    frogAim: { angle: number; dist: number; left: number } | null;
     wave: number;
     /** Seconds until the next wave starts */
     nextWaveIn: number;
@@ -80,6 +86,9 @@ let state: AppState = {
     hp: 6,
     maxHp: 6,
     skills: { attack: 0, defence: 0, speed: 0, vitality: 0 },
+    gems: { attack: 0, defence: 0, speed: 0, vitality: 0 },
+    shop: false,
+    frogAim: null,
     wave: 0,
     nextWaveIn: 0,
     waveLeft: null,

@@ -10,11 +10,10 @@
 import { Assets, Container, Rectangle, Sprite, Text, Texture, type TextStyleOptions } from 'pixi.js';
 import { DROP_LIFE_MS, type DropKind, type Skill } from '../../shared/sim.ts';
 import { DROP_FRAMES } from './dropsAtlas.ts';
+import { SKILL_CAP, SKILL_COLOR, SKILL_NAMES } from '../skills.ts';
 
 export type { DropKind, Skill };
-export const SKILL_NAMES: Record<Skill, string> = { attack: 'Attack', defence: 'Defence', speed: 'Speed', vitality: 'Vitality' };
-export const SKILL_CAP: Record<Skill, number> = { attack: 10, defence: 10, speed: 10, vitality: 4 };
-export const SKILL_COLOR: Record<Skill, number> = { attack: 0xff6b6b, defence: 0x6ba8ff, speed: 0x5ee08a, vitality: 0xffc94d };
+export { SKILL_CAP, SKILL_COLOR, SKILL_NAMES };
 
 /** Glow colour of each potion drop. */
 export const POTION_COLOR: Record<string, number> = { red: 0xff5a5a, blue: 0x5aa8ff, yellow: 0xffd84d, purple: 0xb070ff, black: 0x9a8ab0 };

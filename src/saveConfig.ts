@@ -24,8 +24,10 @@ export interface FighterSave {
     /** Swords found (indices 0-29 into the sword sheet), and the one held (-1 = the original iron sword). */
     swords: number[];
     sword: number;
-    /** Skill levels raised by monster drops. Vitality adds a heart each. */
+    /** Skill levels bought with gems. Vitality adds a heart each. */
     skills: { attack: number; defence: number; speed: number; vitality: number };
+    /** Gems collected and not yet spent (at the workshop or a frog). */
+    gems: { attack: number; defence: number; speed: number; vitality: number };
 }
 
 export function defaultSave(): FighterSave {
@@ -41,6 +43,7 @@ export function defaultSave(): FighterSave {
         swords: [],
         sword: -1,
         skills: { attack: 0, defence: 0, speed: 0, vitality: 0 },
+        gems: { attack: 0, defence: 0, speed: 0, vitality: 0 },
     };
 }
 
@@ -65,6 +68,9 @@ export const saveSystem = createSaveSystem<FighterSave>({
         if (typeof s.skills !== 'object' || !s.skills) s.skills = { ...def.skills };
         fillMissing(s.skills, def.skills);
         for (const k of ['attack', 'defence', 'speed', 'vitality'] as const) if (!(s.skills[k] >= 0)) s.skills[k] = 0;
+        if (typeof s.gems !== 'object' || !s.gems) s.gems = { ...def.gems };
+        fillMissing(s.gems, def.gems);
+        for (const k of ['attack', 'defence', 'speed', 'vitality'] as const) if (!(s.gems[k] >= 0)) s.gems[k] = 0;
         if (!(s.hp >= 0 && s.hp <= 6 + 2 * s.skills.vitality)) s.hp = Math.min(6 + 2 * s.skills.vitality, Math.max(1, s.hp));
     },
 });
