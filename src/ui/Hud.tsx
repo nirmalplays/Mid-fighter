@@ -18,19 +18,38 @@ const BROWN = '#b4725b';
 const BROWN_DARK = '#7d4636';
 const INK = '#3a2025';
 
-/** A tan rounded-square button with a brown rim, as in the reference. */
-function PixelBtn({ size, onPress, className = '', children }: { size: number; onPress: () => void; className?: string; children: ReactNode }) {
+/** The outline colour used by the game's sprites (dark plum). Buttons and icons share it. */
+const PLUM = '#2b0f1c';
+
+type Face = 'tan' | 'red' | 'dark';
+const FACES: Record<Face, { light: string; mid: string; dark: string }> = {
+    tan: { light: '#fff1d6', mid: '#f1c996', dark: '#d79c68' },
+    red: { light: '#ff9a82', mid: '#ee5a48', dark: '#c0342f' },
+    dark: { light: '#6d4d86', mid: '#4a2f63', dark: '#341f48' },
+};
+
+/**
+ * A round action button in the same style as the sprites: a thick plum outline, a soft
+ * two-tone face with one highlight, and a hard drop shadow that it sinks into when pressed.
+ * Keep the diameter at 44 px or more so it is easy to hit with a thumb.
+ */
+function RoundBtn({ size, onPress, face = 'tan', label, className = '', children }: {
+    size: number; onPress: () => void; face?: Face; label?: string; className?: string; children: ReactNode;
+}) {
+    const f = FACES[face];
+    const lip = Math.max(3, Math.round(size * 0.055));
     return (
         <button
             type="button"
+            aria-label={label}
             style={{
                 width: size,
                 height: size,
-                borderRadius: size * 0.24,
-                background: `linear-gradient(${TAN_LIGHT}, ${TAN})`,
-                border: `${Math.max(4, size * 0.07)}px solid ${BROWN}`,
-                boxShadow: `inset 0 0 0 2px ${TAN_LIGHT}, 0 ${Math.max(3, size * 0.05)}px 0 ${BROWN_DARK}, 0 6px 10px rgba(0,0,0,.35)`,
-                color: INK,
+                borderRadius: '50%',
+                background: `radial-gradient(circle at 36% 28%, ${f.light} 0%, ${f.mid} 52%, ${f.dark} 100%)`,
+                border: `${Math.max(3, Math.round(size * 0.055))}px solid ${PLUM}`,
+                boxShadow: `inset 0 ${-lip}px 0 rgba(60,20,20,.22), inset 0 ${Math.round(lip * 0.7)}px 0 rgba(255,255,255,.55), 0 ${lip}px 0 ${PLUM}, 0 ${lip + 5}px 10px rgba(0,0,0,.35)`,
+                color: PLUM,
             }}
             className={`pointer-events-auto flex touch-none items-center justify-center font-black leading-none transition-transform active:translate-y-[3px] active:brightness-95 ${className}`}
             onPointerDown={(e) => {
@@ -45,42 +64,49 @@ function PixelBtn({ size, onPress, className = '', children }: { size: number; o
 
 const emit = (cmd: GameCommand) => () => commands.emit(cmd);
 
-/** Pixel-art icons (crisp edges, dark ink). */
-const Icon = {
-    Alert: () => (
-        <svg viewBox="0 0 16 16" width="62%" height="62%" shapeRendering="crispEdges">
-            <path d="M0 2h16l-8 13z" fill={INK} />
-            <rect x="7" y="4" width="2" height="5" fill={TAN} />
-            <rect x="7" y="10" width="2" height="2" fill={TAN} />
+/** An item picture from public/images/hud (the same outlined art as the world), sized to its button. */
+function Pic({ name, size, rotate = 0 }: { name: string; size: number; rotate?: number }) {
+    return (
+        <img
+            src={`images/hud/${name}.png`}
+            width={size}
+            height={size}
+            draggable={false}
+            alt=""
+            style={{ transform: rotate ? `rotate(${rotate}deg)` : undefined, filter: 'drop-shadow(0 2px 0 rgba(43,15,28,.25))' }}
+        />
+    );
+}
+
+/** A cartoon open hand for "bare hands": white with the sprites' plum outline. */
+function HandIcon({ size }: { size: number }) {
+    const shapes = (
+        <>
+            <rect x="7" y="2" width="3.4" height="11" rx="1.7" />
+            <rect x="10.8" y="0.6" width="3.4" height="12.4" rx="1.7" />
+            <rect x="14.6" y="1.6" width="3.4" height="11.4" rx="1.7" />
+            <rect x="18.2" y="4" width="3.2" height="9" rx="1.6" />
+            <rect x="4.6" y="10" width="17.2" height="11" rx="5.2" />
+            <rect x="1.4" y="9.6" width="3.6" height="9" rx="1.8" transform="rotate(-28 3.2 14)" />
+        </>
+    );
+    return (
+        <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+            <g fill={PLUM} stroke={PLUM} strokeWidth="2.6" strokeLinejoin="round">{shapes}</g>
+            <g fill="#ffffff">{shapes}</g>
         </svg>
-    ),
-    Sword: () => (
-        <svg viewBox="0 0 16 16" width="68%" height="68%" shapeRendering="crispEdges" fill="none" stroke={INK} strokeLinecap="square">
-            <path d="M13 3L6 10" strokeWidth="3.4" />
-            <path d="M4 8l4 4" strokeWidth="2" />
-            <path d="M5 11L3 13" strokeWidth="2.4" />
+    );
+}
+
+/** Pause: two rounded bars. */
+function PauseIcon({ size }: { size: number }) {
+    return (
+        <svg viewBox="0 0 16 16" width={size} height={size} aria-hidden="true">
+            <rect x="3" y="2.5" width="3.6" height="11" rx="1.4" fill={PLUM} />
+            <rect x="9.4" y="2.5" width="3.6" height="11" rx="1.4" fill={PLUM} />
         </svg>
-    ),
-    Hammer: () => (
-        <svg viewBox="0 0 16 16" width="64%" height="64%" shapeRendering="crispEdges" fill={INK} stroke={INK} strokeLinecap="square">
-            <path d="M4 13L10 7" strokeWidth="2.6" />
-            <path d="M7 3.5L12.5 9 10.5 11 5 5.5z" />
-        </svg>
-    ),
-    Dots: () => (
-        <svg viewBox="0 0 16 16" width="60%" height="60%" shapeRendering="crispEdges" fill={INK}>
-            <rect x="1" y="7" width="3" height="3" />
-            <rect x="6.5" y="7" width="3" height="3" />
-            <rect x="12" y="7" width="3" height="3" />
-        </svg>
-    ),
-    Pause: () => (
-        <svg viewBox="0 0 16 16" width="52%" height="52%" shapeRendering="crispEdges" fill={INK}>
-            <rect x="3" y="2" width="3.5" height="12" />
-            <rect x="9.5" y="2" width="3.5" height="12" />
-        </svg>
-    ),
-};
+    );
+}
 
 /** 7 × 6 pixel heart; `fill` is 0 (empty), 0.5 (half) or 1. */
 const HEART = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
@@ -130,24 +156,25 @@ function Clock() {
     );
 }
 
-const SKILL_CHIPS: { key: 'attack' | 'defence' | 'speed'; icon: string; color: string }[] = [
-    { key: 'attack', icon: '⚔️', color: '#ff6b6b' },
-    { key: 'defence', icon: '🛡️', color: '#6ba8ff' },
-    { key: 'speed', icon: '👟', color: '#5ee08a' },
+const SKILL_CHIPS: { key: 'attack' | 'defence' | 'speed'; color: string; label: string }[] = [
+    { key: 'attack', color: '#ff6b6b', label: 'Attack' },
+    { key: 'defence', color: '#6ba8ff', label: 'Defence' },
+    { key: 'speed', color: '#5ee08a', label: 'Speed' },
 ];
 
-/** Skill levels earned from monster drops, as small chips under the health plaque. */
+/** Skill levels earned from monster drops (shown with the gem that raises them), under the health plaque. */
 function SkillChips() {
     const skills = useStore((s) => s.skills);
     return (
-        <div className="absolute left-3 flex gap-1" style={{ top: 86 }}>
+        <div className="absolute left-3 flex gap-1" style={{ top: 82 }}>
             {SKILL_CHIPS.map((c) => (
                 <div
                     key={c.key}
-                    className="flex items-center gap-1 rounded-md px-1.5 text-[12px] font-black tabular-nums"
-                    style={{ height: 22, background: 'rgba(22,12,16,.7)', border: `2px solid ${c.color}`, color: '#fff' }}
+                    aria-label={`${c.label} ${skills[c.key]}`}
+                    className="flex items-center gap-1 rounded-full pl-1 pr-2 text-[13px] font-black tabular-nums"
+                    style={{ height: 30, background: 'rgba(31,14,38,.85)', border: `2px solid ${c.color}`, color: '#fff' }}
                 >
-                    <span className="text-[12px] leading-none">{c.icon}</span>
+                    <img src={`images/hud/gem-${c.key}.png`} width={26} height={26} draggable={false} alt="" />
                     {skills[c.key]}
                 </div>
             ))}
@@ -277,7 +304,7 @@ function Hotbar() {
                             {it.icon ? (
                                 <img src={`images/hud/${it.icon}.png`} width={32} height={32} draggable={false} alt="" />
                             ) : (
-                                <span className="text-lg opacity-80">✋</span>
+                                <HandIcon size={26} />
                             )}
                             <span className="absolute bottom-[-1px] right-[2px] text-[10px] font-bold leading-none text-white" style={{ textShadow: '0 1px 0 #000, 1px 0 0 #000' }}>
                                 {i + 1}
@@ -305,6 +332,7 @@ export default function Hud() {
     const online = useStore((s) => s.online);
     const kills = useStore((s) => s.kills);
     const [more, setMore] = useState(false);
+    const toolId = useStore((s) => s.toolId);
 
     return (
         <div className="pointer-events-none absolute inset-0 pt-safe-top">
@@ -365,9 +393,9 @@ export default function Hud() {
             {/* Top right: clock and pause */}
             <div className="absolute right-3 top-2 flex items-center gap-2 pt-safe-top">
                 <Clock />
-                <PixelBtn size={50} onPress={() => store.patch({ phase: 'menu' })}>
-                    <Icon.Pause />
-                </PixelBtn>
+                <RoundBtn size={48} label="Pause" onPress={() => store.patch({ phase: 'menu' })}>
+                    <PauseIcon size={24} />
+                </RoundBtn>
             </div>
 
             {/* Dev shortcut: jump between the world and the workshop (the base). */}
@@ -399,20 +427,30 @@ export default function Hud() {
             {!inBase && <SafePill />}
             {!inBase && <Banner />}
 
-            {/* Actions, bottom right */}
+            {/* Actions, bottom right, in the thumb's arc: Attack (big), Use (the held tool), Actions menu */}
             <div className="absolute bottom-0 right-0 pb-safe-bottom pr-4">
                 {more && (
-                    <div className="absolute bottom-[205px] right-3 flex gap-2 rounded-2xl p-2" style={{ background: 'rgba(40,20,24,.55)' }}>
-                        {([['Dig', 'dig'], ['Fish', 'fish'], ['Sit', 'sit'], ['Hurt', 'hurt'], ['Die', 'die']] as const).map(([label, type]) => (
-                            <PixelBtn key={type} size={50} onPress={emit({ type })}><span className="text-[11px]">{label}</span></PixelBtn>
+                    <div className="absolute flex gap-2 rounded-2xl p-2" style={{ bottom: 168, right: 30, background: 'rgba(31,14,38,.78)', border: `3px solid ${PLUM}` }}>
+                        {([['Dig', 'dig', 'shovel'], ['Fish', 'fish', 'fishingpole'], ['Sit', 'sit', 'log']] as const).map(([label, type, pic]) => (
+                            <div key={type} className="flex flex-col items-center gap-0.5">
+                                <RoundBtn size={52} label={label} onPress={emit({ type })}><Pic name={pic} size={32} /></RoundBtn>
+                                <span className="text-[11px] font-black text-white" style={{ textShadow: '0 1px 0 #000' }}>{label}</span>
+                            </div>
                         ))}
                     </div>
                 )}
-                <div className="relative h-[200px] w-[250px]">
-                    <div className="absolute bottom-1 right-0"><PixelBtn size={92} onPress={emit({ type: 'attack' })}><Icon.Sword /></PixelBtn></div>
-                    <div className="absolute bottom-1 right-[104px]"><PixelBtn size={66} onPress={emit({ type: 'use' })}><Icon.Hammer /></PixelBtn></div>
-                    <div className="absolute bottom-[100px] right-2"><PixelBtn size={70} onPress={emit({ type: 'interact' })}><Icon.Alert /></PixelBtn></div>
-                    <div className="absolute bottom-[116px] right-[102px]"><PixelBtn size={44} onPress={() => setMore((m) => !m)}><Icon.Dots /></PixelBtn></div>
+                <div className="relative h-[190px] w-[250px]">
+                    <div className="absolute bottom-1 right-0">
+                        <RoundBtn size={96} face="red" label="Attack" onPress={emit({ type: 'attack' })}><Pic name="sword" size={80} rotate={-42} /></RoundBtn>
+                    </div>
+                    <div className="absolute bottom-2 right-[112px]">
+                        <RoundBtn size={66} label="Use held item" onPress={emit({ type: 'use' })}>
+                            {toolId === 'none' ? <HandIcon size={38} /> : <Pic name={toolId} size={46} />}
+                        </RoundBtn>
+                    </div>
+                    <div className="absolute bottom-[104px] right-[56px]">
+                        <RoundBtn size={52} label="More actions" onPress={() => setMore((m) => !m)}><Pic name="chest" size={34} /></RoundBtn>
+                    </div>
                 </div>
             </div>
 
