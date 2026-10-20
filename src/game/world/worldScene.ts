@@ -633,7 +633,38 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         fx.push({ g, t: 0, life: sp.heal ? 700 : 450, rx: Math.max(0.8, sp.radius) * 88, ry: Math.max(0.8, sp.radius) * 44, bolt: sp.seek > 0 });
         (g as Graphics & { color?: number }).color = sp.color;
     };
+    // The sword's crescent slash (the frog pack's "Slash 3"): 9 frames, one colour row per sword.
+    const slashSheet = Assets.get<Texture>('slashes');
+    slashSheet.source.scaleMode = 'nearest';
+    const slashTex = new Map<number, Texture>();
+    const slashFrame = (row: number, f: number): Texture => {
+        const k = row * 9 + f;
+        let t = slashTex.get(k);
+        if (!t) {
+            t = new Texture({ source: slashSheet.source, frame: new Rectangle(f * 128, row * 128, 128, 128) });
+            slashTex.set(k, t);
+        }
+        return t;
+    };
+    const slashes: { s: Sprite; t: number; row: number }[] = [];
+    let slashFlip = 1;
+    const SLASH_MS = 300;
+    const slashAt = () => {
+        const row = character.sword < 0 ? 4 : character.sword % 5;
+        const s = new Sprite(slashFrame(row, 0));
+        s.anchor.set(0.5);
+        const a = (character.facing * Math.PI) / 4;
+        // The crescent bulges upward in the art, so turn it to bulge toward the facing; every other swing is mirrored left-right (a backhand).
+        s.rotation = a + Math.PI / 2;
+        s.scale.set(slashFlip * 0.95, 0.95);
+        s.position.set(player.x + Math.cos(a) * 44, player.y - 46 + Math.sin(a) * 22);
+        s.zIndex = 1e5;
+        objects.addChild(s);
+        slashes.push({ s, t: 0, row });
+        slashFlip = -slashFlip;
+    };
     const offStrike = commands.subscribe((c) => {
+        if ((c.type === 'attack' || c.type === 'use') && !wasLocked && character.locked && !character.dead && character.tool === 'sword') slashAt();
         if (c.type === 'spell') castSpell(c.index);
         if ((c.type === 'attack' || c.type === 'use') && !wasLocked && character.locked && !character.dead) strikes.push(170);
     });
@@ -756,6 +787,16 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         net.sendPose({ scene: 'world', u: pu, v: pv, z: pz, face: character.facing, anim: pu !== fromU || pv !== fromV ? character.anim : 'idle', tool: character.tool, dead: character.dead, sword: character.sword });
         remotes.update(ticker.deltaMS);
         invuln = Math.max(0, invuln - ticker.deltaMS);
+        for (let i = slashes.length - 1; i >= 0; i--) {
+            const sl = slashes[i];
+            sl.t += ticker.deltaMS;
+            const f = Math.min(8, Math.floor((sl.t / SLASH_MS) * 9));
+            sl.s.texture = slashFrame(sl.row, f);
+            if (sl.t >= SLASH_MS) {
+                sl.s.destroy();
+                slashes.splice(i, 1);
+            }
+        }
         for (let i = 0; i < spellCd.length; i++) spellCd[i] = Math.max(0, spellCd[i] - ticker.deltaMS);
         const cdNow = spellCd.map((ms) => Math.ceil(ms / 1000));
         if (cdNow.join() !== spellShown) {
