@@ -31,7 +31,7 @@ export const FACINGS: { row: number; flip: boolean }[] = [
 /** Number of swords in public/images/swords.png (6 x 5 cells of 32 px). */
 export const SWORD_COUNT = 30;
 /** Drawn this much larger than the iron sword's length, so the pixel art reads at world size. */
-const SWORD_SCALE = 1.4;
+const SWORD_SCALE = 1.75;
 
 /** Milliseconds per frame, by action. */
 const FRAME_MS: Record<string, number> = {
