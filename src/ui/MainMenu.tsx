@@ -73,8 +73,8 @@ export default function MainMenu() {
             <PxPanel frame={6} className="flex flex-col items-stretch gap-1.5 px-3 py-2" style={{ minWidth: 'min(330px, 56vw)' }}>
                 {screen === 'title' && (
                     <>
-                        <PxButton className={btnW} style={{ minHeight: 52 }} icon={ICON.play} sub={played ? `Continue · ${playedLabel(progress.saved?.playSeconds ?? 0, progress.saved?.kills ?? 0)}` : 'Play on your own'} onClick={() => { net.leave(); start(); }}>
-                            Single Player
+                        <PxButton className={btnW} style={{ minHeight: 52 }} icon={ICON.play} sub={played ? `Single Player · ${playedLabel(progress.saved?.playSeconds ?? 0, progress.saved?.kills ?? 0)}` : 'Play on your own'} onClick={() => { net.leave(); start(); }}>
+                            {played ? 'Continue' : 'Single Player'}
                         </PxButton>
                         <PxButton className={btnW} style={{ minHeight: 52 }} variant="stone" icon={ICON.share} sub={inRoom ? 'Pick another room' : 'Play with friends'} onClick={() => { setError(null); setScreen('online'); }}>
                             Online

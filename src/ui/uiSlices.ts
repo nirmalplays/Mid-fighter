@@ -127,5 +127,21 @@ export const UI_SLICES: Record<string, [number, number, number, number, number, 
         11,
         78,
         62
+    ],
+    "bar1": [
+        2,
+        4,
+        2,
+        3,
+        44,
+        9
+    ],
+    "bar2": [
+        2,
+        4,
+        2,
+        3,
+        44,
+        9
     ]
 };

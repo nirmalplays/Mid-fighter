@@ -33,6 +33,10 @@ for n in range(1, 8):
     base = f"{SRC}9slices/Frames/frame_0{n}_9slice"
     piece(f"frame{n}", base + ".png", base + ".json")
 
+for n in (1, 2):
+    base = f"{SRC}9slices/Sliders/sliderh_0{n}_9slice"
+    piece(f"bar{n}", base + ".png", base + ".json")  # 1 = brown track, 2 = green fill
+
 Image.open(f"{SRC}Icons/Icon_03_strip13.png").convert("RGBA").save(OUT + "icons.png", optimize=True)
 
 with open("src/ui/uiSlices.ts", "w") as f:
