@@ -46,6 +46,35 @@ export const progress = {
         return d.skills[skill];
     },
 
+    /** Swords this player has found. */
+    ownedSwords(): number[] {
+        return saveSystem.data?.swords ?? [];
+    },
+
+    /** The sword held (-1 = the original iron sword). */
+    equippedSword(): number {
+        return saveSystem.data?.sword ?? -1;
+    },
+
+    /** Add a sword to the collection. Returns true if it is new, false if the player already had it. */
+    addSword(i: number): boolean {
+        const d = saveSystem.data;
+        if (!d || i < 0 || i >= 30) return false;
+        if (d.swords.includes(i)) return false;
+        d.swords = [...d.swords, i].sort((a, b) => a - b);
+        store.patch({ swordsOwned: d.swords });
+        saveSystem.save();
+        return true;
+    },
+
+    equipSword(i: number): void {
+        const d = saveSystem.data;
+        if (!d) return;
+        d.sword = i;
+        store.patch({ swordIdx: i });
+        saveSystem.save();
+    },
+
     reachWave(n: number): void {
         const d = saveSystem.data;
         if (!d || n <= d.bestWave) return;
@@ -95,8 +124,8 @@ export const progress = {
     reset(): void {
         const d = saveSystem.data;
         if (!d) return;
-        Object.assign(d, { scene: 'world', world: { u: 128.5, v: 128.5, set: false }, tool: 'none', hp: 6, playSeconds: 0, kills: 0, bestWave: 0, skills: { attack: 0, defence: 0, speed: 0, vitality: 0 } });
-        store.patch({ playSeconds: 0, kills: 0, maxHp: 6, hp: 6, skills: { attack: 0, defence: 0, speed: 0, vitality: 0 } });
+        Object.assign(d, { scene: 'world', world: { u: 128.5, v: 128.5, set: false }, tool: 'none', hp: 6, playSeconds: 0, kills: 0, bestWave: 0, swords: [], sword: -1, skills: { attack: 0, defence: 0, speed: 0, vitality: 0 } });
+        store.patch({ playSeconds: 0, kills: 0, swordsOwned: [], swordIdx: -1, maxHp: 6, hp: 6, skills: { attack: 0, defence: 0, speed: 0, vitality: 0 } });
         saveSystem.save();
     },
 };

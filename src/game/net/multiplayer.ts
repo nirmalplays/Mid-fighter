@@ -17,6 +17,8 @@ export interface RemotePose {
     anim: string;
     tool: string;
     dead?: boolean;
+    /** Which sword (0-29) they hold, or -1 for the original iron sword. */
+    sword?: number;
 }
 
 /** The server's combat snapshot (see shared/sim.ts GameSim.snapshot) and when it arrived. */
@@ -37,7 +39,7 @@ export interface SimSnapshot {
 export type NetEvent =
     | { type: 'bite'; damage: number }
     | { type: 'kill'; kind: string }
-    | { type: 'gain'; skill: string; id: number }
+    | { type: 'gain'; skill: string; id: number; sword: number }
     | { type: 'wave'; wave: number }
     | { type: 'safe'; u: number; v: number };
 
@@ -217,7 +219,7 @@ function sendPose(p: RemotePose): void {
     if (!room) return;
     const now = performance.now();
     if (now - lastSent < 100) return;
-    const key = `${p.scene}|${p.u.toFixed(2)}|${p.v.toFixed(2)}|${Math.round(p.z)}|${p.face}|${p.anim}|${p.tool}`;
+    const key = `${p.scene}|${p.u.toFixed(2)}|${p.v.toFixed(2)}|${Math.round(p.z)}|${p.face}|${p.anim}|${p.tool}|${p.sword ?? -1}`;
     if (key === lastKey && now - lastSent < 1000) return;
     lastSent = now;
     lastKey = key;

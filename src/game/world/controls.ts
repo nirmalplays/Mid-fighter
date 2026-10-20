@@ -13,7 +13,6 @@ const KEYS: Record<string, GameCommand> = {
     ' ': { type: 'attack' }, j: { type: 'attack' }, e: { type: 'use' }, f: { type: 'interact' },
     c: { type: 'sit' }, h: { type: 'hurt' }, x: { type: 'die' }, g: { type: 'dig' }, r: { type: 'fish' },
     q: { type: 'tool', delta: -1 }, t: { type: 'tool', delta: 1 },
-    '[': { type: 'sword', delta: -1 }, ']': { type: 'sword', delta: 1 },
     // Number keys pick a hotbar slot.
     ...Object.fromEntries(HOTBAR.map((tool, i) => [String(i + 1), { type: 'equip', tool } as GameCommand])),
 };
@@ -26,7 +25,17 @@ export interface Controls {
 
 export function bindControls(character: Character): Controls {
     store.patch({ toolId: character.tool, hp: progress.savedHp(), maxHp: progress.maxHp() });
+    // Tapping the sword slot again cycles through the swords you own (the original iron sword first).
+    character.setSword(progress.equippedSword());
     const offCommands = commands.subscribe((c) => {
+        if (c.type === 'sword') {
+            const list = [-1, ...progress.ownedSwords()];
+            const at = Math.max(0, list.indexOf(character.sword));
+            const next = list[(at + c.delta + list.length) % list.length];
+            character.setSword(next);
+            progress.equipSword(next);
+            return;
+        }
         // Hurt costs a heart; Die empties them all. Getting up from death restores health (see tick).
         if (c.type === 'hurt' && !character.dead) store.patch({ hp: Math.max(0, store.get().hp - 2) });
         if (c.type === 'die' && !character.dead) store.patch({ hp: 0 });

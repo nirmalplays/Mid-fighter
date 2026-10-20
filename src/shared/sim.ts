@@ -28,6 +28,14 @@ export const KINDS: Record<string, KindDef> = {
 export const KIND_NAMES = ['goblin', 'slime', 'wolf', 'skeleton'] as const;
 export const SKILLS = ['attack', 'defence', 'speed', 'vitality'] as const;
 export type Skill = (typeof SKILLS)[number];
+/** What a drop can be: a skill gem, or a rare sword. */
+export type DropKind = Skill | 'sword';
+/** Order of drop kinds on the wire (a sword is index 4). */
+export const DROP_KINDS: readonly DropKind[] = [...SKILLS, 'sword'];
+/** How many swords exist (src/assets/File.png is 6 x 5). */
+export const SWORD_COUNT = 30;
+/** Chance a kill also drops a random sword, by monster kind (before the wave bonus). */
+export const SWORD_CHANCE: Record<string, number> = { goblin: 0.025, slime: 0.025, wolf: 0.035, skeleton: 0.05 };
 /** What each monster kind drops, and the chance. */
 export const DROP_TABLE: Record<string, { skill: Skill; chance: number }> = {
     goblin: { skill: 'attack', chance: 0.8 },
@@ -111,7 +119,9 @@ export interface SimMonster {
 
 export interface SimDrop {
     id: number;
-    skill: Skill;
+    skill: DropKind;
+    /** Which sword (0-29) when `skill` is 'sword', else -1. */
+    sword: number;
     u: number;
     v: number;
     age: number;
@@ -146,6 +156,8 @@ export type SimEvent =
 export interface SimOptions {
     everyMs: number;
     firstMs: number;
+    /** Multiplies every sword drop chance (1 normally; raised only for testing). */
+    swordMul?: number;
     /** The safe portal opens about every `safeEveryMs` for `safeForMs`; the first one after about `safeFirstMs`. */
     safeEveryMs: number;
     safeForMs: number;
@@ -262,6 +274,9 @@ export class GameSim {
                 events.push({ type: 'kill', playerId, kind: m.kind });
                 const drop = DROP_TABLE[m.kind];
                 if (drop && this.env.rand() < drop.chance) this.addDrop(drop.skill, m.u, m.v);
+                // A rare chance of a random sword on top, a little likelier in later waves.
+                const rare = (SWORD_CHANCE[m.kind] ?? 0.02) * (1 + 0.04 * this.wave) * (this.opts.swordMul ?? 1);
+                if (this.env.rand() < rare) this.addDrop('sword', m.u, m.v, Math.floor(this.env.rand() * SWORD_COUNT));
             } else if (m.state === 'attack') {
                 m.state = 'recover'; // a hit interrupts the attack
                 m.t = 0;
@@ -271,11 +286,11 @@ export class GameSim {
     }
 
     /** A player asks to take a drop. Returns the skill if allowed. */
-    pickup(dropId: number, pu: number, pv: number): Skill | null {
+    pickup(dropId: number, pu: number, pv: number): { skill: DropKind; sword: number } | null {
         const d = this.drops.get(dropId);
         if (!d || Math.hypot(d.u - pu, d.v - pv) > PICKUP_SLACK) return null;
         this.drops.delete(dropId);
-        return d.skill;
+        return { skill: d.skill, sword: d.sword };
     }
 
     spawn(kind: string, u: number, v: number, mods: { hpMul: number; speedMul: number; damage: number }): SimMonster {
@@ -290,8 +305,8 @@ export class GameSim {
         return m;
     }
 
-    addDrop(skill: Skill, u: number, v: number): void {
-        this.drops.set(this.nextId, { id: this.nextId, skill, u, v, age: 0 });
+    addDrop(skill: DropKind, u: number, v: number, sword = -1): void {
+        this.drops.set(this.nextId, { id: this.nextId, skill, sword, u, v, age: 0 });
         this.nextId++;
     }
 
@@ -308,7 +323,7 @@ export class GameSim {
             m: [...this.monsters.values()].map((m) => [
                 m.id, KIND_NAMES.indexOf(m.kind as (typeof KIND_NAMES)[number]), round(m.u), round(m.v), m.hp, m.max, STATES.indexOf(m.state), Math.round(m.t),
             ]),
-            d: [...this.drops.values()].map((d) => [d.id, SKILLS.indexOf(d.skill), round(d.u), round(d.v), Math.round(d.age)]),
+            d: [...this.drops.values()].map((d) => [d.id, DROP_KINDS.indexOf(d.skill), round(d.u), round(d.v), Math.round(d.age), d.sword]),
             p: p ? [p.wave, Math.round(p.age), p.toSpawn] : null,
             s: this.safe ? [round(this.safe.u), round(this.safe.v), Math.round(this.safe.age), this.safe.lasts] : null,
             w: this.wave,

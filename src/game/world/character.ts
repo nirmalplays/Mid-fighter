@@ -7,6 +7,7 @@
 import { Assets, Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
 import type { GameCommand } from '../commands.ts';
 import { CHAR_CELL, CHAR_FEET_X, CHAR_FEET_Y, CHAR_SHEETS } from './characterAtlas.ts';
+import { SWORD_COUNT } from '../../shared/sim.ts';
 import { SWORD_NATIVE } from './swordNative.ts';
 import { SWORD_POSE } from './swordPose.ts';
 
@@ -28,8 +29,6 @@ export const FACINGS: { row: number; flip: boolean }[] = [
     { row: 2, flip: false }, { row: 3, flip: false }, { row: 4, flip: false }, { row: 3, flip: true },
 ];
 
-/** Number of swords in public/images/swords.png (6 x 5 cells of 32 px). */
-export const SWORD_COUNT = 30;
 /** Drawn this much larger than the iron sword's length, so the pixel art reads at world size. */
 const SWORD_SCALE = 1.75;
 
@@ -93,7 +92,7 @@ export interface Character {
     destroy(): void;
 }
 
-export function createCharacter(onTool: (tool: Tool) => void, onSword: (index: number) => void = () => {}): Character {
+export function createCharacter(onTool: (tool: Tool) => void): Character {
     const frames = new Map<string, Texture[][]>();
     const loading = new Map<string, Promise<void>>();
 
@@ -223,21 +222,6 @@ export function createCharacter(onTool: (tool: Tool) => void, onSword: (index: n
     const getUpKey = () => (tool === 'none' ? 'getup' : `getup:${tool}`);
 
     const command = (c: GameCommand) => {
-        // Dev: cycle the sword drawn in the hand, and take it out so the change is visible.
-        if (c.type === 'sword') {
-            if (mode === 'dead') return;
-            const n = SWORD_COUNT + 1; // -1 (iron) .. 29
-            swordIdx = ((swordIdx + 1 + c.delta + n) % n) - 1;
-            if (swordIdx >= 0) loadTool('hold');
-            if (tool !== 'sword') {
-                tool = 'sword';
-                loadTool('sword');
-                onTool(tool);
-            }
-            if (!skinned(tool)) for (const s of swordSprites) s.visible = false;
-            onSword(swordIdx);
-            return;
-        }
         if (c.type === 'tool' || c.type === 'equip') {
             if (mode === 'dead') return;
             if (c.type === 'equip') {

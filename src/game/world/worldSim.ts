@@ -5,7 +5,7 @@
  * simulation code (shared/sim.ts) runs locally so single-player still works. The scene
  * just asks for the current view each frame and reacts to events.
  */
-import { GameSim, KIND_NAMES, SKILLS, STATES, type Skill, type SimEvent } from '../../shared/sim.ts';
+import { DROP_KINDS, GameSim, KIND_NAMES, STATES, type DropKind, type SimEvent } from '../../shared/sim.ts';
 import { net, type SimSnapshot } from '../net/multiplayer.ts';
 import type { WorldMap } from './mapGen.ts';
 import type { ViewDrop } from './drops.ts';
@@ -55,13 +55,16 @@ export function createWorldSim(opts: {
     on: {
         bite: (damage: number) => void;
         kill: (kind: string) => void;
-        gain: (skill: Skill) => void;
+        /** A drop was taken: a skill gem, or a sword (`sword` is its index). */
+        gain: (kind: DropKind, sword: number) => void;
         wave: (n: number) => void;
         safe: () => void;
     };
     safeEverySec: number;
     safeForSec: number;
     safeFirstSec: number;
+    /** Multiplies sword drop chances (1 normally; the ?swordMul= debug option raises it offline). */
+    swordMul?: number;
 }): WorldSim {
     const { map } = opts;
     const heightAt = (i: number, j: number) => map.height[j * MAP_TILES + i];
@@ -108,6 +111,7 @@ export function createWorldSim(opts: {
         {
             everyMs: opts.everySec * 1000,
             firstMs: opts.firstSec * 1000,
+            swordMul: opts.swordMul,
             safeEveryMs: opts.safeEverySec * 1000,
             safeForMs: opts.safeForSec * 1000,
             safeFirstMs: opts.safeFirstSec * 1000,
@@ -138,7 +142,7 @@ export function createWorldSim(opts: {
     const offNet = net.onEvent((e) => {
         if (e.type === 'bite') opts.on.bite(e.damage);
         else if (e.type === 'kill') opts.on.kill(e.kind);
-        else if (e.type === 'gain') opts.on.gain((SKILLS as readonly string[]).includes(e.skill) ? (e.skill as Skill) : 'attack');
+        else if (e.type === 'gain') opts.on.gain((DROP_KINDS as readonly string[]).includes(e.skill) ? (e.skill as DropKind) : 'attack', e.sword ?? -1);
         else if (e.type === 'wave') opts.on.wave(e.wave);
         else opts.on.safe();
     });
@@ -173,7 +177,7 @@ export function createWorldSim(opts: {
                         id: m[0], kind: KIND_NAMES[m[1]] ?? 'goblin', u: m[2], v: m[3], hp: m[4], max: m[5],
                         state: STATES[m[6]] ?? 'chase', t: m[7],
                     }));
-                    cachedDrops = s.d.map((d) => ({ id: d[0], skill: SKILLS[d[1]] ?? 'attack', u: d[2], v: d[3], age: d[4] }));
+                    cachedDrops = s.d.map((d) => ({ id: d[0], skill: DROP_KINDS[d[1]] ?? 'attack', sword: d[5] ?? -1, u: d[2], v: d[3], age: d[4] }));
                 }
                 const p = s.p;
                 const sf = s.s;
@@ -191,7 +195,7 @@ export function createWorldSim(opts: {
             const p = local.run;
             return {
                 monsters: [...local.monsters.values()].map((m) => ({ id: m.id, kind: m.kind, u: m.u, v: m.v, hp: m.hp, max: m.max, state: m.state, t: m.t })),
-                drops: [...local.drops.values()].map((d) => ({ id: d.id, skill: d.skill, u: d.u, v: d.v, age: d.age })),
+                drops: [...local.drops.values()].map((d) => ({ id: d.id, skill: d.skill, sword: d.sword, u: d.u, v: d.v, age: d.age })),
                 run: p ? { wave: p.wave, toSpawn: p.toSpawn } : null,
                 safe: local.safe ? { u: local.safe.u, v: local.safe.v, age: local.safe.age, lasts: local.safe.lasts } : null,
                 wave: local.wave,
@@ -211,8 +215,8 @@ export function createWorldSim(opts: {
                 return;
             }
             const p = opts.player();
-            const skill = local.pickup(dropId, p.u, p.v);
-            if (skill) opts.on.gain(skill);
+            const got = local.pickup(dropId, p.u, p.v);
+            if (got) opts.on.gain(got.skill, got.sword);
         },
 
         destroy() {

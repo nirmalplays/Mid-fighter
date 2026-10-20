@@ -220,29 +220,6 @@ function SafePill() {
     );
 }
 
-/** DEV: cycle the sword drawn in the character's hand (also [ and ] on a keyboard). Remove when done testing. */
-function SwordTester() {
-    const idx = useStore((s) => s.swordIdx);
-    const preview = idx >= 0 ? `${-(idx % 6) * 48}px ${-Math.floor(idx / 6) * 48}px` : undefined;
-    return (
-        <div className="absolute left-3 flex items-center gap-1" style={{ top: 118 }}>
-            <RoundBtn size={40} label="Previous sword" onPress={() => commands.emit({ type: 'sword', delta: -1 })}><span className="text-sm">◀</span></RoundBtn>
-            <div
-                className="flex h-[54px] w-[78px] flex-col items-center justify-center rounded-lg"
-                style={{ background: 'rgba(31,14,38,.85)', border: '2px solid #ffcb4d', color: '#fff' }}
-            >
-                {idx >= 0 ? (
-                    <div style={{ width: 48, height: 48, margin: '-2px 0', backgroundImage: 'url(images/swords.png)', backgroundSize: '288px 240px', backgroundPosition: preview, imageRendering: 'pixelated' }} />
-                ) : (
-                    <img src="images/hud/sword.png" width={42} height={42} draggable={false} alt="" />
-                )}
-                <span className="text-[10px] font-black leading-none">{idx >= 0 ? `DEV ${idx + 1}/30` : 'DEV iron'}</span>
-            </div>
-            <RoundBtn size={40} label="Next sword" onPress={() => commands.emit({ type: 'sword', delta: 1 })}><span className="text-sm">▶</span></RoundBtn>
-        </div>
-    );
-}
-
 /** A message that fades after a couple of seconds (wave starts, pickups). */
 function Banner() {
     const banner = useStore((s) => s.banner);
@@ -282,6 +259,7 @@ const HOTBAR_ITEMS: { tool: string; icon?: string; label: string }[] = [
  */
 function Hotbar() {
     const toolId = useStore((s) => s.toolId);
+    const owned = useStore((s) => s.swordsOwned.length);
     const [name, setName] = useState<string | null>(null);
     const first = useRef(true);
     useEffect(() => {
@@ -319,7 +297,9 @@ function Hotbar() {
                             }}
                             onPointerDown={(e) => {
                                 e.preventDefault();
-                                commands.emit({ type: 'equip', tool: it.tool });
+                                // Tapping the sword slot while holding the sword steps through the swords you own.
+                                if (it.tool === 'sword' && selected && owned > 0) commands.emit({ type: 'sword', delta: 1 });
+                                else commands.emit({ type: 'equip', tool: it.tool });
                             }}
                         >
                             {it.icon ? (
@@ -330,6 +310,11 @@ function Hotbar() {
                             <span className="absolute bottom-[-1px] right-[2px] text-[10px] font-bold leading-none text-white" style={{ textShadow: '0 1px 0 #000, 1px 0 0 #000' }}>
                                 {i + 1}
                             </span>
+                            {it.tool === 'sword' && owned > 0 && (
+                                <span className="absolute left-[1px] top-[-5px] rounded-full bg-amber-300 px-[4px] text-[10px] font-black leading-[13px] text-[#3b2412]" style={{ border: '1px solid #2b0f1c' }}>
+                                    {owned}
+                                </span>
+                            )}
                         </button>
                     );
                 })}
@@ -445,7 +430,6 @@ export default function Hud() {
 
             <Hotbar />
             {!inBase && <SkillChips />}
-            <SwordTester />
             {!inBase && <WavePill />}
             {!inBase && <SafePill />}
             {!inBase && <Banner />}

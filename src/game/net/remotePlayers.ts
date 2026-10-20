@@ -81,6 +81,7 @@ export function createRemotePlayers(opts: {
 
                 const c = a.character;
                 if ((TOOLS as readonly string[]).includes(pose.tool)) c.setTool(pose.tool as Tool);
+                c.setSword(pose.sword ?? -1);
                 c.setFacing(pose.face);
                 while (r.acts.length) c.command({ type: r.acts.shift() as 'attack' });
                 // Walking while the remote player is still sitting means they stood up.

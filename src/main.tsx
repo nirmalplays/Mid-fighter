@@ -25,6 +25,8 @@ async function boot() {
     store.patch({
         playSeconds: Math.floor(save.playSeconds),
         kills: save.kills,
+        swordsOwned: save.swords,
+        swordIdx: save.sword,
         skills: { ...save.skills },
         maxHp: 6 + 2 * save.skills.vitality,
     });

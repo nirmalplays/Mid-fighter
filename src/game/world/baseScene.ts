@@ -152,7 +152,7 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
     }
 
     // Player.
-    const character = createCharacter((tool) => store.patch({ toolId: tool }), (i) => store.patch({ swordIdx: i }));
+    const character = createCharacter((tool) => store.patch({ toolId: tool }));
     character.setTool(progress.savedTool());
     const controls = bindControls(character);
     // The other players in the shared room.
@@ -247,7 +247,7 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
             saveClock = 0;
             progress.record({ scene: 'base', tool: character.tool, hp: store.get().hp });
         }
-        net.sendPose({ scene: 'base', u: pu, v: pv, z: 0, face: character.facing, anim: pu !== fromU || pv !== fromV ? character.anim : 'idle', tool: character.tool, dead: character.dead });
+        net.sendPose({ scene: 'base', u: pu, v: pv, z: 0, face: character.facing, anim: pu !== fromU || pv !== fromV ? character.anim : 'idle', tool: character.tool, dead: character.dead, sword: character.sword });
         remotes.update(ticker.deltaMS);
         placeCamera();
         publish();

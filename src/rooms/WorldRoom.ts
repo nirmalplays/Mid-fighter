@@ -12,7 +12,7 @@
  */
 import { GameRoom, type GameMessage, type LeaveReason, type Player } from '@series-inc/rundot-game-sdk/mp-server';
 import { generateWorld, WATER, type WorldMap } from '../game/world/mapGen.ts';
-import { GameSim, SKILLS, type SimEvent } from '../shared/sim.ts';
+import { DROP_KINDS, GameSim, type SimEvent } from '../shared/sim.ts';
 
 type Scene = 'world' | 'base';
 
@@ -29,6 +29,8 @@ interface Pose {
     anim: string;
     tool: string;
     dead: boolean;
+    /** Sword held, 0-29, or -1 for the original iron sword. */
+    sword: number;
 }
 
 // Client → server.
@@ -46,7 +48,7 @@ interface AwayOut { type: 'away'; id: string }
 interface SimOut { type: 'sim'; m: number[][]; d: number[][]; p: number[] | null; s: number[] | null; w: number; nx: number }
 interface BiteOut { type: 'bite'; damage: number }
 interface KillOut { type: 'kill'; kind: string }
-interface GainOut { type: 'gain'; skill: string; id: number }
+interface GainOut { type: 'gain'; skill: string; id: number; sword: number }
 interface WaveOut { type: 'wave'; wave: number }
 interface SafeOut { type: 'safe'; u: number; v: number }
 type Protocol = PoseMsg | ActMsg | AwayMsg | HelloMsg | HitMsg | PickupMsg | SnapshotMsg | PoseOut | ActOut | AwayOut | SimOut | BiteOut | KillOut | GainOut | WaveOut | SafeOut;
@@ -82,7 +84,7 @@ export default class WorldRoom extends GameRoom<Protocol> {
         this.map = map;
         const blocked = map.blocked;
         const heightAt = (i: number, j: number) => map.height[j * MAP_TILES + i];
-        const meta = (this.config.metadata ?? {}) as { waveEverySec?: number; firstWaveSec?: number; safeEverySec?: number; safeForSec?: number; safeFirstSec?: number };
+        const meta = (this.config.metadata ?? {}) as { waveEverySec?: number; firstWaveSec?: number; safeEverySec?: number; swordMul?: number; safeForSec?: number; safeFirstSec?: number };
         this.sim = new GameSim(
             {
                 players: () => {
@@ -130,6 +132,7 @@ export default class WorldRoom extends GameRoom<Protocol> {
             {
                 everyMs: (meta.waveEverySec ?? 120) * 1000,
                 firstMs: (meta.firstWaveSec ?? 20) * 1000,
+                swordMul: meta.swordMul ?? 1,
                 safeEveryMs: (meta.safeEverySec ?? 120) * 1000,
                 safeForMs: (meta.safeForSec ?? 20) * 1000,
                 safeFirstMs: (meta.safeFirstSec ?? 45) * 1000,
@@ -152,7 +155,7 @@ export default class WorldRoom extends GameRoom<Protocol> {
             const pose = this.poses.get(id);
             players[id] = {
                 name: other.username,
-                pose: pose ? { scene: pose.scene, u: pose.u, v: pose.v, z: pose.z, face: pose.face, anim: pose.anim, tool: pose.tool, dead: pose.dead } : null,
+                pose: pose ? { scene: pose.scene, u: pose.u, v: pose.v, z: pose.z, face: pose.face, anim: pose.anim, tool: pose.tool, dead: pose.dead, sword: pose.sword } : null,
             };
         }
         this.sendTo(playerId, { type: 'snapshot', players });
@@ -164,7 +167,7 @@ export default class WorldRoom extends GameRoom<Protocol> {
             case 'pose': {
                 const pose = this.validate(sender.id, payload);
                 if (!pose) return;
-                this.broadcast({ type: 'pose', id: sender.id, scene: pose.scene, u: pose.u, v: pose.v, z: pose.z, face: pose.face, anim: pose.anim, tool: pose.tool, dead: pose.dead });
+                this.broadcast({ type: 'pose', id: sender.id, scene: pose.scene, u: pose.u, v: pose.v, z: pose.z, face: pose.face, anim: pose.anim, tool: pose.tool, dead: pose.dead, sword: pose.sword });
                 break;
             }
             case 'act':
@@ -244,8 +247,8 @@ export default class WorldRoom extends GameRoom<Protocol> {
         const sim = this.sim;
         const pose = this.poses.get(id);
         if (!sim || !pose || pose.scene !== 'world' || pose.dead || typeof dropId !== 'number') return;
-        const skill = sim.pickup(dropId, pose.u, pose.v);
-        if (skill) this.sendTo(id, { type: 'gain', skill: SKILLS.includes(skill) ? skill : 'attack', id: dropId });
+        const got = sim.pickup(dropId, pose.u, pose.v);
+        if (got) this.sendTo(id, { type: 'gain', skill: DROP_KINDS.includes(got.skill) ? got.skill : 'attack', id: dropId, sword: got.sword });
     }
 
     // ---- poses ----
@@ -277,7 +280,8 @@ export default class WorldRoom extends GameRoom<Protocol> {
         }
         const clean: Tracked = {
             scene, u: nu, v: nv, z: Math.min(400, Math.max(0, z)),
-            face: Math.min(7, Math.max(0, Math.round(face))), anim: m.anim, tool: m.tool, dead: m.dead === true, at: now,
+            face: Math.min(7, Math.max(0, Math.round(face))), anim: m.anim, tool: m.tool, dead: m.dead === true,
+            sword: typeof m.sword === 'number' && Number.isInteger(m.sword) && m.sword >= -1 && m.sword < 30 ? m.sword : -1, at: now,
         };
         this.poses.set(id, clean);
         return clean;

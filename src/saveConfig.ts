@@ -21,6 +21,9 @@ export interface FighterSave {
     kills: number;
     /** Highest wave reached. */
     bestWave: number;
+    /** Swords found (indices 0-29 into the sword sheet), and the one held (-1 = the original iron sword). */
+    swords: number[];
+    sword: number;
     /** Skill levels raised by monster drops. Vitality adds a heart each. */
     skills: { attack: number; defence: number; speed: number; vitality: number };
 }
@@ -35,6 +38,8 @@ export function defaultSave(): FighterSave {
         playSeconds: 0,
         kills: 0,
         bestWave: 0,
+        swords: [],
+        sword: -1,
         skills: { attack: 0, defence: 0, speed: 0, vitality: 0 },
     };
 }
@@ -54,6 +59,9 @@ export const saveSystem = createSaveSystem<FighterSave>({
         if (!(s.playSeconds >= 0)) s.playSeconds = 0;
         if (!(s.kills >= 0)) s.kills = 0;
         if (!(s.bestWave >= 0)) s.bestWave = 0;
+        if (!Array.isArray(s.swords)) s.swords = [];
+        s.swords = [...new Set((s.swords as unknown[]).filter((n): n is number => Number.isInteger(n) && (n as number) >= 0 && (n as number) < 30))].sort((a, b) => a - b);
+        if (!(s.swords.includes(s.sword) || s.sword === -1)) s.sword = -1;
         if (typeof s.skills !== 'object' || !s.skills) s.skills = { ...def.skills };
         fillMissing(s.skills, def.skills);
         for (const k of ['attack', 'defence', 'speed', 'vitality'] as const) if (!(s.skills[k] >= 0)) s.skills[k] = 0;

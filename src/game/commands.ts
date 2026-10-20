@@ -6,7 +6,7 @@ export type GameCommand =
     | { type: 'attack' | 'use' | 'interact' | 'dig' | 'fish' | 'sit' | 'hurt' | 'die' }
     | { type: 'tool'; delta: number }
     | { type: 'equip'; tool: string }
-    /** Dev: cycle the sword drawn in the hand (-1 = the original iron sword). */
+    /** Cycle through the swords you own (-1 = the original iron sword). */
     | { type: 'sword'; delta: number };
 
 const listeners = new Set<(c: GameCommand) => void>();

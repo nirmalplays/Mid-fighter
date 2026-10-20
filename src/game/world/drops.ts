@@ -8,10 +8,10 @@
  * once it reaches them.
  */
 import { Assets, Container, Rectangle, Sprite, Text, Texture, type TextStyleOptions } from 'pixi.js';
-import { DROP_LIFE_MS, type Skill } from '../../shared/sim.ts';
+import { DROP_LIFE_MS, type DropKind, type Skill } from '../../shared/sim.ts';
 import { DROP_FRAMES } from './dropsAtlas.ts';
 
-export type { Skill };
+export type { DropKind, Skill };
 export const SKILL_NAMES: Record<Skill, string> = { attack: 'Attack', defence: 'Defence', speed: 'Speed', vitality: 'Vitality' };
 export const SKILL_CAP: Record<Skill, number> = { attack: 10, defence: 10, speed: 10, vitality: 4 };
 export const SKILL_COLOR: Record<Skill, number> = { attack: 0xff6b6b, defence: 0x6ba8ff, speed: 0x5ee08a, vitality: 0xffc94d };
@@ -28,7 +28,9 @@ const RETRY_MS = 1500;
 /** A drop as the simulation describes it. */
 export interface ViewDrop {
     id: number;
-    skill: Skill;
+    skill: DropKind;
+    /** Which sword (0-29) when `skill` is 'sword'. */
+    sword: number;
     u: number;
     v: number;
     /** Ms since it dropped. */
@@ -36,7 +38,7 @@ export interface ViewDrop {
 }
 
 interface Shown {
-    skill: Skill;
+    skill: DropKind;
     u: number;
     v: number;
     born: number;
@@ -62,9 +64,9 @@ export function createDropView(opts: {
     zFor: (u: number, v: number) => number;
     levelH: number;
     player: () => { u: number; v: number; alive: boolean };
-    wantsSkill: (skill: Skill) => boolean;
+    wantsSkill: (skill: DropKind) => boolean;
     /** The player reached a gem: ask the simulation to give it to them. */
-    onTouch: (id: number, skill: Skill) => void;
+    onTouch: (id: number, skill: DropKind) => void;
 }): DropView {
     const sheet = Assets.get<Texture>('drops');
     sheet.source.scaleMode = 'linear';
@@ -75,6 +77,18 @@ export function createDropView(opts: {
             const [x, y, w, h] = DROP_FRAMES[skill];
             t = new Texture({ source: sheet.source, frame: new Rectangle(x, y, w, h) });
             texs.set(skill, t);
+        }
+        return t;
+    };
+    // Rare sword drops are cut from the sword sheet.
+    const swordSheet = Assets.get<Texture>('swords');
+    swordSheet.source.scaleMode = 'nearest';
+    const swordTexs = new Map<number, Texture>();
+    const swordTex = (i: number): Texture => {
+        let t = swordTexs.get(i);
+        if (!t) {
+            t = new Texture({ source: swordSheet.source, frame: new Rectangle((i % 6) * 32, Math.floor(i / 6) * 32, 32, 32) });
+            swordTexs.set(i, t);
         }
         return t;
     };
@@ -97,13 +111,14 @@ export function createDropView(opts: {
                 seen.add(d.id);
                 let s = shown.get(d.id);
                 if (!s) {
-                    const sprite = new Sprite(tex(d.skill));
-                    sprite.anchor.set(0.5, 0.85);
-                    sprite.scale.set(0.55);
+                    const isSword = d.skill === 'sword';
+                    const sprite = new Sprite(isSword ? swordTex(d.sword) : tex(d.skill as Skill));
+                    sprite.anchor.set(0.5, isSword ? 0.5 : 0.85);
+                    sprite.scale.set(isSword ? 2.2 : 0.55);
                     const glow = new Sprite(opts.glowTex);
                     glow.anchor.set(0.5);
-                    glow.tint = SKILL_COLOR[d.skill];
-                    glow.scale.set(0.45);
+                    glow.tint = isSword ? 0xffe27a : SKILL_COLOR[d.skill as Skill];
+                    glow.scale.set(isSword ? 0.8 : 0.45);
                     opts.layer.addChild(glow, sprite);
                     s = { skill: d.skill, u: d.u, v: d.v, born: clock - d.age, age: d.age, asked: -1e9, sprite, glow };
                     shown.set(d.id, s);
@@ -127,10 +142,11 @@ export function createDropView(opts: {
                 const ground = opts.heightAt(s.u, s.v) * opts.levelH;
                 const k = Math.min(1, sinceBorn / POP_MS);
                 const arc = k < 1 ? Math.sin(k * Math.PI) * 38 : 0;
-                const bob = k >= 1 ? 6 + Math.sin(clock / 260 + d.u * 3) * 4 : 0;
+                const bob = k >= 1 ? (s.skill === 'sword' ? 16 : 6) + Math.sin(clock / 260 + d.u * 3) * 4 : 0;
                 s.sprite.position.set(pos.x, pos.y - ground - arc - bob);
                 s.glow.position.set(pos.x, pos.y - ground);
-                s.glow.alpha = 0.55 + 0.2 * Math.sin(clock / 300);
+                s.glow.alpha = (s.skill === 'sword' ? 0.8 : 0.55) + 0.2 * Math.sin(clock / 300);
+                if (s.skill === 'sword') s.sprite.rotation = Math.sin(clock / 500 + d.u) * 0.12;
                 const z = opts.zFor(s.u, s.v);
                 s.sprite.zIndex = z + 0.05;
                 s.glow.zIndex = z - 0.35;

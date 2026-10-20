@@ -28,7 +28,7 @@ import {
     CHUNK_TILES, LOAD_RADIUS, MAP_CHUNKS, MAP_TILES, TILE_DX, TILE_DY, ZOOM,
 } from './constants.ts';
 import { createInput, JOY_RADIUS } from './input.ts';
-import { createDropView, SKILL_CAP, SKILL_COLOR, SKILL_NAMES, type Skill } from './drops.ts';
+import { createDropView, SKILL_CAP, SKILL_COLOR, SKILL_NAMES, type DropKind } from './drops.ts';
 import { createMonsterView } from './monsters.ts';
 import { createSafeView } from './safeZone.ts';
 import { createWorldSim } from './worldSim.ts';
@@ -168,7 +168,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     stage.root.addChild(world);
 
     // Player: the Character0 art with tools and actions (world/character.ts).
-    const character = createCharacter((tool) => store.patch({ toolId: tool }), (i) => store.patch({ swordIdx: i }));
+    const character = createCharacter((tool) => store.patch({ toolId: tool }));
     const player = character.player;
     objects.addChild(player);
     // Faint copy above everything, so the player stays visible behind mountains.
@@ -487,10 +487,30 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         // Debug: ?firstWave=<s>&waveEvery=<s> shorten the wave timers when playing offline.
         everySec: Number(q.get('waveEvery')) || 120,
         firstSec: Number(q.get('firstWave')) || 20,
+        // Debug: ?swordMul=40 makes sword drops common when playing offline, for testing.
+        swordMul: Number(q.get('swordMul')) || 1,
         on: {
             bite: hurtPlayer,
             kill: () => progress.addKill(),
-            gain: (skill: Skill) => {
+            gain: (kind: DropKind, sword: number) => {
+                if (kind === 'sword') {
+                    // A rare sword: new ones are kept and held at once; a duplicate becomes an Attack level instead.
+                    if (progress.addSword(sword)) {
+                        character.setSword(sword);
+                        progress.equipSword(sword);
+                        commands.emit({ type: 'equip', tool: 'sword' });
+                        dropView.text(player.x, player.y - 78, 'New sword!', 0xffe27a);
+                        banner('Rare drop! You found a new sword');
+                    } else if (store.get().skills.attack < SKILL_CAP.attack) {
+                        progress.raise('attack');
+                        dropView.text(player.x, player.y - 78, 'Duplicate · Attack +1', SKILL_COLOR.attack);
+                        banner('You already have that sword: Attack +1');
+                    } else {
+                        dropView.text(player.x, player.y - 78, 'Duplicate sword', 0xffe27a);
+                    }
+                    return;
+                }
+                const skill = kind;
                 const level = store.get().skills[skill];
                 if (level >= SKILL_CAP[skill]) return;
                 progress.raise(skill);
@@ -527,7 +547,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         zFor: sortZ,
         levelH: LEVEL_H,
         player: () => ({ u: pu, v: pv, alive: !character.dead && !entering }),
-        wantsSkill: (skill: Skill) => store.get().skills[skill] < SKILL_CAP[skill],
+        wantsSkill: (kind: DropKind) => kind === 'sword' || store.get().skills[kind] < SKILL_CAP[kind],
         onTouch: (id) => sim.take(id),
     });
     const safeView = createSafeView({
@@ -664,7 +684,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             saveClock = 0;
             progress.record({ scene: 'world', u: pu, v: pv, tool: character.tool, hp: store.get().hp });
         }
-        net.sendPose({ scene: 'world', u: pu, v: pv, z: pz, face: character.facing, anim: pu !== fromU || pv !== fromV ? character.anim : 'idle', tool: character.tool, dead: character.dead });
+        net.sendPose({ scene: 'world', u: pu, v: pv, z: pz, face: character.facing, anim: pu !== fromU || pv !== fromV ? character.anim : 'idle', tool: character.tool, dead: character.dead, sword: character.sword });
         remotes.update(ticker.deltaMS);
         invuln = Math.max(0, invuln - ticker.deltaMS);
         for (let i = strikes.length - 1; i >= 0; i--) {
