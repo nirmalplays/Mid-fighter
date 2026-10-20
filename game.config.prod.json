@@ -6,9 +6,13 @@
   "maxDpr": 1.5,
   "orientation": "landscape",
   "keywords": [
-    "starter",
-    "demo",
-    "casual"
+    "action",
+    "fighter",
+    "isometric",
+    "multiplayer",
+    "co-op",
+    "monsters",
+    "rpg"
   ],
   "kitId": null
 }

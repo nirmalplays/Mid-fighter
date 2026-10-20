@@ -5,7 +5,7 @@
  */
 import { createSaveSystem, fillMissing } from './helpers/save.ts';
 
-export interface BounceSave {
+export interface FighterSave {
     version: number;
     /** Where the player was last: the open world or the workshop. */
     scene: 'world' | 'base';
@@ -25,7 +25,7 @@ export interface BounceSave {
     skills: { attack: number; defence: number; speed: number; vitality: number };
 }
 
-export function defaultSave(): BounceSave {
+export function defaultSave(): FighterSave {
     return {
         version: 1,
         scene: 'world',
@@ -39,7 +39,7 @@ export function defaultSave(): BounceSave {
     };
 }
 
-export const saveSystem = createSaveSystem<BounceSave>({
+export const saveSystem = createSaveSystem<FighterSave>({
     key: 'bounce-lab-save',
     version: 1,
     defaultSave,

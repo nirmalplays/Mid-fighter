@@ -12,18 +12,19 @@ export default function MainMenu() {
     const played = (progress.saved?.playSeconds ?? 0) > 5;
 
     return (
-        <div className="flex h-full flex-col items-center justify-center gap-5 px-10">
-            <h1 className="text-4xl font-bold tracking-wide text-primary">Bounce Lab</h1>
+        <div className="flex h-full flex-col items-center justify-center gap-2 px-10">
+            <img src="images/logo.png" alt="" style={{ height: 'min(96px, 19vh)' }} draggable={false} />
+            <h1 className="text-4xl font-black tracking-wide" style={{ color: '#ffcb4d', textShadow: '0 3px 0 #2a1840' }}>MEH FIGHTER</h1>
             <button
                 type="button"
-                className="rounded-2xl bg-primary px-12 py-4 text-xl font-bold text-black shadow-lg transition-transform active:scale-95"
+                className="rounded-2xl bg-primary px-12 py-3 text-xl font-bold text-black shadow-lg transition-transform active:scale-95"
                 onClick={() => store.patch({ phase: progress.saved?.scene === 'base' ? 'base' : 'playing' })}
             >
                 {played ? 'Continue' : 'Play'}
             </button>
             <button
                 type="button"
-                className="rounded-2xl border-2 border-primary px-10 py-3 text-lg font-bold text-primary transition-transform active:scale-95"
+                className="rounded-2xl border-2 border-primary px-10 py-2 text-lg font-bold text-primary transition-transform active:scale-95"
                 onClick={() => store.patch({ phase: 'base' })}
             >
                 Workshop

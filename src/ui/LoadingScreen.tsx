@@ -9,8 +9,8 @@ export default function LoadingScreen() {
     const pct = Math.round(progress * 100);
     return (
         <div className="flex h-full flex-col items-center justify-center gap-6 px-10">
-            {/* ADAPT: game title / logo image */}
-            <h1 className="text-3xl font-bold tracking-wide text-primary">Bounce Lab</h1>
+            <img src="images/logo.png" alt="" style={{ height: 'min(84px, 18vh)' }} draggable={false} />
+            <h1 className="text-3xl font-black tracking-wide" style={{ color: '#ffcb4d' }}>MEH FIGHTER</h1>
             <div
                 className="h-3 w-full max-w-xs overflow-hidden rounded-full bg-white/10"
                 role="progressbar"
