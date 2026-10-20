@@ -466,7 +466,7 @@ export default function Hud() {
             {/* Actions, bottom right, in the thumb's arc: Attack (big), Use (the held tool), Actions menu */}
             <div className="absolute bottom-0 right-0 pb-safe-bottom pr-4">
                 {more && (
-                    <div className="absolute flex gap-2 rounded-2xl p-2" style={{ bottom: 168, right: 30, background: 'rgba(31,14,38,.78)', border: `3px solid ${PLUM}` }}>
+                    <div className="absolute flex gap-2 p-2" style={{ bottom: 168, right: 30 }}>
                         {SPELLS.map((sp, i) => (
                             <div key={sp.name} className="flex flex-col items-center gap-0.5">
                                 <div className="relative">
