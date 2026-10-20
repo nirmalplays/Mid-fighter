@@ -330,6 +330,7 @@ export default function Hud() {
     const inBase = useStore((s) => s.phase === 'base');
     const netStatus = useStore((s) => s.netStatus);
     const online = useStore((s) => s.online);
+    const roomCode = useStore((s) => s.roomCode);
     const kills = useStore((s) => s.kills);
     const [more, setMore] = useState(false);
     const toolId = useStore((s) => s.toolId);
@@ -462,12 +463,25 @@ export default function Hud() {
                 </div>
             )}
 
-            {/* Multiplayer: who is in the shared room */}
+            {/* Multiplayer: the room's code (tap to copy) and how many are in it */}
             {netStatus !== 'off' && (
-                <div className="absolute bottom-6 left-2 flex items-center gap-1.5 rounded-md bg-black/45 px-2 py-0.5 text-[11px] font-bold text-white">
+                <button
+                    type="button"
+                    className="pointer-events-auto absolute bottom-6 left-2 flex touch-manipulation items-center gap-1.5 rounded-md bg-black/50 px-2 py-0.5 text-[11px] font-bold text-white"
+                    onClick={() => {
+                        if (roomCode) {
+                            try { void navigator.clipboard?.writeText(roomCode); } catch { /* clipboard unavailable */ }
+                            store.patch({ banner: { text: `Room code ${roomCode} copied`, id: Date.now() } });
+                        }
+                    }}
+                >
                     <span className={`inline-block h-2 w-2 rounded-full ${netStatus === 'online' ? 'bg-emerald-400' : 'animate-pulse bg-amber-300'}`} />
-                    {netStatus === 'online' ? `Online · ${online} ${online === 1 ? 'player' : 'players'}` : 'Connecting…'}
-                </div>
+                    {netStatus !== 'online'
+                        ? 'Connecting…'
+                        : roomCode
+                            ? `Room ${roomCode} · ${online}`
+                            : `Online · ${online} ${online === 1 ? 'player' : 'players'}`}
+                </button>
             )}
 
             {!inBase && (

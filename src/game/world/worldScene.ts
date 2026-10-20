@@ -186,7 +186,6 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         toScreen: (u, v) => ({ x: sx(u, v), y: sy(u, v) }),
         zFor: (u, v) => sy(Math.floor(u) + 0.5, Math.floor(v) + 0.5) + Z_PLAYER,
     });
-    void net.connect();
 
     let pz = 0; // smoothed terrace lift under the player, screen px
     let pu = MAP_TILES / 2 + 0.5;

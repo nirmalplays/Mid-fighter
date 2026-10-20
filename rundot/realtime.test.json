@@ -3,7 +3,7 @@
     {
       "type": "world",
       "file": "src/rooms/WorldRoom.ts",
-      "singleton": true,
+      "singleton": false,
       "config": {
         "maxPlayers": 16,
         "allowReconnect": true,

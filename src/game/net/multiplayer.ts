@@ -112,13 +112,46 @@ function handle(msg: Msg): void {
     }
 }
 
-/** Join the shared room (once). Safe to call from every scene. */
-function connect(): Promise<void> {
-    if (room || connecting) return connecting ?? Promise.resolve();
+/** How to enter an online room. */
+export type JoinRequest =
+    | { kind: 'public' }
+    | { kind: 'create' }
+    | { kind: 'join'; code: string };
+
+export interface JoinResult {
+    ok: boolean;
+    /** The room's shareable 6-character code, when joined. */
+    code?: string;
+    error?: string;
+}
+
+/** Why a join failed, in words for the player. */
+function describe(err: unknown, req: JoinRequest): string {
+    const text = err instanceof Error ? err.message : String(err);
+    if (req.kind === 'join' && /not found|no such|invalid|unknown|does not exist/i.test(text)) return 'No room with that code.';
+    if (/full/i.test(text)) return 'That room is full.';
+    if (/denied|anonymous|sign/i.test(text)) return 'Sign in to RUN to play online.';
+    return 'Could not connect. Check your connection and try again.';
+}
+
+/**
+ * Join an online room: the public Quick Play room, a new private room (share its code), or a
+ * room by code. Leaves the current room first. Resolves with the room code on success.
+ */
+async function connect(req: JoinRequest): Promise<JoinResult> {
+    if (connecting) await connecting;
+    leave();
     publish('connecting');
+    let result: JoinResult = { ok: false };
     connecting = (async () => {
         try {
-            const r = await RundotGameAPI.realtime.joinOrCreateRoom<Msg>('world');
+            const api = RundotGameAPI.realtime;
+            const r =
+                req.kind === 'join'
+                    ? await api.joinRoomByCode<Msg>(req.code.trim().toUpperCase())
+                    : req.kind === 'create'
+                        ? await api.createRoom<Msg>('world', { createOptions: { isPrivate: true, maxPlayers: 8 } })
+                        : await api.joinOrCreateRoom<Msg>('world', { criteria: { kind: 'public' }, createOptions: { maxPlayers: 16 } });
             r.on({
                 onMessage: handle,
                 // sendTo() replies (the snapshot) arrive here, not in onMessage.
@@ -135,25 +168,47 @@ function connect(): Promise<void> {
                 onReconnecting: () => publish('connecting'),
                 onReconnected: () => publish('online'),
                 onDisconnect: () => {
+                    if (room !== r) return; // we left on purpose
                     room = null;
                     snap = null;
                     remotes.clear();
+                    store.patch({ roomCode: null });
                     publish('off');
                 },
                 onError: (err) => console.warn('[multiplayer]', err),
             });
             room = r;
+            store.patch({ roomCode: r.roomCode || null });
             publish('online');
             // The join-time snapshot can arrive before the handlers above exist; ask again.
             r.send({ type: 'hello' });
+            result = { ok: true, code: r.roomCode };
         } catch (err) {
-            console.warn('[multiplayer] unavailable', err);
+            console.warn('[multiplayer] could not join', err);
             publish('off');
+            result = { ok: false, error: describe(err, req) };
         } finally {
             connecting = null;
         }
     })();
-    return connecting;
+    await connecting;
+    return result;
+}
+
+/** Leave the current room (back to single player). */
+function leave(): void {
+    const r = room;
+    room = null;
+    snap = null;
+    remotes.clear();
+    lastKey = '';
+    store.patch({ roomCode: null });
+    publish('off');
+    try {
+        r?.leave();
+    } catch {
+        /* already closed */
+    }
 }
 
 /** Send our pose, at most ~10 times a second, and only when it changed (plus a once-a-second heartbeat). */
@@ -209,7 +264,7 @@ function sendAway(): void {
 }
 
 export const net = {
-    remotes, connect, sendPose, sendAct, sendAway, sendHit, sendPickup,
+    remotes, connect, leave, sendPose, sendAct, sendAway, sendHit, sendPickup,
     /**
      * True while the server is running the monsters: the room is connected and its combat
      * snapshots are arriving (it sends at least one a second). A room that connects but never

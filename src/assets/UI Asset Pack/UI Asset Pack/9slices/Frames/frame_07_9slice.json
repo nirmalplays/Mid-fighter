@@ -1,0 +1,27 @@
+{ "frames": {
+   "Sprite-0002.": {
+    "frame": { "x": 0, "y": 0, "w": 80, "h": 64 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 80, "h": 64 },
+    "sourceSize": { "w": 80, "h": 64 },
+    "duration": 100
+   }
+ },
+ "meta": {
+  "app": "https://www.aseprite.org/",
+  "version": "1.3.17-x64",
+  "image": "frame_07_9slice.png",
+  "format": "RGBA8888",
+  "size": { "w": 80, "h": 64 },
+  "scale": "1",
+  "frameTags": [
+  ],
+  "layers": [
+   { "name": "Layer 1", "opacity": 255, "blendMode": "normal" }
+  ],
+  "slices": [
+   { "name": "baloon", "color": "#0000ffff", "keys": [{ "frame": 0, "bounds": {"x": 1, "y": 1, "w": 78, "h": 62 }, "center": {"x": 6, "y": 6, "w": 58, "h": 45 } }] }
+  ]
+ }
+}

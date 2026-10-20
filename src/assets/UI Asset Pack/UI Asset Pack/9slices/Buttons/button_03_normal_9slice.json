@@ -1,0 +1,27 @@
+{ "frames": {
+   "Sprite-0001.": {
+    "frame": { "x": 0, "y": 0, "w": 48, "h": 32 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 48, "h": 32 },
+    "sourceSize": { "w": 48, "h": 32 },
+    "duration": 100
+   }
+ },
+ "meta": {
+  "app": "https://www.aseprite.org/",
+  "version": "1.3.17-x64",
+  "image": "button_03_normal_9slice.png",
+  "format": "RGBA8888",
+  "size": { "w": 48, "h": 32 },
+  "scale": "1",
+  "frameTags": [
+  ],
+  "layers": [
+   { "name": "Layer 1", "opacity": 255, "blendMode": "normal" }
+  ],
+  "slices": [
+   { "name": "button_02_slice", "color": "#0000ffff", "keys": [{ "frame": 0, "bounds": {"x": 5, "y": 5, "w": 38, "h": 24 }, "center": {"x": 4, "y": 4, "w": 30, "h": 15 } }] }
+  ]
+ }
+}

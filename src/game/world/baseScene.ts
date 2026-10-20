@@ -135,7 +135,6 @@ export function createBaseScene(app: Application, stage: Stage): Scene {
         toScreen: (u, v) => ({ x: sx(u, v), y: sy(u, v) }),
         zFor: (u, v) => sy(u, v),
     });
-    void net.connect();
     objects.addChild(character.player);
     world.addChild(character.xray);
     const player = character.player;

@@ -22,6 +22,8 @@ export interface AppState {
     tileY: number;
     /** Multiplayer link to the shared world room, and how many players (including you) are in it */
     netStatus: 'off' | 'connecting' | 'online';
+    /** The online room's shareable code (null when solo, or in the public Quick Play room if it has none) */
+    roomCode: string | null;
     online: number;
     /** Monsters this player has defeated (from the save) */
     kills: number;
@@ -62,6 +64,7 @@ let state: AppState = {
     tileY: 0,
     height: 0,
     netStatus: 'off',
+    roomCode: null,
     online: 0,
     kills: 0,
     playSeconds: 0,
