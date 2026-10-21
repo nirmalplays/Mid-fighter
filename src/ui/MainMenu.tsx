@@ -160,6 +160,9 @@ export default function MainMenu() {
                     </>
                 )}
             </PxPanel>
+            <div className="pointer-events-none absolute bottom-1 left-0 right-0 px-3 text-center text-[10px] font-bold text-white/55">
+                Super Pixel Effects Gigapack - Will Tice / unTied Games · Slash and frog art - Frostwindz
+            </div>
         </div>
     );
 }

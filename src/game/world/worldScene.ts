@@ -29,6 +29,7 @@ import {
 } from './constants.ts';
 import { createInput, JOY_RADIUS } from './input.ts';
 import { GEM_CAP } from '../skills.ts';
+import { FX, type FxName } from './fxAtlas.ts';
 import { SPELLS } from './spells.ts';
 import { createDropView, POTION_COLOR, SKILL_COLOR, SKILL_NAMES, type DropKind, type Skill } from './drops.ts';
 import { createMonsterView } from './monsters.ts';
@@ -589,44 +590,94 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     // A swing that actually started (the character was free) lands a moment later.
     const strikes: number[] = [];
     let wasLocked = false;
-    // Spells (the chest menu): a ring or bolt drawn at the blast, and a cooldown per spell.
+    // Spells (the chest menu), drawn with the Super Pixel Effects sheets (public/images/fx), and a cooldown per spell.
     const spellCd = SPELLS.map(() => 0);
     let spellShown = '';
-    const fx: { g: Graphics; t: number; life: number; rx: number; ry: number; bolt: boolean }[] = [];
+    const fxTex = new Map<string, Texture>();
+    const fxFrame = (name: FxName, f: number): Texture => {
+        const k = `${name}:${f}`;
+        let t = fxTex.get(k);
+        if (!t) {
+            const sheet = Assets.get<Texture>(`fx_${name}`);
+            sheet.source.scaleMode = 'nearest';
+            t = new Texture({ source: sheet.source, frame: new Rectangle(f * FX[name].w, 0, FX[name].w, FX[name].h) });
+            fxTex.set(k, t);
+        }
+        return t;
+    };
+    const fx: { s: Sprite; name: FxName; t: number; life: number }[] = [];
+    /** Play an effect once at a spot on the ground (squash < 1 lays a round effect flat on the isometric ground). */
+    const playFx = (name: FxName, u: number, v: number, o: { scale: number; life: number; squash?: number; anchorY?: number; lift?: number }) => {
+        const s = new Sprite(fxFrame(name, 0));
+        s.anchor.set(0.5, o.anchorY ?? 0.5);
+        s.scale.set(o.scale, o.scale * (o.squash ?? 1));
+        const at = worldPoint(u, v);
+        s.position.set(at.x, at.y - heightAt(u, v) * LEVEL_H - (o.lift ?? 0));
+        s.zIndex = 1e5;
+        objects.addChild(s);
+        fx.push({ s, name, t: 0, life: o.life });
+    };
+    /** Thrown spells still in the air: the blast happens where they land. */
+    const flying: { s: Sprite; fu: number; fv: number; tu: number; tv: number; t: number; flight: number; dmg: number; radius: number; facing: number }[] = [];
+    const spellDamage = (base: number) =>
+        Math.max(1, Math.round(base * (1 + 0.15 * store.get().skills.attack) * (buffMs.blue > 0 ? 1.5 : 1) * (buffMs.black > 0 ? 2 : 1)));
+    /** The nearest living monster within `range` tiles, optionally only ahead of where the player faces. */
+    const nearestMonster = (range: number, ahead: boolean): { u: number; v: number } | null => {
+        const aim = (character.facing * Math.PI) / 4;
+        let best = range;
+        let found: { u: number; v: number } | null = null;
+        for (const m of sim.view().monsters) {
+            if (m.state === 'dying') continue;
+            const d = Math.hypot(m.u - pu, m.v - pv);
+            if (d >= best) continue;
+            if (ahead) {
+                let diff = Math.abs(Math.atan2(((m.u - pu) + (m.v - pv)) * 62, ((m.u - pu) - (m.v - pv)) * 62) - aim);
+                if (diff > Math.PI) diff = Math.PI * 2 - diff;
+                if (diff > 1.3) continue;
+            }
+            best = d;
+            found = { u: m.u, v: m.v };
+        }
+        return found;
+    };
     const castSpell = (index: number) => {
         const sp = SPELLS[index];
         if (!sp || spellCd[index] > 0 || character.dead || entering) return;
-        spellCd[index] = sp.cooldownMs;
-        if (sp.heal) {
+        const dmg = spellDamage(sp.damage);
+        if (sp.kind === 'heal') {
             store.patch({ hp: Math.min(store.get().maxHp, store.get().hp + sp.heal) });
             dropView.text(player.x, player.y - 78, `+${sp.heal} Health`, sp.color);
-        }
-        let cu = pu;
-        let cv = pv;
-        if (sp.radius > 0) {
-            if (sp.seek > 0) {
-                let best = sp.seek;
-                for (const m of sim.view().monsters) {
-                    if (m.state === 'dying') continue;
-                    const d = Math.hypot(m.u - pu, m.v - pv);
-                    if (d < best) { best = d; cu = m.u; cv = m.v; }
-                }
-                if (cu === pu && cv === pv) {
-                    spellCd[index] = 0; // nothing in range: the spell is not spent
-                    dropView.text(player.x, player.y - 78, 'No target', 0xffffff);
-                    return;
-                }
+            playFx('heal', pu, pv, { scale: 1.3, life: 1000, lift: 56 });
+        } else if (sp.kind === 'nova') {
+            sim.strike(pu, pv, character.facing, dmg, sp.radius);
+            const w = (sp.radius * 176) / FX.frost.w;
+            playFx('frost', pu, pv, { scale: w * 0.95, squash: 0.55, life: 600 });
+            playFx('sparkle', pu, pv, { scale: w * 1.3, squash: 0.55, life: 750 });
+        } else if (sp.kind === 'bolt') {
+            const target = nearestMonster(sp.seek, false);
+            if (!target) {
+                dropView.text(player.x, player.y - 78, 'No target', 0xffffff);
+                return;
             }
-            const dmg = Math.max(1, Math.round(sp.damage * (1 + 0.15 * store.get().skills.attack) * (buffMs.blue > 0 ? 1.5 : 1) * (buffMs.black > 0 ? 2 : 1)));
-            sim.strike(cu, cv, character.facing, dmg, sp.radius);
+            sim.strike(target.u, target.v, character.facing, dmg, sp.radius);
+            playFx('bolt', target.u, target.v, { scale: 2.6, life: 600, anchorY: 0.92 });
+            playFx('boltburst', target.u, target.v, { scale: 3.2, squash: 0.55, life: 500 });
+        } else {
+            // Thrown: toward the nearest monster ahead, else straight ahead.
+            const a = (character.facing * Math.PI) / 4;
+            const target = nearestMonster(sp.seek, true) ?? {
+                u: pu + ((Math.cos(a) + Math.sin(a)) / Math.SQRT2) * 5.5,
+                v: pv + ((Math.sin(a) - Math.cos(a)) / Math.SQRT2) * 5.5,
+            };
+            const s = new Sprite(fxFrame('fireball', 0));
+            s.anchor.set(0.5, 0.75);
+            s.scale.set(0.8);
+            s.zIndex = 1e5;
+            objects.addChild(s);
+            const dist = Math.hypot(target.u - pu, target.v - pv);
+            flying.push({ s, fu: pu, fv: pv, tu: target.u, tv: target.v, t: 0, flight: Math.max(260, (dist / 13) * 1000), dmg, radius: sp.radius, facing: character.facing });
         }
-        const g = new Graphics();
-        g.zIndex = 1e5;
-        objects.addChild(g);
-        const at = worldPoint(cu, cv);
-        g.position.set(at.x, at.y - heightAt(cu, cv) * LEVEL_H);
-        fx.push({ g, t: 0, life: sp.heal ? 700 : 450, rx: Math.max(0.8, sp.radius) * 88, ry: Math.max(0.8, sp.radius) * 44, bolt: sp.seek > 0 });
-        (g as Graphics & { color?: number }).color = sp.color;
+        spellCd[index] = sp.cooldownMs;
     };
     // The sword's crescent slash (the frog pack's "Slash 3"): 9 frames, one colour row per sword.
     const slashSheet = Assets.get<Texture>('slashes');
@@ -887,20 +938,28 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             spellShown = cdNow.join();
             store.patch({ spellCd: cdNow });
         }
+        for (let i = flying.length - 1; i >= 0; i--) {
+            const f = flying[i];
+            f.t += ticker.deltaMS;
+            const k = Math.min(1, f.t / f.flight);
+            const u = f.fu + (f.tu - f.fu) * k;
+            const v = f.fv + (f.tv - f.fv) * k;
+            const at = worldPoint(u, v);
+            f.s.position.set(at.x, at.y - heightAt(u, v) * LEVEL_H - 46 - Math.sin(k * Math.PI) * 34);
+            f.s.texture = fxFrame('fireball', Math.floor(f.t / 70) % FX.fireball.n);
+            if (k >= 1) {
+                f.s.destroy();
+                flying.splice(i, 1);
+                sim.strike(f.tu, f.tv, f.facing, f.dmg, f.radius);
+                playFx('explosion', f.tu, f.tv, { scale: 2.6, life: 900, anchorY: 0.8 });
+            }
+        }
         for (let i = fx.length - 1; i >= 0; i--) {
             const f = fx[i];
             f.t += ticker.deltaMS;
-            const k = Math.min(1, f.t / f.life);
-            const col = (f.g as Graphics & { color?: number }).color ?? 0xffffff;
-            f.g.clear();
-            if (f.bolt) {
-                f.g.moveTo(0, -420 * (1 - k)).lineTo(10, -300 * (1 - k)).lineTo(-8, -170 * (1 - k)).lineTo(0, 0).stroke({ width: 9 * (1 - k) + 2, color: col, alpha: 1 - k });
-                f.g.ellipse(0, 0, f.rx * (0.4 + 0.6 * k), f.ry * (0.4 + 0.6 * k)).stroke({ width: 5, color: col, alpha: 1 - k });
-            } else {
-                f.g.ellipse(0, 0, f.rx * (0.25 + 0.75 * k), f.ry * (0.25 + 0.75 * k)).fill({ color: col, alpha: 0.28 * (1 - k) }).stroke({ width: 6 * (1 - k) + 1, color: col, alpha: 1 - k });
-            }
-            if (k >= 1) {
-                f.g.destroy();
+            f.s.texture = fxFrame(f.name, Math.min(FX[f.name].n - 1, Math.floor((f.t / f.life) * FX[f.name].n)));
+            if (f.t >= f.life) {
+                f.s.destroy();
                 fx.splice(i, 1);
             }
         }
