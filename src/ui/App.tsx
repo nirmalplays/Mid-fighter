@@ -14,13 +14,14 @@ import GameCanvas from '../game/GameCanvas.tsx';
 
 export default function App() {
     const phase = useStore((s) => s.phase);
+    const runId = useStore((s) => s.runId);
     return (
         <div id="app-frame" className="bg-surface text-white">
             {phase === 'loading' && <LoadingScreen />}
             {phase === 'menu' && <MainMenu />}
-            {(phase === 'playing' || phase === 'base') && (
+            {phase === 'playing' && (
                 <div className="absolute inset-0">
-                    <GameCanvas key={phase} mode={phase === 'base' ? 'base' : 'world'} />
+                    <GameCanvas key={runId} />
                     <Hud />
                 </div>
             )}

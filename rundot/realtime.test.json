@@ -11,11 +11,8 @@
         "autoPersist": false,
         "idleTimeout": 120,
         "metadata": {
-          "waveEverySec": 30,
-          "firstWaveSec": 4,
-          "safeEverySec": 24,
-          "safeForSec": 20,
-          "safeFirstSec": 6
+          "waveEverySec": 8,
+          "firstWaveSec": 4
         }
       }
     }

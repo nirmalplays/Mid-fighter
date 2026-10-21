@@ -8,8 +8,7 @@
  * terrain hides what is behind it; an x-ray copy of the player shows through.
  * Ground is shaded by height and a noise tone, props cast soft shadows, and
  * water deepens away from the shore with foam along the edge and ripples.
- * Every couple of minutes a temporary safe portal opens somewhere; walking into it leads
- * to the workshop (the base), and a ring around it keeps monsters out for its few seconds.
+ * A wave of monsters starts every 20 seconds, harder each time; dying ends the run.
  */
 import {
     Assets, Container, Graphics, Rectangle, Sprite, Text, Texture,
@@ -20,6 +19,7 @@ import type { Scene } from '../scene.ts';
 import type { Stage } from '../stage.ts';
 import { commands } from '../commands.ts';
 import { net } from '../net/multiplayer.ts';
+import { myRank, runScore, submitRun, topScores } from '../leaderboard.ts';
 import { progress } from '../progress.ts';
 import { createRemotePlayers } from '../net/remotePlayers.ts';
 import { createCharacter } from './character.ts';
@@ -30,10 +30,9 @@ import {
 import { createInput, JOY_RADIUS } from './input.ts';
 import { GEM_CAP } from '../skills.ts';
 import { FX, type FxName } from './fxAtlas.ts';
-import { SPELLS } from './spells.ts';
+import { cooldownFor, maxCharges, SPELLS } from './spells.ts';
 import { createDropView, POTION_COLOR, SKILL_COLOR, SKILL_NAMES, type DropKind, type Skill } from './drops.ts';
 import { createMonsterView } from './monsters.ts';
-import { createSafeView } from './safeZone.ts';
 import { createWorldSim } from './worldSim.ts';
 import { ISO_FRAMES, ISO_SCALE } from './isoAtlas.ts';
 import { generateWorld, GRASS, MAX_HEIGHT, SAND, STONE, WATER, type Flat, type Prop } from './mapGen.ts';
@@ -60,11 +59,6 @@ const KICK = 190;
 const KICK_NEIGHBOUR = 60;
 /** Elevation from which a stone tile is capped with snow. */
 const SNOW_LEVEL = 7;
-/** Portal: 6 animation frames of 112 × 128, scaled up; the base's centre sits on its tile. */
-/** Walking within this many tiles of the open safe portal's centre pulls the player in. */
-const PORTAL_REACH = 1.35;
-const ENTER_MS = 850;
-const FLASH_MS = 350;
 /** Damage a swing does to a monster (they have 6 health), by equipped tool. */
 const TOOL_DAMAGE: Record<string, number> = {
     none: 1, sword: 3, axe: 2, pickaxe: 2, hammer: 3, shovel: 2, fishingpole: 1, watercan: 1, shield: 1,
@@ -198,7 +192,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         pu = Math.min(MAP_TILES - 1, Math.max(0, spawn[0])) + 0.5;
         pv = Math.min(MAP_TILES - 1, Math.max(0, spawn[1])) + 0.5;
     }
-    // Resume where this player left off (including coming back from the workshop).
+    // Resume where this player left off .
     if (progress.saved?.world.set) {
         const { u, v } = progress.saved.world;
         if (u >= 0 && v >= 0 && u < MAP_TILES && v < MAP_TILES && map.blocked[Math.floor(v) * MAP_TILES + Math.floor(u)] === 0) {
@@ -456,13 +450,6 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         store.patch({ tileX: i, tileY: j, height: map.height[t], chunkX: curCx, chunkY: curCy, loadedChunks: chunks.size });
     };
 
-    const flash = new Graphics();
-    app.stage.addChild(flash);
-    let entering = false;
-    let enterT = 0;
-    let enterFrom = { x: 0, y: 0 };
-    let enterTo = { x: 0, y: 0 };
-    let exited = false;
 
     // Monsters, waves and drops: shown from the shared simulation (the server's when
     // online, a local copy offline) via world/worldSim.ts; swings and pickups are sent to it.
@@ -476,7 +463,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     const BUFF_MS: Record<string, number> = { blue: 20000, yellow: 15000, purple: 12000, black: 15000 };
     let buffShown = '';
     const hurtPlayer = (n: number) => {
-        if (invuln > 0 || character.dead || entering || store.get().shop) return; // no bites while shopping
+        if (invuln > 0 || character.dead || store.get().shop) return; // no bites while shopping
         invuln = 1500;
         if (buffMs.purple > 0) {
             dropView.text(player.x, player.y - 70, 'Shielded!', POTION_COLOR.purple);
@@ -492,19 +479,27 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         character.command({ type: 'hurt' });
         net.sendAct('hurt');
     };
+    // The run: it ends when the player dies (Game Over screen + leaderboard).
+    let runKills = 0;
+    let runSeconds = 0;
+    let deadFor = 0;
+    let runOver = false;
     const q = new URLSearchParams(window.location.search);
     const sim = createWorldSim({
         map,
-        player: () => ({ id: 'me', u: pu, v: pv, alive: !character.dead && !entering }),
+        player: () => ({ id: 'me', u: pu, v: pv, alive: !character.dead }),
         // Debug: ?firstWave=<s>&waveEvery=<s> shorten the wave timers when playing offline.
-        everySec: Number(q.get('waveEvery')) || 120,
+        everySec: Number(q.get('waveEvery')) || 20,
         firstSec: Number(q.get('firstWave')) || 20,
         // Debug: ?swordMul=40 makes sword drops common when playing offline, for testing.
         swordMul: Number(q.get('swordMul')) || 1,
         potionMul: Number(q.get('potionMul')) || 1,
         on: {
             bite: hurtPlayer,
-            kill: () => progress.addKill(),
+            kill: () => {
+                runKills++;
+                progress.addKill();
+            },
             gain: (kind: DropKind, sword: number) => {
                 if (kind.startsWith('potion_')) {
                     const c = kind.slice(7);
@@ -536,7 +531,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                     }
                     return;
                 }
-                // A gem: kept until you spend it on an upgrade at the workshop or a visiting frog.
+                // A gem: kept until you spend it on an upgrade at a visiting frog (it is lost if you die first).
                 const skill = kind as Skill;
                 if (!progress.addGem(skill)) return;
                 dropView.text(player.x, player.y - 78, `+1 ${SKILL_NAMES[skill]} gem`, SKILL_COLOR[skill]);
@@ -545,12 +540,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                 progress.reachWave(n);
                 banner(`Wave ${n}! Monsters are coming`);
             },
-            safe: () => banner('Safe portal open! Reach it to rest in the workshop'),
         },
-        // Debug: ?safeEvery / safeFor / safeFirst (seconds) change the safe portal's timing offline.
-        safeEverySec: Number(q.get('safeEvery')) || 120,
-        safeForSec: Number(q.get('safeFor')) || 20,
-        safeFirstSec: Number(q.get('safeFirst')) || 45,
     });
     const monsterView = createMonsterView({
         layer: objects,
@@ -568,30 +558,40 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         toScreen: worldPoint,
         zFor: sortZ,
         levelH: LEVEL_H,
-        player: () => ({ u: pu, v: pv, alive: !character.dead && !entering }),
+        player: () => ({ u: pu, v: pv, alive: !character.dead }),
         wantsSkill: (kind: DropKind) => {
             if (kind === 'potion_red') return store.get().hp < store.get().maxHp;
             return kind === 'sword' || kind.startsWith('potion_') || store.get().gems[kind as Skill] < GEM_CAP;
         },
         onTouch: (id) => sim.take(id),
     });
-    const safeView = createSafeView({
-        layer: objects,
-        heightAt,
-        toScreen: worldPoint,
-        zFor: sortZ,
-        levelH: LEVEL_H,
-    });
+    const endRun = () => {
+        runOver = true;
+        const wave = Math.max(1, sim.view().wave);
+        const score = runScore(wave, runKills);
+        net.sendAway();
+        progress.endRun();
+        store.patch({ gameOver: { score, wave, kills: runKills, seconds: runSeconds, status: 'sending', rank: null, note: null, top: [] } });
+        void (async () => {
+            const r = await submitRun(score, runSeconds, wave, runKills);
+            const top = await topScores(10);
+            const rank = r.accepted ? r.rank : await myRank();
+            if (store.get().gameOver) store.patch({ gameOver: { score, wave, kills: runKills, seconds: runSeconds, status: 'done', rank, note: r.accepted ? null : r.reason, top } });
+        })();
+    };
     // Debug: with ?spawn= the game exposes the current combat view for automated checks.
     if (q.has('spawn')) {
-        (window as unknown as { __game?: unknown }).__game = { view: () => sim.view(), pos: () => ({ u: pu, v: pv }) };
+        (window as unknown as { __game?: unknown }).__game = { view: () => sim.view(), pos: () => ({ u: pu, v: pv }), store, progress };
     }
     let hudClock = 0;
     // A swing that actually started (the character was free) lands a moment later.
     const strikes: number[] = [];
     let wasLocked = false;
     // Spells (the chest menu), drawn with the Super Pixel Effects sheets (public/images/fx), and a cooldown per spell.
-    const spellCd = SPELLS.map(() => 0);
+    // Charges held per spell (a new run, or unlocking one, starts it full) and ms until the next charge.
+    const charges = SPELLS.map(() => 0);
+    const recharge = SPELLS.map(() => 0);
+    const lastMax = SPELLS.map(() => 0);
     let spellShown = '';
     const fxTex = new Map<string, Texture>();
     const fxFrame = (name: FxName, f: number): Texture => {
@@ -642,7 +642,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     };
     const castSpell = (index: number) => {
         const sp = SPELLS[index];
-        if (!sp || spellCd[index] > 0 || character.dead || entering) return;
+        if (!sp || !store.get().spells.unlocked[index] || charges[index] < 1 || character.dead) return;
         const dmg = spellDamage(sp.damage);
         if (sp.kind === 'heal') {
             store.patch({ hp: Math.min(store.get().maxHp, store.get().hp + sp.heal) });
@@ -677,7 +677,8 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             const dist = Math.hypot(target.u - pu, target.v - pv);
             flying.push({ s, fu: pu, fv: pv, tu: target.u, tv: target.v, t: 0, flight: Math.max(260, (dist / 13) * 1000), dmg, radius: sp.radius, facing: character.facing });
         }
-        spellCd[index] = sp.cooldownMs;
+        charges[index] -= 1;
+        if (recharge[index] <= 0) recharge[index] = cooldownFor(sp, store.get().spells.cooldown[index]);
     };
     // The sword's crescent slash (the frog pack's "Slash 3"): 9 frames, one colour row per sword.
     const slashSheet = Assets.get<Texture>('slashes');
@@ -709,7 +710,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         slashes.push({ s, t: 0, row });
         slashFlip = -slashFlip;
     };
-    // A frog shopkeeper visits now and then: walk up to it to spend gems on upgrades (the workshop works too).
+    // A frog shopkeeper visits now and then: walk up to it to spend gems on upgrades.
     const frogSheet = Assets.get<Texture>('frog');
     frogSheet.source.scaleMode = 'linear';
     const frogTex = [0, 1, 2].map((n) => new Texture({ source: frogSheet.source, frame: new Rectangle(n * 175, 0, 175, 175) }));
@@ -724,7 +725,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     frogShadow.anchor.set(0.5);
     frogSprite.visible = frogGlow.visible = frogShadow.visible = false;
     objects.addChild(frogGlow, frogShadow, frogSprite);
-    // Debug: ?frogFirst=<s>&frogEvery=<s> change the timing.
+    // Debug: ?frogFirst=<s>&frogEvery=<s> change the timing, ?frogNear puts it beside the player.
     const FROG_FIRST = (Number(q.get('frogFirst')) || 70) * 1000;
     const FROG_EVERY = (Number(q.get('frogEvery')) || 170) * 1000;
     const FROG_STAYS = 40000;
@@ -732,6 +733,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     let frogClock = FROG_FIRST;
     let frogSeen = false;
     const findFrogSpot = (): { u: number; v: number } | null => {
+        if (q.has('frogNear')) return { u: Math.floor(pu) + 2.5, v: Math.floor(pv) + 0.5 }; // debug: right beside the player
         const free = (i: number, j: number) => {
             for (let dj = -1; dj <= 1; dj++) {
                 for (let di = -1; di <= 1; di++) {
@@ -756,7 +758,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     };
     const updateFrog = (dtMs: number) => {
         if (!frog) {
-            if (!character.dead && !entering) frogClock -= dtMs;
+            if (!character.dead) frogClock -= dtMs;
             if (frogClock <= 0) {
                 const spot = findFrogSpot();
                 if (spot) {
@@ -772,7 +774,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             if (frog.age >= FROG_STAYS) {
                 frog = null;
                 frogClock = FROG_EVERY * (0.8 + Math.random() * 0.4);
-            } else if (!character.dead && !entering) {
+            } else if (!character.dead) {
                 const near = Math.hypot(frog.u - pu, frog.v - pv);
                 if (near < 1.9 && !frogSeen && !store.get().shop) {
                     frogSeen = true;
@@ -849,8 +851,8 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
 
         // Joystick vector is in screen space; the view is 2:1, so halve vertical px.
         const dir = input.read();
-        // Actions, sitting, death and the portal pull hold the character in place.
-        const walk = character.locked || entering ? { x: 0, y: 0 } : dir;
+        // Actions, sitting and death hold the character in place.
+        const walk = character.locked ? { x: 0, y: 0 } : dir;
         const speed = SPEED_PX * (1 + 0.05 * store.get().skills.speed) * (buffMs.yellow > 0 ? 1.4 : 1);
         const X = walk.x * speed * dt;
         const Y = walk.y * speed * 0.5 * dt;
@@ -885,40 +887,21 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         player.zIndex = sy(ci + 0.5, cj + 0.5) + Z_PLAYER;
         xray.position.copyFrom(player.position);
 
-        // Safe portal: when it is open and the player walks up to it, pull them in.
-        const safe = sim.view().safe;
-        if (!entering && safe && !character.dead && safe.age < safe.lasts - 400 && Math.hypot(pu - safe.u, pv - safe.v) < PORTAL_REACH) {
-            entering = true;
-            enterT = 0;
-            enterFrom = { x: player.x, y: player.y };
-            enterTo = { x: sx(safe.u, safe.v), y: sy(safe.u, safe.v) - heightAt(safe.u, safe.v) * LEVEL_H };
-        }
-        if (entering) {
-            enterT += ticker.deltaMS;
-            const t = Math.min(1, enterT / ENTER_MS);
-            const e = t * t;
-            player.position.set(enterFrom.x + (enterTo.x - enterFrom.x) * e, enterFrom.y + (enterTo.y - 24 - enterFrom.y) * e);
-            player.scale.set(1 - 0.85 * e);
-            player.alpha = 1 - e;
-            xray.visible = false;
-            const f = Math.max(0, (enterT - ENTER_MS * 0.55) / (ENTER_MS * 0.45 + FLASH_MS));
-            flash.clear().rect(0, 0, app.screen.width, app.screen.height).fill({ color: 0xd9ffd2, alpha: Math.min(1, f) });
-            if (enterT > ENTER_MS + FLASH_MS && !exited) {
-                exited = true;
-                store.patch({ phase: 'base' });
-            }
-        }
-
         // Character animation: face the way the stick points; idle when blocked or still.
         character.update(ticker.deltaMS, dir, pu !== fromU || pv !== fromV);
         controls.tick();
         progress.addTime(Math.min(ticker.deltaMS / 1000, 0.25));
+        if (!character.dead && !runOver) runSeconds += Math.min(ticker.deltaMS / 1000, 0.25);
+        if (character.dead && !runOver) {
+            deadFor += ticker.deltaMS;
+            if (deadFor > 1500) endRun();
+        }
         saveClock += ticker.deltaMS;
-        if (saveClock > 1000) {
+        if (saveClock > 1000 && !runOver) {
             saveClock = 0;
             progress.record({ scene: 'world', u: pu, v: pv, tool: character.tool, hp: store.get().hp });
         }
-        net.sendPose({ scene: 'world', u: pu, v: pv, z: pz, face: character.facing, anim: pu !== fromU || pv !== fromV ? character.anim : 'idle', tool: character.tool, dead: character.dead, sword: character.sword });
+        if (!runOver) net.sendPose({ scene: 'world', u: pu, v: pv, z: pz, face: character.facing, anim: pu !== fromU || pv !== fromV ? character.anim : 'idle', tool: character.tool, dead: character.dead, sword: character.sword });
         remotes.update(ticker.deltaMS);
         invuln = Math.max(0, invuln - ticker.deltaMS);
         updateFrog(ticker.deltaMS);
@@ -932,11 +915,28 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                 slashes.splice(i, 1);
             }
         }
-        for (let i = 0; i < spellCd.length; i++) spellCd[i] = Math.max(0, spellCd[i] - ticker.deltaMS);
-        const cdNow = spellCd.map((ms) => Math.ceil(ms / 1000));
-        if (cdNow.join() !== spellShown) {
-            spellShown = cdNow.join();
-            store.patch({ spellCd: cdNow });
+        {
+            const sv = store.get().spells;
+            for (let i = 0; i < SPELLS.length; i++) {
+                const max = sv.unlocked[i] ? maxCharges(sv.carry[i]) : 0;
+                if (max > lastMax[i]) charges[i] += max - lastMax[i];
+                lastMax[i] = max;
+                charges[i] = Math.min(charges[i], max);
+                if (charges[i] < max) {
+                    recharge[i] -= ticker.deltaMS;
+                    if (recharge[i] <= 0) {
+                        charges[i] += 1;
+                        recharge[i] = charges[i] < max ? cooldownFor(SPELLS[i], sv.cooldown[i]) : 0;
+                    }
+                } else {
+                    recharge[i] = 0;
+                }
+            }
+            const now = SPELLS.map((_, i) => `${charges[i]}/${lastMax[i]}/${Math.ceil(recharge[i] / 1000)}`).join();
+            if (now !== spellShown) {
+                spellShown = now;
+                store.patch({ spellState: SPELLS.map((_, i) => ({ charges: charges[i], max: lastMax[i], cd: Math.ceil(recharge[i] / 1000) })) });
+            }
         }
         for (let i = flying.length - 1; i >= 0; i--) {
             const f = flying[i];
@@ -981,7 +981,6 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         // Online positions arrive ten times a second, so ease between them; offline updates every frame.
         monsterView.sync(view.monsters, ticker.deltaMS, view.online ? 110 : 0);
         dropView.sync(view.drops, ticker.deltaMS);
-        safeView.sync(view.safe, ticker.deltaMS);
         hudClock -= ticker.deltaMS;
         if (hudClock <= 0) {
             hudClock = 150;
@@ -989,14 +988,6 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             let alive = 0;
             for (const m of view.monsters) if (m.state !== 'dying') alive++;
             const waveLeft = view.run || alive > 0 ? alive + (view.run?.toSpawn ?? 0) : null;
-            const sf = view.safe;
-            const safeAim = sf
-                ? {
-                    angle: Math.atan2((sf.u - pu + (sf.v - pv)) * TILE_DY, (sf.u - pu - (sf.v - pv)) * TILE_DX),
-                    dist: Math.hypot(sf.u - pu, sf.v - pv),
-                    left: Math.max(0, Math.ceil((sf.lasts - sf.age) / 1000)),
-                }
-                : null;
             const frogAim = frog
                 ? {
                     angle: Math.atan2((frog.u - pu + (frog.v - pv)) * TILE_DY, (frog.u - pu - (frog.v - pv)) * TILE_DX),
@@ -1004,7 +995,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                     left: Math.max(0, Math.ceil((FROG_STAYS - frog.age) / 1000)),
                 }
                 : null;
-            store.patch({ wave: view.wave, nextWaveIn: view.nextIn, waveLeft, safeAim, frogAim, sharedMonsters: view.online });
+            store.patch({ wave: view.wave, nextWaveIn: view.nextIn, waveLeft, frogAim, sharedMonsters: view.online });
         }
         wasLocked = character.locked;
 
@@ -1051,17 +1042,15 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             sim.destroy();
             monsterView.destroy();
             dropView.destroy();
-            safeView.destroy();
-            store.patch({ waveLeft: null, safeAim: null, frogAim: null, shop: false, banner: null });
+            store.patch({ waveLeft: null, frogAim: null, shop: false, banner: null });
             remotes.destroy();
             net.sendAway();
-            progress.record({ scene: 'world', u: pu, v: pv, tool: character.tool, hp: store.get().hp });
+            if (!runOver) progress.record({ scene: 'world', u: pu, v: pv, tool: character.tool, hp: store.get().hp });
             progress.flush();
             character.destroy();
             for (const c of chunks.values()) unloadChunk(c);
             chunks.clear();
             joyGfx.destroy();
-            flash.destroy();
             world.destroy({ children: true });
         },
     };

@@ -44,10 +44,7 @@ export const MANIFEST: Manifest = {
                 { alias: 'potion_yellow', src: 'images/potions/yellow.png' },
                 { alias: 'potion_purple', src: 'images/potions/purple.png' },
                 { alias: 'potion_black', src: 'images/potions/black.png' },
-                { alias: 'portal', src: 'images/world/portal.png' },
                 { alias: 'drops', src: 'images/world/drops.png' },
-                { alias: 'base-floor', src: 'images/base/floor.png' },
-                { alias: 'workshop-items', src: 'images/base/items.png' },
                 // Bare-handed movement sheets, so the character is there from the first frame
                 // (everything else loads on demand in world/character.ts).
                 { alias: 'char:idle', src: 'images/world/char/idle.png' },

@@ -1,7 +1,6 @@
 /**
  * Main menu, built from the UI Asset Pack. Three screens:
- *   title  - Single Player (resumes this player's save: scene, position, tool, health, skills),
- *            Online, Workshop and New game; shows the current room with a Leave button
+ *   title  - Single Player (a new run, keeping your upgrades), Online, Leaderboard and New game; shows the current room with a Leave button
  *   online - pick a multiplayer room: Quick Play (the public room), Create Private Room (share
  *            its code with friends) or Join with Code
  *   join   - type a friend's room code
@@ -12,8 +11,9 @@ import { net } from '../game/net/multiplayer.ts';
 import { progress } from '../game/progress.ts';
 import { store, useStore } from '../state/store.ts';
 import { ICON, PxButton, PxPanel } from './px.tsx';
+import { TopScores } from './Scores.tsx';
 
-type Screen = 'title' | 'online' | 'join';
+type Screen = 'title' | 'online' | 'join' | 'scores';
 
 function playedLabel(seconds: number, kills: number): string {
     const m = Math.floor(seconds / 60);
@@ -34,7 +34,7 @@ export default function MainMenu() {
     const inRoom = netStatus === 'online';
 
     /** Start playing from this player's save. */
-    const start = () => store.patch({ phase: progress.saved?.scene === 'base' ? 'base' : 'playing' });
+    const start = () => store.patch({ phase: 'playing' });
 
     const enter = async (req: Parameters<typeof net.connect>[0]) => {
         setBusy(true);
@@ -80,8 +80,8 @@ export default function MainMenu() {
                             Online
                         </PxButton>
                         <div className="flex gap-2">
-                            <PxButton className="flex-1" style={{ minHeight: 44 }} variant="white" icon={ICON.home} onClick={() => store.patch({ phase: 'base' })}>
-                                Workshop
+                            <PxButton className="flex-1" style={{ minHeight: 44 }} variant="white" icon={ICON.menu} onClick={() => setScreen('scores')}>
+                                Leaderboard
                             </PxButton>
                             {inRoom && (
                                 <PxButton className="flex-1" style={{ minHeight: 44 }} variant="white" icon={ICON.back} onClick={() => net.leave()}>
@@ -108,6 +108,16 @@ export default function MainMenu() {
                                 </PxButton>
                             )}
                         </div>
+                    </>
+                )}
+
+                {screen === 'scores' && (
+                    <>
+                        <p className="px-1 text-center text-[14px] font-black leading-none" style={{ color: '#fff3d6', textShadow: '0 2px 0 #3b2412' }}>Leaderboard</p>
+                        <div className="w-[min(300px,52vw)]"><TopScores /></div>
+                        <PxButton className={btnW} style={{ minHeight: 36 }} variant="white" icon={ICON.back} onClick={() => setScreen('title')}>
+                            Back
+                        </PxButton>
                     </>
                 )}
 

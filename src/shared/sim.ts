@@ -1,5 +1,5 @@
 /**
- * The shared combat simulation: monsters, waves and drops. Plain TypeScript
+ * The shared combat simulation: monsters, waves and drops (an endless fight: no safe areas). Plain TypeScript
  * with no graphics, so the same code runs on the server (src/rooms/WorldRoom.ts, one
  * simulation for everyone in the room) and in the browser (offline play). Clients only
  * draw what it produces. Positions are grid tiles (u, v).
@@ -23,9 +23,11 @@ export const KINDS: Record<string, KindDef> = {
     slime: { hp: 4, speed: 1.5, reach: 0.95, attackMs: 640, hitAt: 0.6, recoverMs: 1500, weight: 3 },
     wolf: { hp: 6, speed: 3.5, reach: 1.15, attackMs: 440, hitAt: 0.5, recoverMs: 1300, weight: 2 },
     skeleton: { hp: 8, speed: 1.9, reach: 1.1, attackMs: 720, hitAt: 0.6, recoverMs: 1600, weight: 2 },
+    kobolt: { hp: 4, speed: 2.8, reach: 1.0, attackMs: 500, hitAt: 0.5, recoverMs: 1200, weight: 3 },
+    scorpion: { hp: 10, speed: 1.6, reach: 1.2, attackMs: 700, hitAt: 0.6, recoverMs: 1700, weight: 2 },
 };
 /** Index order used on the wire. */
-export const KIND_NAMES = ['goblin', 'slime', 'wolf', 'skeleton'] as const;
+export const KIND_NAMES = ['goblin', 'slime', 'wolf', 'skeleton', 'kobolt', 'scorpion'] as const;
 export const SKILLS = ['attack', 'defence', 'speed', 'vitality'] as const;
 export type Skill = (typeof SKILLS)[number];
 /** Potions: a drink that gives a short boost (red heals, blue Attack, yellow Speed, purple a shield, black Rage). */
@@ -40,13 +42,15 @@ export const POTION_CHANCE = 0.12;
 /** How many swords exist (src/assets/File.png is 6 x 5). */
 export const SWORD_COUNT = 30;
 /** Chance a kill also drops a random sword, by monster kind (before the wave bonus). */
-export const SWORD_CHANCE: Record<string, number> = { goblin: 0.025, slime: 0.025, wolf: 0.035, skeleton: 0.05 };
+export const SWORD_CHANCE: Record<string, number> = { goblin: 0.025, slime: 0.025, wolf: 0.035, skeleton: 0.05, kobolt: 0.03, scorpion: 0.05 };
 /** What each monster kind drops, and the chance. */
 export const DROP_TABLE: Record<string, { skill: Skill; chance: number }> = {
     goblin: { skill: 'attack', chance: 0.8 },
     skeleton: { skill: 'defence', chance: 0.9 },
     wolf: { skill: 'speed', chance: 0.8 },
     slime: { skill: 'vitality', chance: 0.6 },
+    kobolt: { skill: 'speed', chance: 0.7 },
+    scorpion: { skill: 'vitality', chance: 0.7 },
 };
 export const STATES = ['chase', 'attack', 'recover', 'dying'] as const;
 export type State = (typeof STATES)[number];
@@ -65,24 +69,27 @@ const DIST_MIN = 10;
 const DIST_MAX = 16;
 /** A player must be this close (tiles) to a drop to take it (a little slack for lag). */
 const PICKUP_SLACK = 2.6;
-/** The safe zone around the workshop portal, in tiles. Monsters never enter it. */
-export const SAFE_RADIUS = 3.4;
-/** How far from a player the safe portal appears. */
-const SAFE_DIST_MIN = 7;
-const SAFE_DIST_MAX = 13;
+/** Most monsters alive at once, so phones keep up. */
+export const MAX_ALIVE = 60;
 
-/** Monster count, toughness and kinds for wave n and a number of players. */
+/** Which colour variant of each monster fights in wave n (0 = first, 1 = second, 2 = third). */
+export function tierOf(n: number): number {
+    return n >= 10 ? 2 : n >= 5 ? 1 : 0;
+}
+
+/** Monster count, toughness and kinds for wave n and a number of players. It ramps up hard. */
 export function waveSpec(n: number, players = 1) {
     const kinds = ['goblin', 'slime'];
-    if (n >= 2) kinds.push('wolf');
+    if (n >= 2) kinds.push('wolf', 'kobolt');
     if (n >= 3) kinds.push('skeleton');
+    if (n >= 4) kinds.push('scorpion');
     const extra = Math.max(0, players - 1);
     return {
-        count: Math.min(34, Math.round((3 + 2.5 * (n - 1)) * (1 + 0.6 * extra))),
+        count: Math.min(80, Math.round((4 + 4 * (n - 1)) * (1 + 0.6 * extra))),
         kinds,
-        hpMul: (1 + 0.4 * (n - 1)) * (1 + 0.25 * extra),
-        speedMul: Math.min(1.5, 1 + 0.05 * (n - 1)),
-        damage: n >= 9 ? 3 : n >= 4 ? 2 : 1,
+        hpMul: Math.pow(1.25, n - 1) * (1 + 0.25 * extra),
+        speedMul: Math.min(1.8, 1 + 0.06 * (n - 1)),
+        damage: n >= 15 ? 4 : n >= 9 ? 3 : n >= 4 ? 2 : 1,
     };
 }
 
@@ -97,10 +104,8 @@ export interface SimEnv {
     players(): SimPlayer[];
     /** May an enemy step from one spot to another (plants do not stop them; water and cliffs do). */
     canMove(fromU: number, fromV: number, toU: number, toV: number): boolean;
-    /** Is this a good place to stand (portal placement, spawn spots)? */
+    /** Is this a good place to stand (spawn spots)? */
     canStand(u: number, v: number): boolean;
-    /** Is this open enough ground for the safe portal (clear of bushes and trees, so it can be reached)? */
-    isOpen(u: number, v: number): boolean;
     rand(): number;
 }
 
@@ -120,6 +125,8 @@ export interface SimMonster {
     kv: number;
     hit: boolean;
     side: 1 | -1;
+    /** Colour variant (0-2), from the wave it spawned in. */
+    tier: number;
 }
 
 export interface SimDrop {
@@ -130,15 +137,6 @@ export interface SimDrop {
     u: number;
     v: number;
     age: number;
-}
-
-/** The workshop portal: a temporary safe zone. */
-export interface SimSafe {
-    u: number;
-    v: number;
-    age: number;
-    /** How long it stays open, ms. */
-    lasts: number;
 }
 
 /** A wave while it is still sending in monsters (there is no portal: they just appear off-screen). */
@@ -155,8 +153,7 @@ export interface SimWave {
 export type SimEvent =
     | { type: 'bite'; playerId: string; damage: number }
     | { type: 'kill'; playerId: string; kind: string }
-    | { type: 'wave'; wave: number }
-    | { type: 'safe'; u: number; v: number };
+    | { type: 'wave'; wave: number };
 
 export interface SimOptions {
     everyMs: number;
@@ -165,20 +162,13 @@ export interface SimOptions {
     swordMul?: number;
     /** Multiplies the potion drop chance (1 normally; raised only for testing). */
     potionMul?: number;
-    /** The safe portal opens about every `safeEveryMs` for `safeForMs`; the first one after about `safeFirstMs`. */
-    safeEveryMs: number;
-    safeForMs: number;
-    safeFirstMs: number;
 }
 
 export class GameSim {
     monsters = new Map<number, SimMonster>();
     drops = new Map<number, SimDrop>();
-    /** The wave that is currently spawning, or null between waves. */
-    run: SimWave | null = null;
-    safe: SimSafe | null = null;
-    /** Ms until the safe portal next opens. */
-    safeClock: number;
+    /** Waves that are still sending in monsters (they overlap, a new one starts every `everyMs`). */
+    runs: SimWave[] = [];
     wave = 0;
     /** Ms until the next wave starts. */
     clock: number;
@@ -190,20 +180,13 @@ export class GameSim {
         this.env = env;
         this.opts = opts;
         this.clock = opts.firstMs;
-        this.safeClock = opts.safeFirstMs * (0.7 + 0.6 * env.rand());
     }
 
     /** Remove every monster, drop and any running wave (the wave counter and timer stay). */
     clear(): void {
         this.monsters.clear();
         this.drops.clear();
-        this.run = null;
-        this.safe = null;
-    }
-
-    /** Is (u, v) inside the safe zone (only while the safe portal is open)? */
-    inSafe(u: number, v: number): boolean {
-        return this.safe !== null && Math.hypot(u - this.safe.u, v - this.safe.v) < SAFE_RADIUS;
+        this.runs = [];
     }
 
     update(dtMs: number): SimEvent[] {
@@ -211,40 +194,20 @@ export class GameSim {
         const dt = Math.min(dtMs, 250) / 1000;
         const players = this.env.players();
 
-        // The wave timer runs only while someone is in the world to fight.
-        if (!this.run && players.length > 0) {
+        // The wave timer runs only while someone is in the world to fight. A new wave starts every
+        // `everyMs` whether or not the last one has finished arriving.
+        if (players.length > 0) {
             this.clock -= dtMs;
             if (this.clock <= 0) {
                 this.wave += 1;
                 const spec = waveSpec(this.wave, players.length);
-                this.run = { wave: this.wave, age: 0, toSpawn: spec.count, nextIn: 800, every: WAVE_SPAWN_WINDOW_MS / spec.count };
+                this.runs.push({ wave: this.wave, age: 0, toSpawn: spec.count, nextIn: 800, every: WAVE_SPAWN_WINDOW_MS / spec.count });
                 this.clock = this.opts.everyMs;
                 events.push({ type: 'wave', wave: this.wave });
             }
         }
-        if (this.run) this.updateWave(this.run, dtMs, players);
-
-        // The safe portal: opens at a random spot near a random player, stays a short while, then closes.
-        if (this.safe) {
-            this.safe.age += dtMs;
-            if (this.safe.age >= this.safe.lasts) {
-                this.safe = null;
-                // The next one comes about `safeEveryMs` after this one opened, give or take.
-                const gap = this.opts.safeEveryMs - this.opts.safeForMs;
-                this.safeClock = Math.max(15000, gap * (0.8 + 0.4 * this.env.rand()));
-            }
-        } else if (players.length > 0) {
-            this.safeClock -= dtMs;
-            if (this.safeClock <= 0) {
-                const spot = this.findSafeSpot(players);
-                if (spot) {
-                    this.safe = { u: spot.u, v: spot.v, age: 0, lasts: this.opts.safeForMs };
-                    events.push({ type: 'safe', u: spot.u, v: spot.v });
-                } else {
-                    this.safeClock = 5000;
-                }
-            }
-        }
+        for (const w of this.runs) this.updateWave(w, dtMs, players);
+        this.runs = this.runs.filter((w) => w.toSpawn > 0);
 
         for (const m of [...this.monsters.values()]) this.updateMonster(m, dt, dtMs, players, events);
 
@@ -310,7 +273,7 @@ export class GameSim {
         const m: SimMonster = {
             id: this.nextId++, kind, u, v, hp, max: hp, state: 'chase', t: 0,
             speedMul: mods.speedMul, damage: mods.damage, ku: 0, kv: 0, hit: false,
-            side: this.env.rand() < 0.5 ? 1 : -1,
+            side: this.env.rand() < 0.5 ? 1 : -1, tier: tierOf(this.wave),
         };
         this.monsters.set(m.id, m);
         return m;
@@ -329,16 +292,16 @@ export class GameSim {
 
     /** Compact snapshot for the wire (arrays keep it small at 10 per second). */
     snapshot() {
-        const p = this.run;
+        const total = this.runs.reduce((n, w) => n + w.toSpawn, 0);
+        const p = this.runs.length > 0 ? this.runs[this.runs.length - 1] : null;
         return {
             m: [...this.monsters.values()].map((m) => [
-                m.id, KIND_NAMES.indexOf(m.kind as (typeof KIND_NAMES)[number]), round(m.u), round(m.v), m.hp, m.max, STATES.indexOf(m.state), Math.round(m.t),
+                m.id, KIND_NAMES.indexOf(m.kind as (typeof KIND_NAMES)[number]), round(m.u), round(m.v), m.hp, m.max, STATES.indexOf(m.state), Math.round(m.t), m.tier,
             ]),
             d: [...this.drops.values()].map((d) => [d.id, DROP_KINDS.indexOf(d.skill), round(d.u), round(d.v), Math.round(d.age), d.sword]),
-            p: p ? [p.wave, Math.round(p.age), p.toSpawn] : null,
-            s: this.safe ? [round(this.safe.u), round(this.safe.v), Math.round(this.safe.age), this.safe.lasts] : null,
+            p: p ? [p.wave, Math.round(p.age), total] : null,
             w: this.wave,
-            nx: p ? 0 : Math.max(0, Math.ceil(this.clock / 1000)),
+            nx: Math.max(0, Math.ceil(this.clock / 1000)),
         };
     }
 
@@ -349,7 +312,9 @@ export class GameSim {
         w.age += dtMs;
         if (w.toSpawn > 0 && players.length > 0) {
             w.nextIn -= dtMs;
-            if (w.nextIn <= 0) {
+            if (w.nextIn <= 0 && this.aliveCount() >= MAX_ALIVE) {
+                w.nextIn = 400; // the field is full; wait for room
+            } else if (w.nextIn <= 0) {
                 const spec = waveSpec(w.wave, players.length);
                 const spot = this.findSpawnSpot(players);
                 if (spot) {
@@ -362,10 +327,9 @@ export class GameSim {
                 }
             }
         }
-        if (w.toSpawn <= 0) this.run = null; // everyone is out; the next wave starts after the usual gap
     }
 
-    /** A spot 10-16 tiles from a random player (and 9+ from all): free ground, outside any safe zone. */
+    /** A spot 10-16 tiles from a random player (and 9+ from all): free ground. */
     private findSpawnSpot(players: SimPlayer[]): { u: number; v: number } | null {
         const anchor = players[Math.floor(this.env.rand() * players.length)];
         for (let n = 0; n < 30; n++) {
@@ -373,7 +337,7 @@ export class GameSim {
             const d = DIST_MIN + this.env.rand() * (DIST_MAX - DIST_MIN);
             const u = anchor.u + Math.cos(ang) * d;
             const v = anchor.v + Math.sin(ang) * d;
-            if (u < 4 || v < 4 || u > 252 || v > 252 || !this.env.canStand(u, v) || this.inSafe(u, v)) continue;
+            if (u < 4 || v < 4 || u > 252 || v > 252 || !this.env.canStand(u, v)) continue;
             // Never right next to anyone: at least 9 tiles from every player.
             if (players.some((p) => Math.hypot(p.u - u, p.v - v) < DIST_MIN - 1)) continue;
             return { u, v };
@@ -381,31 +345,10 @@ export class GameSim {
         return null;
     }
 
-    private findSafeSpot(players: SimPlayer[]): { u: number; v: number } | null {
-        const anchor = players[Math.floor(this.env.rand() * players.length)];
-        for (let n = 0; n < 160; n++) {
-            const ang = this.env.rand() * Math.PI * 2;
-            const d = SAFE_DIST_MIN + this.env.rand() * (SAFE_DIST_MAX - SAFE_DIST_MIN);
-            const u = anchor.u + Math.cos(ang) * d;
-            const v = anchor.v + Math.sin(ang) * d;
-            if (u < 6 || v < 6 || u > 250 || v > 250 || !this.env.canStand(u, v) || !this.env.isOpen(u, v)) continue;
-            return { u, v };
-        }
-        return null;
-    }
-
-    /** A step that would carry a monster into the safe zone is refused (leaving it is fine). */
-    private allowed(m: SimMonster, tu: number, tv: number): boolean {
-        const s = this.safe;
-        if (!s) return true;
-        const into = Math.hypot(tu - s.u, tv - s.v);
-        return into >= SAFE_RADIUS || into >= Math.hypot(m.u - s.u, m.v - s.v);
-    }
-
     private step(m: SimMonster, du: number, dv: number): boolean {
         let moved = false;
-        if (du !== 0 && this.allowed(m, m.u + du, m.v) && this.env.canMove(m.u, m.v, m.u + du, m.v)) { m.u += du; moved = true; }
-        if (dv !== 0 && this.allowed(m, m.u, m.v + dv) && this.env.canMove(m.u, m.v, m.u, m.v + dv)) { m.v += dv; moved = true; }
+        if (du !== 0 && this.env.canMove(m.u, m.v, m.u + du, m.v)) { m.u += du; moved = true; }
+        if (dv !== 0 && this.env.canMove(m.u, m.v, m.u, m.v + dv)) { m.v += dv; moved = true; }
         return moved;
     }
 
@@ -417,24 +360,10 @@ export class GameSim {
             return;
         }
 
-        // A monster caught inside a new safe zone is driven out of it.
-        if (this.safe) {
-            const du0 = m.u - this.safe.u;
-            const dv0 = m.v - this.safe.v;
-            const d0 = Math.hypot(du0, dv0);
-            if (d0 < SAFE_RADIUS) {
-                const ux = d0 > 0.001 ? du0 / d0 : 1;
-                const uy = d0 > 0.001 ? dv0 / d0 : 0;
-                m.u += ux * 5 * dt;
-                m.v += uy * 5 * dt;
-            }
-        }
-
-        // Hunt the nearest player in the world (anyone inside the safe zone is out of reach).
+        // Hunt the nearest player in the world .
         let target: SimPlayer | null = null;
         let best = Infinity;
         for (const p of players) {
-            if (this.inSafe(p.u, p.v)) continue;
             const d = Math.hypot(p.u - m.u, p.v - m.v);
             if (d < best) { best = d; target = p; }
         }
@@ -472,7 +401,6 @@ export class GameSim {
                 m.hit = true;
                 // Whoever is in reach when the blow lands takes it.
                 for (const p of players) {
-                    if (this.inSafe(p.u, p.v)) continue; // safe inside the zone
                     if (Math.hypot(p.u - m.u, p.v - m.v) < def.reach + 0.45) events.push({ type: 'bite', playerId: p.id, damage: m.damage });
                 }
             }

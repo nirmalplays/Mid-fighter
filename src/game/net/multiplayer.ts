@@ -1,6 +1,6 @@
 /**
  * Link to the shared world room (src/rooms/WorldRoom.ts). One connection lives for
- * the whole session and is shared by the world and the workshop scenes. It keeps a
+ * the whole session and is shared by every run of the world scene. It keeps a
  * map of the other players' latest poses for remotePlayers.ts to draw, and sends
  * ours at a modest rate. Nothing here may break single-player: a failed connection
  * just leaves the game offline.
@@ -9,7 +9,7 @@ import RundotGameAPI from '@series-inc/rundot-game-sdk/api';
 import { store } from '../../state/store.ts';
 
 export interface RemotePose {
-    scene: 'world' | 'base';
+    scene: 'world';
     u: number;
     v: number;
     z: number;
@@ -27,8 +27,6 @@ export interface SimSnapshot {
     d: number[][];
     /** The running wave: [wave, age ms, monsters still to come], or null between waves. */
     p: number[] | null;
-    /** The safe (workshop) portal: [u, v, age ms, lasts ms], or null. */
-    s: number[] | null;
     w: number;
     nx: number;
     /** performance.now() at arrival. */
@@ -40,8 +38,7 @@ export type NetEvent =
     | { type: 'bite'; damage: number }
     | { type: 'kill'; kind: string }
     | { type: 'gain'; skill: string; id: number; sword: number }
-    | { type: 'wave'; wave: number }
-    | { type: 'safe'; u: number; v: number };
+    | { type: 'wave'; wave: number };
 
 export interface Remote {
     id: string;
@@ -86,7 +83,7 @@ function handle(msg: Msg): void {
         case 'pose': {
             const id = msg.id as string;
             if (id === room?.playerId) return;
-            ensure(id).pose = { scene: msg.scene as 'world' | 'base', u: msg.u as number, v: msg.v as number, z: msg.z as number, face: msg.face as number, anim: msg.anim as string, tool: msg.tool as string, dead: msg.dead === true, sword: typeof msg.sword === 'number' ? msg.sword : -1 };
+            ensure(id).pose = { scene: msg.scene as 'world', u: msg.u as number, v: msg.v as number, z: msg.z as number, face: msg.face as number, anim: msg.anim as string, tool: msg.tool as string, dead: msg.dead === true, sword: typeof msg.sword === 'number' ? msg.sword : -1 };
             break;
         }
         case 'act': {
@@ -103,13 +100,12 @@ function handle(msg: Msg): void {
             break;
         }
         case 'sim':
-            snap = { m: msg.m as number[][], d: msg.d as number[][], p: msg.p as number[] | null, s: msg.s as number[] | null, w: msg.w as number, nx: msg.nx as number, at: performance.now() };
+            snap = { m: msg.m as number[][], d: msg.d as number[][], p: msg.p as number[] | null, w: msg.w as number, nx: msg.nx as number, at: performance.now() };
             break;
         case 'bite':
         case 'kill':
         case 'gain':
         case 'wave':
-        case 'safe':
             for (const l of listeners) l(msg as unknown as NetEvent);
             break;
     }

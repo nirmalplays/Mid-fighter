@@ -14,7 +14,8 @@ import { store, useStore } from '../state/store.ts';
 import { progress } from '../game/progress.ts';
 import { SKILL_BLURB, SKILL_CAP, upgradeCost } from '../game/skills.ts';
 import type { Skill } from '../shared/sim.ts';
-import { SPELLS } from '../game/world/spells.ts';
+import { GameOver } from './Scores.tsx';
+import { CARRY_MAX, COOLDOWN_MAX, cooldownFor, levelCost, maxCharges, SPELLS, UNLOCK_COST } from '../game/world/spells.ts';
 
 const TAN = '#e9bf9a';
 const TAN_LIGHT = '#f6d9ba';
@@ -190,12 +191,11 @@ function SkillChips() {
 /** A visiting frog while it is around: an arrow to it, distance and seconds left. */
 function FrogPill() {
     const aim = useStore((s) => s.frogAim);
-    const safe = useStore((s) => s.safeAim);
     if (!aim) return null;
     return (
         <div
             className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-xl px-3 text-[13px] font-black tabular-nums text-white"
-            style={{ top: safe ? 82 : 46, height: 30, background: 'rgba(40,90,20,.88)', border: '3px solid #a3e635' }}
+            style={{ top: 46, height: 30, background: 'rgba(40,90,20,.88)', border: '3px solid #a3e635' }}
         >
             <span style={{ display: 'inline-block', transform: `rotate(${aim.angle}rad)`, fontSize: 15, lineHeight: 1 }}>➤</span>
             <span>Frog · {Math.round(aim.dist)} tiles · {aim.left}s</span>
@@ -203,20 +203,49 @@ function FrogPill() {
     );
 }
 
-/** Spend gems on skill levels (opened by the frog, or from the workshop). */
+/** A small buy button: the cost with the gem it is paid in. */
+function BuyBtn({ gem, cost, can, label, onBuy }: { gem: Skill; cost: number; can: boolean; label: string; onBuy: () => void }) {
+    return (
+        <button
+            type="button"
+            disabled={!can}
+            className="flex items-center justify-center gap-1 rounded-lg px-2 font-black active:translate-y-[2px]"
+            style={{ height: 34, minWidth: 74, background: can ? '#7ee081' : '#cfc3b8', border: `3px solid ${BROWN}`, fontSize: 13, opacity: can ? 1 : 0.7 }}
+            onPointerDown={(e) => { e.preventDefault(); onBuy(); }}
+        >
+            {label}
+            <img src={`images/hud/gem-${gem}.png`} width={18} height={18} draggable={false} alt="" />
+            {cost}
+        </button>
+    );
+}
+
+/** The visiting frog's shop: skills and spells, paid with the gems you carry (they are lost if you die). */
 function UpgradePanel() {
     const open = useStore((s) => s.shop);
     const gems = useStore((s) => s.gems);
     const skills = useStore((s) => s.skills);
+    const spells = useStore((s) => s.spells);
+    const [tab, setTab] = useState<'skills' | 'spells'>('skills');
     if (!open) return null;
+    const tabBtn = (id: 'skills' | 'spells', label: string) => (
+        <button
+            type="button"
+            className="rounded-lg px-3 font-black"
+            style={{ height: 30, background: tab === id ? '#fff' : 'rgba(255,255,255,.4)', border: `3px solid ${BROWN}`, fontSize: 14 }}
+            onPointerDown={(e) => { e.preventDefault(); setTab(id); }}
+        >
+            {label}
+        </button>
+    );
     return (
         <div className="pointer-events-auto absolute inset-0 z-20 flex items-center justify-center" style={{ background: 'rgba(10,6,16,.45)' }}>
             <div
-                className="flex flex-col gap-2 rounded-2xl p-3"
-                style={{ width: 360, background: `linear-gradient(${TAN_LIGHT}, ${TAN})`, border: `4px solid ${BROWN}`, boxShadow: `inset 0 0 0 2px ${TAN_LIGHT}, 0 4px 0 ${BROWN_DARK}`, color: INK }}
+                className="flex max-h-[96%] flex-col gap-2 overflow-y-auto rounded-2xl p-3"
+                style={{ width: 400, background: `linear-gradient(${TAN_LIGHT}, ${TAN})`, border: `4px solid ${BROWN}`, boxShadow: `inset 0 0 0 2px ${TAN_LIGHT}, 0 4px 0 ${BROWN_DARK}`, color: INK }}
             >
-                <div className="flex items-center justify-between">
-                    <span className="text-lg font-black" style={{ color: BROWN_DARK }}>Spend gems</span>
+                <div className="flex items-center justify-between gap-2">
+                    <div className="flex gap-1.5">{tabBtn('skills', 'Skills')}{tabBtn('spells', 'Spells')}</div>
                     <button
                         type="button"
                         className="rounded-lg px-3 font-black active:translate-y-[2px]"
@@ -226,11 +255,11 @@ function UpgradePanel() {
                         Close
                     </button>
                 </div>
-                {SKILL_CHIPS.map((c) => {
+                <div className="text-[11px] font-bold" style={{ color: BROWN_DARK }}>Gems you carry are lost if you die. Spend them here.</div>
+                {tab === 'skills' && SKILL_CHIPS.map((c) => {
                     const level = skills[c.key];
                     const maxed = level >= SKILL_CAP[c.key];
                     const cost = upgradeCost(level);
-                    const can = !maxed && gems[c.key] >= cost;
                     return (
                         <div key={c.key} className="flex items-center gap-2 rounded-xl px-2 py-1" style={{ background: 'rgba(255,255,255,.55)', border: `2px solid ${BROWN}` }}>
                             <img src={`images/hud/gem-${c.key}.png`} width={34} height={34} draggable={false} alt="" />
@@ -238,15 +267,32 @@ function UpgradePanel() {
                                 <div className="text-[15px] font-black">{c.label} · Lv {level}/{SKILL_CAP[c.key]}</div>
                                 <div className="text-[12px] font-bold" style={{ color: BROWN_DARK }}>{SKILL_BLURB[c.key]} · you have {gems[c.key]}</div>
                             </div>
-                            <button
-                                type="button"
-                                disabled={!can}
-                                className="rounded-lg px-3 font-black active:translate-y-[2px]"
-                                style={{ height: 36, minWidth: 74, background: can ? '#7ee081' : '#cfc3b8', border: `3px solid ${BROWN}`, fontSize: 14, opacity: can ? 1 : 0.7 }}
-                                onPointerDown={(e) => { e.preventDefault(); progress.buy(c.key); }}
-                            >
-                                {maxed ? 'Max' : `${cost} gem${cost > 1 ? 's' : ''}`}
-                            </button>
+                            {maxed ? <span className="px-3 text-sm font-black">Max</span> : <BuyBtn gem={c.key} cost={cost} can={gems[c.key] >= cost} label="Buy" onBuy={() => progress.buy(c.key)} />}
+                        </div>
+                    );
+                })}
+                {tab === 'spells' && SPELLS.map((sp, i) => {
+                    const have = spells.unlocked[i];
+                    const carry = spells.carry[i];
+                    const cool = spells.cooldown[i];
+                    return (
+                        <div key={sp.name} className="flex flex-col gap-1 rounded-xl px-2 py-1" style={{ background: 'rgba(255,255,255,.55)', border: `2px solid ${BROWN}` }}>
+                            <div className="flex items-center gap-2">
+                                <img src={`images/${sp.icon}`} width={34} height={34} draggable={false} alt="" style={{ objectFit: 'contain', opacity: have ? 1 : 0.55 }} />
+                                <div className="flex-1 leading-tight">
+                                    <div className="text-[15px] font-black">{sp.name}</div>
+                                    <div className="text-[12px] font-bold" style={{ color: BROWN_DARK }}>{sp.blurb} · you have {gems[sp.gem]}</div>
+                                </div>
+                                {!have && <BuyBtn gem={sp.gem} cost={UNLOCK_COST} can={gems[sp.gem] >= UNLOCK_COST} label="Unlock" onBuy={() => progress.unlockSpell(i)} />}
+                            </div>
+                            {have && (
+                                <div className="flex items-center justify-between gap-2 text-[12px] font-black">
+                                    <span>Carry {maxCharges(carry)}/{maxCharges(CARRY_MAX)}</span>
+                                    {carry >= CARRY_MAX ? <span className="px-3">Max</span> : <BuyBtn gem={sp.gem} cost={levelCost(carry)} can={gems[sp.gem] >= levelCost(carry)} label="+1" onBuy={() => progress.upgradeSpell(i, 'carry')} />}
+                                    <span>Cooldown {Math.round(cooldownFor(sp, cool) / 100) / 10}s</span>
+                                    {cool >= COOLDOWN_MAX ? <span className="px-3">Max</span> : <BuyBtn gem={sp.gem} cost={levelCost(cool)} can={gems[sp.gem] >= levelCost(cool)} label="-10%" onBuy={() => progress.upgradeSpell(i, 'cooldown')} />}
+                                </div>
+                            )}
                         </div>
                     );
                 })}
@@ -274,21 +320,6 @@ function WavePill() {
             ) : (
                 <span>{wave > 0 ? `Wave ${wave + 1}` : 'Wave 1'} in {mm}:{ss}{shared ? ' · shared' : ''}</span>
             )}
-        </div>
-    );
-}
-
-/** The workshop portal while it is open: a green pill with an arrow, distance and seconds left. */
-function SafePill() {
-    const aim = useStore((s) => s.safeAim);
-    if (!aim) return null;
-    return (
-        <div
-            className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-xl px-3 text-[13px] font-black tabular-nums text-white"
-            style={{ top: 46, height: 30, background: 'rgba(20,90,50,.88)', border: '3px solid #4ade80' }}
-        >
-            <span style={{ display: 'inline-block', transform: `rotate(${aim.angle}rad)`, fontSize: 15, lineHeight: 1 }}>➤</span>
-            <span>Safe portal · {Math.round(aim.dist)} tiles · {aim.left}s</span>
         </div>
     );
 }
@@ -432,14 +463,15 @@ export default function Hud() {
     const hp = useStore((s) => s.hp);
     const maxHp = useStore((s) => s.maxHp);
     const paused = useStore((s) => s.paused);
-    const inBase = useStore((s) => s.phase === 'base');
     const netStatus = useStore((s) => s.netStatus);
     const online = useStore((s) => s.online);
     const roomCode = useStore((s) => s.roomCode);
     const kills = useStore((s) => s.kills);
     const [more, setMore] = useState(false);
     const toolId = useStore((s) => s.toolId);
-    const spellCd = useStore((s) => s.spellCd);
+    const spells = useStore((s) => s.spells);
+    const spellState = useStore((s) => s.spellState);
+    const anyUnlocked = spells.unlocked.some(Boolean);
 
     return (
         <div className="pointer-events-none absolute inset-0 pt-safe-top">
@@ -485,14 +517,8 @@ export default function Hud() {
                             fontSize: 17,
                         }}
                     >
-                        {inBase ? (
-                            <span style={{ color: BROWN_DARK }}>WORKSHOP</span>
-                        ) : (
-                            <>
-                                <span style={{ color: BROWN_DARK }}>LV {height}</span>
-                                <span>{tileX},{tileY}</span>
-                            </>
-                        )}
+                        <span style={{ color: BROWN_DARK }}>LV {height}</span>
+                        <span>{tileX},{tileY}</span>
                     </div>
                 </div>
             </div>
@@ -505,79 +531,49 @@ export default function Hud() {
                 </RoundBtn>
             </div>
 
-            {/* Dev shortcut: jump between the world and the workshop (the base). */}
-            <div className="absolute right-3 top-[66px] pt-safe-top">
-                <button
-                    type="button"
-                    className="pointer-events-auto touch-none rounded-xl px-3 font-black active:translate-y-[3px]"
-                    style={{
-                        height: 34,
-                        background: `linear-gradient(${TAN_LIGHT}, ${TAN})`,
-                        border: `4px solid ${BROWN}`,
-                        boxShadow: `inset 0 0 0 2px ${TAN_LIGHT}, 0 3px 0 ${BROWN_DARK}`,
-                        color: INK,
-                        fontSize: 14,
-                    }}
-                    onPointerDown={(e) => {
-                        e.preventDefault();
-                        if (inBase) store.patch({ phase: 'playing' });
-                        else store.patch({ phase: 'base' });
-                    }}
-                >
-                    {inBase ? 'World' : 'Workshop'}
-                </button>
-            </div>
-            {inBase && (
-                <div className="absolute right-3 top-[106px] pt-safe-top">
-                    <button
-                        type="button"
-                        className="pointer-events-auto touch-none rounded-xl px-3 font-black active:translate-y-[3px]"
-                        style={{
-                            height: 34,
-                            background: `linear-gradient(${TAN_LIGHT}, ${TAN})`,
-                            border: `4px solid ${BROWN}`,
-                            boxShadow: `inset 0 0 0 2px ${TAN_LIGHT}, 0 3px 0 ${BROWN_DARK}`,
-                            color: INK,
-                            fontSize: 14,
-                        }}
-                        onPointerDown={(e) => {
-                            e.preventDefault();
-                            store.patch({ shop: true });
-                        }}
-                    >
-                        Upgrades
-                    </button>
-                </div>
-            )}
-
-            {!inBase && <FrogPill />}
+            <FrogPill />
             <UpgradePanel />
+            <GameOver />
             <Hotbar />
-            {!inBase && <SkillChips />}
-            {!inBase && <WavePill />}
-            {!inBase && <SafePill />}
-            {!inBase && <Banner />}
-            {!inBase && <Buffs />}
+            <SkillChips />
+            <WavePill />
+            <Banner />
+            <Buffs />
 
             {/* Actions, bottom right, in the thumb's arc: Attack (big), Use (the held tool), Actions menu */}
             <div className="absolute bottom-0 right-0 pb-safe-bottom pr-4">
                 {more && (
                     <div className="absolute flex gap-2 p-2" style={{ bottom: 168, right: 30 }}>
-                        {SPELLS.map((sp, i) => (
-                            <div key={sp.name} className="flex flex-col items-center gap-0.5">
-                                <div className="relative">
-                                    <RoundBtn size={52} label={sp.name} onPress={() => { commands.emit({ type: 'spell', index: i }); setMore(false); }}>
-                                        <img src={`images/${sp.icon}`} width={32} height={32} draggable={false} alt="" style={{ opacity: spellCd[i] > 0 ? 0.35 : 1, objectFit: 'contain' }} />
-                                    </RoundBtn>
-                                    {spellCd[i] > 0 && (
-                                        <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-lg font-black text-white" style={{ textShadow: '0 2px 0 #000, 0 0 6px #000' }}>
-                                            {spellCd[i]}
-                                        </span>
-                                    )}
+                        {!anyUnlocked && (
+                            <span className="max-w-[220px] text-center text-[12px] font-black leading-tight text-white" style={{ textShadow: '0 1px 0 #000, 0 0 5px #000' }}>
+                                No spells yet. Find the frog to unlock one.
+                            </span>
+                        )}
+                        {SPELLS.map((sp, i) => {
+                            if (!spells.unlocked[i]) return null;
+                            const st = spellState[i];
+                            const empty = st.charges < 1;
+                            return (
+                                <div key={sp.name} className="flex flex-col items-center gap-0.5">
+                                    <div className="relative">
+                                        <RoundBtn size={52} label={sp.name} onPress={() => { commands.emit({ type: 'spell', index: i }); setMore(false); }}>
+                                            <img src={`images/${sp.icon}`} width={32} height={32} draggable={false} alt="" style={{ opacity: empty ? 0.35 : 1, objectFit: 'contain' }} />
+                                        </RoundBtn>
+                                        {empty && (
+                                            <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-lg font-black text-white" style={{ textShadow: '0 2px 0 #000, 0 0 6px #000' }}>
+                                                {st.cd}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex gap-0.5">
+                                        {Array.from({ length: st.max }, (_, n) => (
+                                            <span key={n} className="inline-block h-2 w-2 rounded-full" style={{ background: n < st.charges ? '#ffd84d' : 'rgba(0,0,0,.5)', border: '1px solid #1a0c10' }} />
+                                        ))}
+                                    </div>
+                                    <span className="text-[11px] font-black text-white" style={{ textShadow: '0 1px 0 #000' }}>{sp.name}</span>
                                 </div>
-                                <span className="text-[11px] font-black text-white" style={{ textShadow: '0 1px 0 #000' }}>{sp.name}</span>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
                 <div className="relative h-[190px] w-[250px]">
@@ -597,7 +593,7 @@ export default function Hud() {
 
             {/* World readout, small */}
             {/* Enemies defeated */}
-            {!inBase && kills > 0 && (
+            {kills > 0 && (
                 <div className="absolute bottom-[50px] left-2 rounded-md bg-black/45 px-2 py-0.5 text-[11px] font-bold text-white">
                     ⚔️ Defeated · {kills}
                 </div>
@@ -624,7 +620,7 @@ export default function Hud() {
                 </button>
             )}
 
-            {!inBase && (
+            {(
                 <div className="absolute bottom-1 left-2 rounded-md bg-black/35 px-2 py-0.5 text-[10px] font-bold tabular-nums text-white/80">
                     Chunk {chunkX},{chunkY} · {loaded} loaded
                 </div>

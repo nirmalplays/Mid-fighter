@@ -8,11 +8,29 @@
  * store every frame re-renders React every frame.
  */
 import { useSyncExternalStore } from 'react';
+import { defaultSpellSave, type SpellSave } from '../game/world/spells.ts';
+
+export interface GameOverInfo {
+    score: number;
+    wave: number;
+    kills: number;
+    seconds: number;
+    /** 'sending' while the score is being posted, then the outcome. */
+    status: 'sending' | 'done';
+    rank: number | null;
+    /** Why the leaderboard did not take the score, if it did not. */
+    note: string | null;
+    top: { rank: number; name: string; score: number; wave: number; me: boolean }[];
+}
 
 /** The UI-facing app state. ADAPT: extend alongside the initial state below. */
 export interface AppState {
-    /** 'loading' → 'menu' → 'playing' (the world); the safe portal leads to 'base' and back. */
-    phase: 'loading' | 'menu' | 'playing' | 'base';
+    /** 'loading' → 'menu' → 'playing' (the world). */
+    phase: 'loading' | 'menu' | 'playing';
+    /** Bumped to start a fresh run (remounts the world). */
+    runId: number;
+    /** The Game Over screen: set when the player dies, with how the run went and the leaderboard. */
+    gameOver: GameOverInfo | null;
     /** 0..1 progress of the critical-asset warm during 'loading' */
     loadProgress: number;
     /** Set by the host's onPause/onResume lifecycle hooks */
@@ -37,7 +55,7 @@ export interface AppState {
     maxHp: number;
     /** Skill levels from drops, and the wave reached (0 before the first) */
     skills: { attack: number; defence: number; speed: number; vitality: number };
-    /** Gems held (spent on skills at the workshop or a frog) */
+    /** Gems held (spent on skills and spells at a frog) */
     gems: { attack: number; defence: number; speed: number; vitality: number };
     /** Is the upgrade panel open? */
     shop: boolean;
@@ -48,14 +66,14 @@ export interface AppState {
     nextWaveIn: number;
     /** Monsters left in the current wave (alive plus still to spawn), or null between waves */
     waveLeft: number | null;
-    /** The workshop (safe) portal while open: bearing, distance in tiles and seconds left */
-    safeAim: { angle: number; dist: number; left: number } | null;
     /** Short message shown near the top (wave start, pickups), cleared by the HUD */
     banner: { text: string; id: number } | null;
     /** Potion boosts running: potion colour and whole seconds left */
     buffs: { key: string; left: number }[];
-    /** Whole seconds left before each spell can be cast again */
-    spellCd: number[];
+    /** Spells unlocked and their carry / cooldown levels (mirrors the save) */
+    spells: SpellSave;
+    /** Per spell while playing: charges held, the most it holds, and whole seconds until the next charge */
+    spellState: { charges: number; max: number; cd: number }[];
     /** The sword held (0-29, or -1 for the original iron sword), and every sword found */
     swordIdx: number;
     swordsOwned: number[];
@@ -72,6 +90,8 @@ const listeners = new Set<() => void>();
 
 let state: AppState = {
     phase: 'loading',
+    runId: 0,
+    gameOver: null,
     loadProgress: 0,
     paused: false,
     tileX: 0,
@@ -92,10 +112,10 @@ let state: AppState = {
     wave: 0,
     nextWaveIn: 0,
     waveLeft: null,
-    safeAim: null,
     banner: null,
     buffs: [],
-    spellCd: [0, 0, 0, 0],
+    spells: defaultSpellSave(),
+    spellState: [0, 1, 2, 3].map(() => ({ charges: 0, max: 1, cd: 0 })),
     toolId: 'none',
     swordIdx: -1,
     swordsOwned: [],

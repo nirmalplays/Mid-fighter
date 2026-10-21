@@ -9,8 +9,11 @@ import { saveSystem } from '../saveConfig.ts';
 import { store } from '../state/store.ts';
 import { GEM_CAP, SKILL_CAP, upgradeCost } from './skills.ts';
 import { HOTBAR, type Tool } from './world/character.ts';
+import { CARRY_MAX, COOLDOWN_MAX, defaultSpellSave, levelCost, SPELLS, UNLOCK_COST, type SpellSave } from './world/spells.ts';
 
 let fraction = 0;
+
+const copySpells = (s: SpellSave): SpellSave => ({ unlocked: [...s.unlocked], carry: [...s.carry], cooldown: [...s.cooldown] });
 
 export const progress = {
     /** The loaded save (always set after boot). */
@@ -98,7 +101,7 @@ export const progress = {
         saveSystem.save();
     },
 
-    record(p: { scene: 'world' | 'base'; u?: number; v?: number; tool: string; hp: number }): void {
+    record(p: { scene: 'world'; u?: number; v?: number; tool: string; hp: number }): void {
         const d = saveSystem.data;
         if (!d) return;
         d.scene = p.scene;
@@ -136,12 +139,51 @@ export const progress = {
         saveSystem.save();
     },
 
+    /** Spend gems to unlock a spell (it is locked until bought from the frog). */
+    unlockSpell(i: number): boolean {
+        const d = saveSystem.data;
+        const sp = SPELLS[i];
+        if (!d || !sp || d.spells.unlocked[i] || d.gems[sp.gem] < UNLOCK_COST) return false;
+        d.gems[sp.gem] -= UNLOCK_COST;
+        d.spells.unlocked[i] = true;
+        store.patch({ gems: { ...d.gems }, spells: copySpells(d.spells) });
+        saveSystem.save();
+        return true;
+    },
+
+    /** Spend gems to carry one more charge of a spell, or to cool it down faster. */
+    upgradeSpell(i: number, what: 'carry' | 'cooldown'): boolean {
+        const d = saveSystem.data;
+        const sp = SPELLS[i];
+        if (!d || !sp || !d.spells.unlocked[i]) return false;
+        const level = d.spells[what][i];
+        if (level >= (what === 'carry' ? CARRY_MAX : COOLDOWN_MAX)) return false;
+        const cost = levelCost(level);
+        if (d.gems[sp.gem] < cost) return false;
+        d.gems[sp.gem] -= cost;
+        d.spells[what][i] = level + 1;
+        store.patch({ gems: { ...d.gems }, spells: copySpells(d.spells) });
+        saveSystem.save();
+        return true;
+    },
+
+    /** The player died: the gems carried are lost and the next run starts at the beginning with full health. */
+    endRun(): void {
+        const d = saveSystem.data;
+        if (!d) return;
+        const none = { attack: 0, defence: 0, speed: 0, vitality: 0 };
+        const maxHp = 6 + 2 * d.skills.vitality;
+        Object.assign(d, { scene: 'world', world: { u: 128.5, v: 128.5, set: false }, hp: maxHp, gems: { ...none } });
+        store.patch({ gems: { ...none }, hp: maxHp, maxHp });
+        saveSystem.save();
+    },
+
     /** Wipe this player's progress back to a fresh game. */
     reset(): void {
         const d = saveSystem.data;
         if (!d) return;
-        Object.assign(d, { scene: 'world', world: { u: 128.5, v: 128.5, set: false }, tool: 'none', hp: 6, playSeconds: 0, kills: 0, bestWave: 0, swords: [], sword: -1, skills: { attack: 0, defence: 0, speed: 0, vitality: 0 }, gems: { attack: 0, defence: 0, speed: 0, vitality: 0 } });
-        store.patch({ playSeconds: 0, kills: 0, swordsOwned: [], swordIdx: -1, maxHp: 6, hp: 6, skills: { attack: 0, defence: 0, speed: 0, vitality: 0 }, gems: { attack: 0, defence: 0, speed: 0, vitality: 0 } });
+        Object.assign(d, { scene: 'world', world: { u: 128.5, v: 128.5, set: false }, tool: 'none', hp: 6, playSeconds: 0, kills: 0, bestWave: 0, swords: [], sword: -1, skills: { attack: 0, defence: 0, speed: 0, vitality: 0 }, gems: { attack: 0, defence: 0, speed: 0, vitality: 0 }, spells: defaultSpellSave() });
+        store.patch({ playSeconds: 0, kills: 0, swordsOwned: [], swordIdx: -1, maxHp: 6, hp: 6, skills: { attack: 0, defence: 0, speed: 0, vitality: 0 }, gems: { attack: 0, defence: 0, speed: 0, vitality: 0 }, spells: defaultSpellSave() });
         saveSystem.save();
     },
 };

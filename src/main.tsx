@@ -29,6 +29,7 @@ async function boot() {
         swordIdx: save.sword,
         skills: { ...save.skills },
         gems: { ...save.gems },
+        spells: { unlocked: [...save.spells.unlocked], carry: [...save.spells.carry], cooldown: [...save.spells.cooldown] },
         maxHp: 6 + 2 * save.skills.vitality,
     });
 

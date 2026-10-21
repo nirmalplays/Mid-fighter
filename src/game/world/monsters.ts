@@ -1,5 +1,5 @@
 /**
- * Draws the monsters (the IsometricEnemies pack: goblins, slimes, wolves, skeletons). New ones
+ * Draws the monsters (the IsometricEnemies pack: goblins, slimes, wolves, skeletons, kobolts, scorpions; later waves send redder / darker colour variants). New ones
  * simply fade in where the simulation puts them (there is no portal).
  * It owns no game logic: each frame it is handed the list of monsters from the
  * simulation (the server's when online, a local one offline) and shows them, easing
@@ -21,7 +21,11 @@ const LOOK: Record<string, { size: number; barY: number; hop: number; moveFrameM
     slime: { size: 1.9, barY: 62, hop: 7, moveFrameMs: 130 },
     wolf: { size: 1.5, barY: 82, hop: 0, moveFrameMs: 90 },
     skeleton: { size: 1.25, barY: 108, hop: 0, moveFrameMs: 150 },
+    kobolt: { size: 1.25, barY: 96, hop: 0, moveFrameMs: 110 },
+    scorpion: { size: 2.5, barY: 58, hop: 0, moveFrameMs: 140 },
 };
+/** The art id of a kind in a colour tier: `goblin`, `goblin_1`, `goblin_2` (see tools/build-enemies.py). */
+const artOf = (kind: string, tier: number): string => (tier > 0 ? `${kind}_${tier}` : kind);
 const KIND_LIST = Object.keys(LOOK);
 const DIE_FRAME_MS = 110;
 const DYING_FADE_MS = 450;
@@ -39,10 +43,14 @@ export interface ViewMonster {
     state: 'chase' | 'attack' | 'recover' | 'dying';
     /** Ms in the current state (used to start animations in step; the view keeps its own clock after). */
     t: number;
+    /** Colour variant (0-2): tougher waves send tougher-looking monsters. */
+    tier: number;
 }
 
 interface Shown {
     kind: string;
+    /** Which sheets it is drawn from (its kind and colour tier). */
+    art: string;
     u: number;
     v: number;
     z: number;
@@ -81,23 +89,27 @@ export function createMonsterView(opts: {
     const frames = new Map<string, Texture[][]>();
     const ready = new Set<string>();
     let destroyed = false;
-    for (const kind of KIND_LIST) {
+    const load = (art: string) =>
         Promise.all((['move', 'attack', 'die'] as const).map(async (anim) => {
-            const key = `${kind}-${anim}`;
+            const key = `${art}-${anim}`;
             const sheet = await Assets.load<Texture>({ alias: `enemy:${key}`, src: `images/world/enemy/${key}.png` });
             const cols = ENEMY_SHEETS[key];
             frames.set(key, Array.from({ length: 5 }, (_, row) =>
                 Array.from({ length: cols }, (__, col) =>
                     new Texture({ source: sheet.source, frame: new Rectangle(col * ENEMY_CELL, row * ENEMY_CELL, ENEMY_CELL, ENEMY_CELL) }))));
-        })).then(() => { if (!destroyed) ready.add(kind); }).catch(() => { /* this kind just is not drawn */ });
-    }
+        })).then(() => { if (!destroyed) ready.add(art); }).catch(() => { /* this one just is not drawn */ });
+    // The first colour of every kind now; the tougher colours right after (a monster of a colour that is not in yet wears the first).
+    void Promise.all(KIND_LIST.map((kind) => load(kind))).then(() => {
+        for (const tier of [1, 2]) for (const kind of KIND_LIST) void load(artOf(kind, tier));
+    });
 
     const shown = new Map<number, Shown>();
 
     const create = (m: ViewMonster): Shown => {
         const look = LOOK[m.kind];
-        const sprite = new Sprite(frames.get(`${m.kind}-move`)![0][0]);
-        const [fx, fy] = ENEMY_FEET[m.kind];
+        const art = ready.has(artOf(m.kind, m.tier)) ? artOf(m.kind, m.tier) : m.kind;
+        const sprite = new Sprite(frames.get(`${art}-move`)![0][0]);
+        const [fx, fy] = ENEMY_FEET[art];
         sprite.anchor.set(fx / ENEMY_CELL, fy / ENEMY_CELL);
         sprite.scale.set(SCALE * look.size);
         const shadow = new Sprite(opts.shadowTex);
@@ -106,7 +118,7 @@ export function createMonsterView(opts: {
         const bar = new Graphics();
         opts.layer.addChild(shadow, sprite, bar);
         return {
-            kind: m.kind, u: m.u, v: m.v, z: opts.heightAt(m.u, m.v) * opts.levelH, hp: m.hp, state: m.state, t: m.t,
+            kind: m.kind, art, u: m.u, v: m.v, z: opts.heightAt(m.u, m.v) * opts.levelH, hp: m.hp, state: m.state, t: m.t,
             animT: Math.random() * 1000, born: 0, flash: 0, walking: false, sprite, shadow, bar,
         };
     };
@@ -171,15 +183,15 @@ export function createMonsterView(opts: {
                 let idx: number;
                 let fade = 1;
                 if (s.state === 'dying') {
-                    rows = frames.get(`${s.kind}-die`)!;
+                    rows = frames.get(`${s.art}-die`)!;
                     idx = Math.min(rows[0].length - 1, Math.floor(s.t / DIE_FRAME_MS));
                     const dieMs = rows[0].length * DIE_FRAME_MS;
                     fade = Math.max(0, 1 - Math.max(0, s.t - dieMs) / DYING_FADE_MS);
                 } else if (s.state === 'attack') {
-                    rows = frames.get(`${s.kind}-attack`)!;
+                    rows = frames.get(`${s.art}-attack`)!;
                     idx = Math.min(rows[0].length - 1, Math.floor((s.t / def.attackMs) * rows[0].length));
                 } else {
-                    rows = frames.get(`${s.kind}-move`)!;
+                    rows = frames.get(`${s.art}-move`)!;
                     idx = s.walking ? Math.floor(s.animT / look.moveFrameMs) % rows[0].length : 0;
                 }
                 s.sprite.texture = rows[face.row][idx];

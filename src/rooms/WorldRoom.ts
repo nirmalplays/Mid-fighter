@@ -45,13 +45,12 @@ interface SnapshotMsg { type: 'snapshot'; players: Record<string, { name: string
 interface PoseOut extends Pose { type: 'pose'; id: string }
 interface ActOut { type: 'act'; id: string; kind: string }
 interface AwayOut { type: 'away'; id: string }
-interface SimOut { type: 'sim'; m: number[][]; d: number[][]; p: number[] | null; s: number[] | null; w: number; nx: number }
+interface SimOut { type: 'sim'; m: number[][]; d: number[][]; p: number[] | null; w: number; nx: number }
 interface BiteOut { type: 'bite'; damage: number }
 interface KillOut { type: 'kill'; kind: string }
 interface GainOut { type: 'gain'; skill: string; id: number; sword: number }
 interface WaveOut { type: 'wave'; wave: number }
-interface SafeOut { type: 'safe'; u: number; v: number }
-type Protocol = PoseMsg | ActMsg | AwayMsg | HelloMsg | HitMsg | PickupMsg | SnapshotMsg | PoseOut | ActOut | AwayOut | SimOut | BiteOut | KillOut | GainOut | WaveOut | SafeOut;
+type Protocol = PoseMsg | ActMsg | AwayMsg | HelloMsg | HitMsg | PickupMsg | SnapshotMsg | PoseOut | ActOut | AwayOut | SimOut | BiteOut | KillOut | GainOut | WaveOut;
 
 const MAP_TILES = 256;
 const ROOM_TILES = 8;
@@ -84,7 +83,7 @@ export default class WorldRoom extends GameRoom<Protocol> {
         this.map = map;
         const blocked = map.blocked;
         const heightAt = (i: number, j: number) => map.height[j * MAP_TILES + i];
-        const meta = (this.config.metadata ?? {}) as { waveEverySec?: number; firstWaveSec?: number; safeEverySec?: number; swordMul?: number; potionMul?: number; safeForSec?: number; safeFirstSec?: number };
+        const meta = (this.config.metadata ?? {}) as { waveEverySec?: number; firstWaveSec?: number; swordMul?: number; potionMul?: number };
         this.sim = new GameSim(
             {
                 players: () => {
@@ -110,33 +109,13 @@ export default class WorldRoom extends GameRoom<Protocol> {
                     if (map.terrain[k] === WATER || blocked[k] === 1) return false;
                     return Math.abs(heightAt(i, j) - heightAt(i + 1, j)) <= 1 && Math.abs(heightAt(i, j) - heightAt(i, j + 1)) <= 1;
                 },
-                // Open ground: nothing solid within one tile, and at most two solid cells within two.
-                isOpen: (u, v) => {
-                    const i = Math.floor(u);
-                    const j = Math.floor(v);
-                    let solid = 0;
-                    for (let dj = -2; dj <= 2; dj++) {
-                        for (let di = -2; di <= 2; di++) {
-                            const k = (j + dj) * MAP_TILES + (i + di);
-                            if (map.terrain[k] === WATER) return false;
-                            if (blocked[k] === 1) {
-                                if (Math.abs(di) <= 1 && Math.abs(dj) <= 1) return false;
-                                solid++;
-                            }
-                        }
-                    }
-                    return solid <= 2;
-                },
                 rand: Math.random,
             },
             {
-                everyMs: (meta.waveEverySec ?? 120) * 1000,
+                everyMs: (meta.waveEverySec ?? 20) * 1000,
                 firstMs: (meta.firstWaveSec ?? 20) * 1000,
                 swordMul: meta.swordMul ?? 1,
                 potionMul: meta.potionMul ?? 1,
-                safeEveryMs: (meta.safeEverySec ?? 120) * 1000,
-                safeForMs: (meta.safeForSec ?? 20) * 1000,
-                safeFirstMs: (meta.safeFirstSec ?? 45) * 1000,
             },
         );
         this.lastTick = Date.now();
@@ -209,7 +188,7 @@ export default class WorldRoom extends GameRoom<Protocol> {
         this.lastTick = now;
         this.dispatch(sim.update(dt));
         // Send every tick while there is something moving; once a second otherwise (the wave countdown).
-        const busy = sim.monsters.size > 0 || sim.drops.size > 0 || sim.run !== null || sim.safe !== null;
+        const busy = sim.monsters.size > 0 || sim.drops.size > 0 || sim.runs.length > 0;
         this.quietFor += dt;
         if (busy || this.quietFor >= 1000) {
             this.quietFor = 0;
@@ -221,8 +200,7 @@ export default class WorldRoom extends GameRoom<Protocol> {
         for (const e of events) {
             if (e.type === 'bite') this.sendTo(e.playerId, { type: 'bite', damage: e.damage });
             else if (e.type === 'kill') this.sendTo(e.playerId, { type: 'kill', kind: e.kind });
-            else if (e.type === 'wave') this.broadcast({ type: 'wave', wave: e.wave });
-            else this.broadcast({ type: 'safe', u: e.u, v: e.v });
+            else this.broadcast({ type: 'wave', wave: e.wave });
         }
     }
 

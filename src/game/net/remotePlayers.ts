@@ -26,7 +26,7 @@ export interface RemotePlayers {
 const REMOTE_TINT = 0xbfe2ff;
 
 export function createRemotePlayers(opts: {
-    scene: 'world' | 'base';
+    scene: 'world';
     layer: Container;
     toScreen: (u: number, v: number) => { x: number; y: number };
     /** Depth-sort value for something standing at (u, v), matching the local player's. */

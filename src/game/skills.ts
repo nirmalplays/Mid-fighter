@@ -1,6 +1,6 @@
 /**
  * The four skills. Monster drops are gems of the matching colour that you keep; a gem only
- * does something when it is spent on an upgrade, at the workshop or at a visiting frog.
+ * does something when it is spent on an upgrade at a visiting frog (a death loses the ones you still carry).
  */
 import type { Skill } from '../shared/sim.ts';
 
