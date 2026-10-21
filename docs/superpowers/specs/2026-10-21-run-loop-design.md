@@ -4,12 +4,12 @@ Status: written for approval. Nothing here is built yet. Revised 2026-10-21: the
 
 ## Intent
 Turn the current "fight forever, upgrades happen" sandbox into a run: you push as far as you can through
-ever harder waves, gems you carry are at risk until you bank them at the workshop, and dying sends you back
+ever harder waves, gems you carry are at risk until you bank them at the portal, and dying sends you back
 to wave 1. What you keep (banked gems, swords, bought levels, unlocked spells) is what makes the next run go further.
 
 ## Goals
 - A clear reason to push on (waves get brutal) and a clear reason to stop (carried gems are lost if you die).
-- Gems feel like a decision: spend them at the frog mid-run (safe once spent) or bank them at the workshop.
+- Gems feel like a decision: spend them at the frog mid-run (safe once spent) or bank them at the portal.
 - Spells are earned, not free: unlock at the frog, then buy more charges and shorter cooldowns.
 - The enemies pack is used fully (Kobolt and Scorpion added; colour variants mark tougher tiers).
 
