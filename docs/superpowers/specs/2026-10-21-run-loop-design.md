@@ -15,7 +15,7 @@ What lasts between runs (swords, bought skill levels, unlocked spells and their 
 
 ## Non-goals
 - No workshop, no portals, no banking, no safe areas, no scene changes. One world, one loop.
-- No new currencies, leaderboards or story. No change to co-op joining, saves or the map.
+- No new currencies or story. No change to co-op joining, saves or the map.
 - No hard anti-cheat for spells or gems (client-side as today).
 
 ## The loop (the user's words in quotes)
