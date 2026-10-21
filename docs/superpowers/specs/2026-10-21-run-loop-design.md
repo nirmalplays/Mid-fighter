@@ -1,10 +1,10 @@
 # Meh Fighter: an endless monster fighter (design)
 
-Status: written for approval. Nothing here is built yet. Revised 2026-10-21: no workshop, no portals.
+Status: written for approval. Nothing here is built yet. Revised 2026-10-21: no workshop, no portals, death ends the game with a leaderboard.
 
 ## Intent
-Meh Fighter is an endless monster fighter. Waves keep coming, harder and faster, until you die; then you start
-again from wave 1. Gems you pick up are only worth something if you spend them at the frog before you die.
+Meh Fighter is an endless monster fighter. Waves keep coming, harder and faster, until you die. Dying ends the game:
+you see your score and the leaderboard, then you start again from wave 1. Gems you pick up are only worth something if you spend them at the frog before you die.
 What lasts between runs (swords, bought skill levels, unlocked spells and their upgrades) is what lets the next run go further.
 
 ## Goals
@@ -19,7 +19,8 @@ What lasts between runs (swords, bought skill levels, unlocked spells and their 
 - No hard anti-cheat for spells or gems (client-side as today).
 
 ## The loop (the user's words in quotes)
-1. **A run** starts at wave 1 and lasts until you die. "u die u start from first."
+1. **A run** starts at wave 1 and lasts until you die. "u die u start from first." "when u die the game ends u get
+   leader board": death shows a Game Over screen with your score and the leaderboard (see below), then Play again.
 2. **Waves**: "no 2 minute break between each wave make it 20 sec", and "intensity must increase alot".
 3. **Gems you pick up are carried.** "If you die, you lose that run's gems. Swords and the skill levels you've
    already bought stay." Spells you unlocked and their upgrades stay too.
@@ -34,15 +35,21 @@ What lasts between runs (swords, bought skill levels, unlocked spells and their 
 - **Intensity** (start values): monsters = 4 + 4 per wave (cap 80), health x1.25 per wave compounding, speed +6% per
   wave (cap x1.8), bite 1 / 2 from wave 4 / 3 from wave 9 / 4 from wave 15. Kobolt joins at wave 2, Scorpion at wave 4.
 - **Tiers**: colour variant by wave (waves 1-4 first variant, 5-9 second, 10+ third), sent in the snapshot.
-- **Death**: you respawn at the starting spot with full health, buffs cleared, wave back to 1, carried gems gone.
+- **Death** ends the run: the world stops for you and the Game Over screen opens (below). Play again puts you at the
+  starting spot with full health, buffs cleared, wave 1, carried gems gone.
   Health does not otherwise come back (red potions and the Heal spell are how you recover).
+- **Leaderboard** (RUN SDK `leaderboard`, simple mode, `rundot/leaderboard.config.json`): on death the game submits
+  score = 100 x wave reached + enemies defeated, duration = seconds survived, metadata {wave, kills}. The Game Over
+  screen shows your score, wave, kills, time, your rank and the top 10, with Play again. The SDK enforces a 60 s
+  cooldown per player, so a run shorter than that may not post a second score; the screen says so if a score is not accepted.
 - **Spells** (the 4 we have): all locked at the start. The frog's Spells tab: Unlock (costs gems of the spell's
   colour: Fireball attack, Frost defence, Bolt speed, Heal vitality), then **Carry** (charges, 1 to 5; each cast uses
   one, one recharges per cooldown) and **Cooldown** (-10 percent per level, 5 levels). Costs rise per level. The chest
   menu shows only unlocked spells, with charge pips. The Skills tab holds Attack, Defence, Speed and Vitality.
 - **Co-op** (my call, flag if wrong): waves belong to the room, so a death does not reset the room's wave. The player
-  who dies loses their carried gems and respawns at the start with full health, and keeps playing.
-- **Menu**: Continue, Online and New game. No Workshop button; the in-game Workshop and Upgrades buttons go.
+  who dies gets their own Game Over and score, loses their carried gems, and on Play again rejoins the room at the
+  start with full health, at the room's current wave (their next score counts waves from where they rejoined).
+- **Menu**: Continue (a new run, keeping your upgrades), Online, New game (wipes upgrades, spells and swords) and Leaderboard. No Workshop button; the in-game Workshop and Upgrades buttons go.
 
 ## Open points for the builder
 - Exact numbers above (cost curves, ramp), balance by playing.
