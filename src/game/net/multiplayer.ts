@@ -29,6 +29,14 @@ export interface SimSnapshot {
     p: number[] | null;
     w: number;
     nx: number;
+    /** The side the wave comes from (radians × 100), and 1 while a wave is on (older servers send neither). */
+    wd?: number;
+    f?: number;
+    /** 1 while the waves hold (everyone reading or talking). */
+    c?: number;
+    /** Shots in flight: [id, kind, u, v, du, dv]; waves still to come in this onslaught. */
+    s?: number[][];
+    ol?: number;
     /** performance.now() at arrival. */
     at: number;
 }
@@ -36,9 +44,14 @@ export interface SimSnapshot {
 /** Combat events the server sends to this player. */
 export type NetEvent =
     | { type: 'bite'; damage: number }
-    | { type: 'kill'; kind: string }
+    | { type: 'kill'; kind: string; boss?: number }
     | { type: 'gain'; skill: string; id: number; sword: number }
-    | { type: 'wave'; wave: number };
+    | { type: 'wave'; wave: number }
+    | { type: 'cleared'; wave: number }
+    | { type: 'slam'; u: number; v: number; r: number }
+    | { type: 'boss'; code: number; u: number; v: number }
+    /** A teammate helped this player up. */
+    | { type: 'revived'; by: string };
 
 export interface Remote {
     id: string;
@@ -100,12 +113,16 @@ function handle(msg: Msg): void {
             break;
         }
         case 'sim':
-            snap = { m: msg.m as number[][], d: msg.d as number[][], p: msg.p as number[] | null, w: msg.w as number, nx: msg.nx as number, at: performance.now() };
+            snap = { m: msg.m as number[][], d: msg.d as number[][], p: msg.p as number[] | null, w: msg.w as number, nx: msg.nx as number, wd: msg.wd as number | undefined, f: msg.f as number | undefined, c: msg.c as number | undefined, s: msg.s as number[][] | undefined, ol: msg.ol as number | undefined, at: performance.now() };
             break;
         case 'bite':
         case 'kill':
         case 'gain':
         case 'wave':
+        case 'cleared':
+        case 'slam':
+        case 'boss':
+        case 'revived':
             for (const l of listeners) l(msg as unknown as NetEvent);
             break;
     }
@@ -235,9 +252,9 @@ function sendAct(kind: string): void {
 }
 
 /** Propose a swing from (u, v); the server decides who it hits. */
-function sendHit(u: number, v: number, facing: number, damage: number, r = 0): void {
+function sendHit(u: number, v: number, facing: number, damage: number, r = 0, s = 0): void {
     try {
-        room?.send({ type: 'hit', u, v, facing, damage, r });
+        room?.send({ type: 'hit', u, v, facing, damage, r, s });
     } catch (err) {
         console.warn('[multiplayer] send failed', err);
     }
@@ -247,6 +264,42 @@ function sendHit(u: number, v: number, facing: number, damage: number, r = 0): v
 function sendPickup(id: number): void {
     try {
         room?.send({ type: 'pickup', id });
+    } catch (err) {
+        console.warn('[multiplayer] send failed', err);
+    }
+}
+
+/** Ask the server to bring in a boss beside us (it decides the stats and refuses duplicates). */
+function sendSummon(code: number, tier: number, u: number, v: number): void {
+    try {
+        room?.send({ type: 'summon', code, tier, u, v });
+    } catch (err) {
+        console.warn('[multiplayer] send failed', err);
+    }
+}
+
+/** Set items on the ground for everyone (a chest's loot, gathering in co-op). */
+function sendLoot(u: number, v: number, items: [string, number][]): void {
+    try {
+        room?.send({ type: 'loot', u, v, items });
+    } catch (err) {
+        console.warn('[multiplayer] send failed', err);
+    }
+}
+
+/** Tell the server whether we are reading or talking (waves hold while everyone is) and whether we are safe in a camp (monsters lose us). */
+function sendCalm(on: boolean, safe: boolean): void {
+    try {
+        room?.send({ type: 'calm', on, safe });
+    } catch (err) {
+        console.warn('[multiplayer] send failed', err);
+    }
+}
+
+/** Help a fallen teammate up (the server checks we are beside them). */
+function sendRevive(target: string): void {
+    try {
+        room?.send({ type: 'revive', target });
     } catch (err) {
         console.warn('[multiplayer] send failed', err);
     }
@@ -263,7 +316,7 @@ function sendAway(): void {
 }
 
 export const net = {
-    remotes, connect, leave, sendPose, sendAct, sendAway, sendHit, sendPickup,
+    remotes, connect, leave, sendPose, sendAct, sendAway, sendHit, sendPickup, sendSummon, sendLoot, sendRevive, sendCalm,
     /**
      * True while the server is running the monsters: the room is connected and its combat
      * snapshots are arriving (it sends at least one a second). A room that connects but never

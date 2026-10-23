@@ -18,7 +18,12 @@ export { SKILL_CAP, SKILL_COLOR, SKILL_NAMES };
 /** Glow colour of each potion drop. */
 export const POTION_COLOR: Record<string, number> = { red: 0xff5a5a, blue: 0x5aa8ff, yellow: 0xffd84d, purple: 0xb070ff, black: 0x9a8ab0 };
 const isPotion = (k: DropKind) => k.startsWith('potion_');
-const colorOf = (k: DropKind): number => (k === 'sword' ? 0xffe27a : isPotion(k) ? POTION_COLOR[k.slice(7)] : SKILL_COLOR[k as Skill]);
+const isItem = (k: DropKind) => k.startsWith('item_');
+const colorOf = (k: DropKind): number => (k === 'sword' ? 0xffe27a : isItem(k) ? 0xfff3c4 : isPotion(k) ? POTION_COLOR[k.slice(7)] : SKILL_COLOR[k as Skill]);
+/** Items are drawn about 50 px across, whatever their picture's size. */
+const fitItem = (t: Texture): number => (t === Texture.EMPTY ? 1 : 50 / Math.max(t.width, t.height));
+/** An item's picture once the background load has it (blank until then). */
+const itemTex = (k: DropKind): Texture => (Assets.cache.has(`item:${k.slice(5)}`) ? Assets.get<Texture>(`item:${k.slice(5)}`) : Texture.EMPTY);
 
 const BLINK_MS = 8000;
 /** Gems this close drift toward the player (tiles) at this speed (tiles / s); touching one asks to take it. */
@@ -117,9 +122,10 @@ export function createDropView(opts: {
                 if (!s) {
                     const isSword = d.skill === 'sword';
                     const potion = isPotion(d.skill);
-                    const sprite = new Sprite(isSword ? swordTex(d.sword) : potion ? Assets.get<Texture>(d.skill) : tex(d.skill as Skill));
+                    const item = isItem(d.skill);
+                    const sprite = new Sprite(isSword ? swordTex(d.sword) : item ? itemTex(d.skill) : potion ? Assets.get<Texture>(d.skill) : tex(d.skill as Skill));
                     sprite.anchor.set(0.5, isSword ? 0.5 : potion ? 0.9 : 0.85);
-                    sprite.scale.set(isSword ? 2.2 : potion ? 0.3 : 0.55);
+                    sprite.scale.set(isSword ? 2.2 : item ? fitItem(sprite.texture) : potion ? 0.3 : 0.55);
                     const glow = new Sprite(opts.glowTex);
                     glow.anchor.set(0.5);
                     glow.tint = colorOf(d.skill);
@@ -129,6 +135,14 @@ export function createDropView(opts: {
                     shown.set(d.id, s);
                 }
                 s.age = d.age;
+                // An item whose picture was still loading: show it now.
+                if (isItem(s.skill) && s.sprite.texture === Texture.EMPTY) {
+                    const t = itemTex(s.skill);
+                    if (t !== Texture.EMPTY) {
+                        s.sprite.texture = t;
+                        s.sprite.scale.set(fitItem(t));
+                    }
+                }
                 const sinceBorn = clock - s.born;
 
                 // Gems near the player drift toward them.

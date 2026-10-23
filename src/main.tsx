@@ -4,6 +4,8 @@ import App from './ui/App.tsx';
 import { store } from './state/store.ts';
 import { initSdk, registerLifecycles } from './sdk/runSdk.ts';
 import { warmAssets } from './assets/preload.ts';
+import { progress } from './game/progress.ts';
+import { hostPause } from './game/audio.ts';
 import { saveSystem } from './saveConfig.ts';
 import './styles/app.css';
 
@@ -30,8 +32,8 @@ async function boot() {
         skills: { ...save.skills },
         gems: { ...save.gems },
         spells: { unlocked: [...save.spells.unlocked], carry: [...save.spells.carry], cooldown: [...save.spells.cooldown] },
-        maxHp: 6 + 2 * save.skills.vitality,
     });
+    progress.syncSurvival();
 
     // 3. Mount React. `phase` starts at 'loading', so this paints the
     //    loading screen (progress bar at 0%).
@@ -67,8 +69,14 @@ async function boot() {
     //    notifications) from onSleep/onQuit — a hard close kills the runtime
     //    before they land.
     registerLifecycles({
-        onPause: () => store.patch({ paused: true }),
-        onResume: () => store.patch({ paused: false }),
+        onPause: () => {
+            store.patch({ paused: true });
+            hostPause(true);
+        },
+        onResume: () => {
+            store.patch({ paused: false });
+            hostPause(false);
+        },
         // The save system's own lifecycle flush (attachLifecycleFlush above) covers sleep and quit.
         onSleep: async () => {},
         onQuit: async () => {},

@@ -13,6 +13,7 @@
  * Keep 'critical' small: every asset here delays first interaction.
  */
 import type { AssetsManifest, UnresolvedAsset } from 'pixi.js';
+import { ITEM_IDS, ITEMS } from '../game/survival.ts';
 
 /**
  * A narrowing of Pixi's AssetsManifest: Pixi also allows `assets` to be a
@@ -45,6 +46,20 @@ export const MANIFEST: Manifest = {
                 { alias: 'potion_purple', src: 'images/potions/purple.png' },
                 { alias: 'potion_black', src: 'images/potions/black.png' },
                 { alias: 'drops', src: 'images/world/drops.png' },
+                // Survival: camp tents, Heartstone shrines (a 6-frame portal sheet) and chests.
+                { alias: 'tent_cream', src: 'images/world/camp/tent_cream.png' },
+                { alias: 'tent_red', src: 'images/world/camp/tent_red.png' },
+                { alias: 'tent_blue', src: 'images/world/camp/tent_blue.png' },
+                { alias: 'tent_green', src: 'images/world/camp/tent_green.png' },
+                { alias: 'tent_yellow', src: 'images/world/camp/tent_yellow.png' },
+                { alias: 'shrine', src: 'images/world/shrine.png' },
+                { alias: 'chest', src: 'images/hud/chest.png' },
+                // Walk-in houses, one look per kingdom (composited from the Isometric RPG Buildings layers):
+                // the floor and back walls, and the front walls and roof that fade when you go in.
+                ...['fire', 'air', 'water', 'earth'].flatMap((el) => [
+                    { alias: `house_${el}_base`, src: `images/world/house_${el}_base.png` },
+                    { alias: `house_${el}_shell`, src: `images/world/house_${el}_shell.png` },
+                ]),
                 // Bare-handed movement sheets, so the character is there from the first frame
                 // (everything else loads on demand in world/character.ts).
                 { alias: 'char:idle', src: 'images/world/char/idle.png' },
@@ -55,7 +70,8 @@ export const MANIFEST: Manifest = {
         {
             name: 'deferred',
             assets: [
-                // ADAPT: sub-screen backgrounds, per-level art, shop icons...
+                // Item pictures, for loot lying on the ground.
+                ...ITEM_IDS.map((id) => ({ alias: `item:${id}`, src: `images/${ITEMS[id].icon}` })),
             ],
         },
     ],

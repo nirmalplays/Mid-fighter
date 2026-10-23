@@ -1,7 +1,8 @@
 /**
  * In-game HUD: a React overlay above the Pixi canvas, styled as chunky tan
- * pixel-art buttons with dark icons, a hearts + portrait + plaque cluster at the
- * top left, and a digital clock with a pause button at the top right.
+ * pixel-art buttons with dark icons, a portrait + health bar + level bar cluster at the
+ * top left, and a digital clock with the bag and pause buttons at the top right.
+ * The survival parts (bars, objective, bag, story) live in SurvivalHud.tsx.
  *
  * Pattern to keep: the overlay itself is pointer-events-none so touches fall
  * through to the canvas (the movement joystick); each control opts back in with
@@ -10,11 +11,17 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { commands, type GameCommand } from '../game/commands.ts';
+import { ActionCluster, GlassButton } from './Actions.tsx';
 import { store, useStore } from '../state/store.ts';
 import { progress } from '../game/progress.ts';
 import { SKILL_BLURB, SKILL_CAP, upgradeCost } from '../game/skills.ts';
 import type { Skill } from '../shared/sim.ts';
 import { GameOver } from './Scores.tsx';
+import { SoundButton } from './SoundButton.tsx';
+import {
+    BagPanel, BigMap, BossBar, BuildPanel, DownedOverlay, Hotbar4, HousePanel, KingdomChooser, maybeShowIntro, NpcPanel, Objective, Radar,
+    StoryDialog, TravelPanel, VitalsBars, WorldPills,
+} from './SurvivalHud.tsx';
 import { CARRY_MAX, COOLDOWN_MAX, cooldownFor, levelCost, maxCharges, SPELLS, UNLOCK_COST } from '../game/world/spells.ts';
 
 const TAN = '#e9bf9a';
@@ -104,33 +111,11 @@ function HandIcon({ size }: { size: number }) {
 }
 
 /** Pause: two rounded bars. */
-function PauseIcon({ size }: { size: number }) {
+function PauseIcon({ size, color = PLUM }: { size: number; color?: string }) {
     return (
         <svg viewBox="0 0 16 16" width={size} height={size} aria-hidden="true">
-            <rect x="3" y="2.5" width="3.6" height="11" rx="1.4" fill={PLUM} />
-            <rect x="9.4" y="2.5" width="3.6" height="11" rx="1.4" fill={PLUM} />
-        </svg>
-    );
-}
-
-/** 7 × 6 pixel heart; `fill` is 0 (empty), 0.5 (half) or 1. */
-const HEART = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
-function Heart({ fill }: { fill: 0 | 0.5 | 1 }) {
-    const cells: ReactNode[] = [];
-    const on = (x: number, y: number) => HEART[y]?.[x] === 'X';
-    for (let y = -1; y <= HEART.length; y++) {
-        for (let x = -1; x <= 7; x++) {
-            if (on(x, y)) {
-                const lit = fill === 1 || (fill === 0.5 && x < 3.5);
-                cells.push(<rect key={`${x},${y}`} x={x + 1} y={y + 1} width="1" height="1" fill={lit ? (y === 1 && x < 3 ? '#ff8d8d' : '#e5353f') : '#5a2a38'} />);
-            } else if ([-1, 0, 1].some((dy) => [-1, 0, 1].some((dx) => on(x + dx, y + dy)))) {
-                cells.push(<rect key={`o${x},${y}`} x={x + 1} y={y + 1} width="1" height="1" fill="#2b0f1c" />);
-            }
-        }
-    }
-    return (
-        <svg viewBox="0 0 9 8" width="30" height="27" shapeRendering="crispEdges" className="drop-shadow-[0_2px_0_rgba(0,0,0,.35)]">
-            {cells}
+            <rect x="3" y="2.5" width="3.6" height="11" rx="1.4" fill={color} />
+            <rect x="9.4" y="2.5" width="3.6" height="11" rx="1.4" fill={color} />
         </svg>
     );
 }
@@ -172,7 +157,7 @@ const SKILL_CHIPS: { key: Skill; color: string; label: string }[] = [
 function SkillChips() {
     const skills = useStore((s) => s.gems);
     return (
-        <div className="absolute left-3 flex gap-3" style={{ top: 80 }}>
+        <div className="absolute left-3 flex gap-3" style={{ top: 118 }}>
             {SKILL_CHIPS.map((c) => (
                 <div
                     key={c.key}
@@ -195,7 +180,7 @@ function FrogPill() {
     return (
         <div
             className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-xl px-3 text-[13px] font-black tabular-nums text-white"
-            style={{ top: 46, height: 30, background: 'rgba(40,90,20,.88)', border: '3px solid #a3e635' }}
+            style={{ top: 76, height: 28, background: 'rgba(40,90,20,.88)', border: '3px solid #a3e635' }}
         >
             <span style={{ display: 'inline-block', transform: `rotate(${aim.angle}rad)`, fontSize: 15, lineHeight: 1 }}>➤</span>
             <span>Frog · {Math.round(aim.dist)} tiles · {aim.left}s</span>
@@ -301,27 +286,34 @@ function UpgradePanel() {
     );
 }
 
-/** Wave countdown, or how many monsters are left while a wave is on. */
+/**
+ * The fight at a glance: safe in camp; a wave on (monsters left, waves still to come in the
+ * onslaught); the few seconds before the next wave; or the breather after an onslaught.
+ */
 function WavePill() {
     const wave = useStore((s) => s.wave);
     const next = useStore((s) => s.nextWaveIn);
     const left = useStore((s) => s.waveLeft);
+    const more = useStore((s) => s.onslaughtLeft);
+    const fighting = useStore((s) => s.fighting);
     const shared = useStore((s) => s.sharedMonsters);
-    const mm = Math.floor(next / 60);
-    const ss = String(next % 60).padStart(2, '0');
-    const fighting = left !== null && left > 0;
-    return (
+    const camp = useStore((s) => s.wavesCalm);
+    const time = `${Math.floor(next / 60)}:${String(next % 60).padStart(2, '0')}`;
+    const pill = (bg: string, edge: string, top: ReactNode, sub?: ReactNode, pulse = false) => (
         <div
-            className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-xl px-3 text-[13px] font-black tabular-nums text-white"
-            style={{ top: 8, height: 34, background: fighting ? 'rgba(120,20,20,.85)' : 'rgba(22,12,16,.72)', border: `3px solid ${fighting ? '#ff6b6b' : '#6b4a52'}` }}
+            className="absolute left-1/2 flex -translate-x-1/2 flex-col items-center rounded-xl px-3 py-0.5 text-[13px] font-black tabular-nums leading-tight text-white"
+            style={{ top: 8, minHeight: 34, justifyContent: 'center', background: bg, border: `3px solid ${edge}`, animation: pulse ? 'eid-breathe 1s ease-in-out infinite' : undefined }}
         >
-            {fighting ? (
-                <span>Wave {wave} · {left} left{shared ? ' · shared' : ''}</span>
-            ) : (
-                <span>{wave > 0 ? `Wave ${wave + 1}` : 'Wave 1'} in {mm}:{ss}{shared ? ' · shared' : ''}</span>
-            )}
+            <span>{top}{shared ? ' · shared' : ''}</span>
+            {sub && <span className="text-[10px] font-bold opacity-85">{sub}</span>}
         </div>
     );
+    if (camp && !(left && left > 0)) return pill('rgba(30,58,110,.85)', '#93c5fd', '🏕️ Safe in camp', 'The waves wait outside');
+    if (left !== null && left > 0) return pill('rgba(120,20,20,.85)', '#ff6b6b', `⚔️ Wave ${wave} · ${left} left`, more > 0 ? `${more} more wave${more > 1 ? 's' : ''} in this onslaught` : 'Last wave of the onslaught!');
+    if (fighting && next > 0) return pill('rgba(130,70,10,.88)', '#fbbf24', `Wave ${wave + 1} in ${next}s`, 'Get ready!', true);
+    if (fighting) return pill('rgba(120,20,20,.85)', '#ff6b6b', `⚔️ Wave ${wave}`, 'Finish them off');
+    if (wave === 0) return pill('rgba(22,12,16,.72)', '#6b4a52', `Wave 1 in ${time}`);
+    return pill(next <= 10 ? 'rgba(130,70,10,.88)' : 'rgba(18,70,40,.85)', next <= 10 ? '#fbbf24' : '#4ade80', `🛡️ Breather · next onslaught in ${time}`, 'Rest, build and brew in camp', next <= 10);
 }
 
 /** A message that fades after a couple of seconds (wave starts, pickups). */
@@ -337,7 +329,7 @@ function Banner() {
     return (
         <div
             className="pointer-events-none absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-center text-xl font-black text-white transition-opacity duration-500"
-            style={{ top: 86, opacity: shown ? 1 : 0, textShadow: '0 2px 0 #1a0c10, 0 0 8px #1a0c10, 2px 0 0 #1a0c10, -2px 0 0 #1a0c10' }}
+            style={{ top: 110, opacity: shown ? 1 : 0, textShadow: '0 2px 0 #1a0c10, 0 0 8px #1a0c10, 2px 0 0 #1a0c10, -2px 0 0 #1a0c10' }}
         >
             {shown ?? ''}
         </div>
@@ -346,7 +338,11 @@ function Banner() {
 
 const BUFF_INFO: Record<string, { label: string; color: string }> = {
     blue: { label: 'Attack x1.5', color: '#5aa8ff' },
-    yellow: { label: 'Speed x1.4', color: '#ffd84d' },
+    yellow: { label: 'Stamina Tonic', color: '#ffd84d' },
+    night: { label: 'Night vision', color: '#a5b4fc' },
+    oilfire: { label: 'Fire oil', color: '#ff6a3d' },
+    oilice: { label: 'Frost oil', color: '#7dd3fc' },
+    bulwark: { label: 'Stone skin', color: '#c69c5d' },
     purple: { label: 'Shield', color: '#b070ff' },
     black: { label: 'Rage', color: '#c9b8e0' },
 };
@@ -356,7 +352,7 @@ function Buffs() {
     const buffs = useStore((s) => s.buffs);
     if (buffs.length === 0) return null;
     return (
-        <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 gap-2" style={{ top: 120 }}>
+        <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 gap-2" style={{ top: 142 }}>
             {buffs.map((b) => (
                 <div
                     key={b.key}
@@ -370,112 +366,21 @@ function Buffs() {
     );
 }
 
-/** The nine hotbar slots, in the same order as HOTBAR in world/character.ts. */
-const HOTBAR_ITEMS: { tool: string; icon?: string; label: string }[] = [
-    { tool: 'none', label: 'Bare hands' },
-    { tool: 'sword', icon: 'sword', label: 'Sword' },
-    { tool: 'axe', icon: 'axe', label: 'Axe' },
-    { tool: 'pickaxe', icon: 'pickaxe', label: 'Pickaxe' },
-    { tool: 'hammer', icon: 'hammer', label: 'Hammer' },
-    { tool: 'shovel', icon: 'shovel', label: 'Shovel' },
-    { tool: 'fishingpole', icon: 'fishingpole', label: 'Fishing pole' },
-    { tool: 'watercan', icon: 'watercan', label: 'Watering can' },
-    { tool: 'shield', icon: 'shield', label: 'Shield' },
-];
-
-/**
- * A Minecraft-style hotbar: tap a slot (or press 1-9) to hold that item; its name shows briefly.
- * It sits between the left info pills and the action buttons, never under either.
- */
-function Hotbar() {
-    const toolId = useStore((s) => s.toolId);
-    const owned = useStore((s) => s.swordsOwned.length);
-    const [name, setName] = useState<string | null>(null);
-    const first = useRef(true);
-    useEffect(() => {
-        if (first.current) {
-            first.current = false;
-            return;
-        }
-        setName(HOTBAR_ITEMS.find((i) => i.tool === toolId)?.label ?? null);
-        const id = window.setTimeout(() => setName(null), 1700);
-        return () => window.clearTimeout(id);
-    }, [toolId]);
-
-    return (
-        <div className="pointer-events-none absolute bottom-2 flex flex-col items-center gap-1 pb-safe-bottom" style={{ left: 150, right: 276 }}>
-            <div className="h-5 text-sm font-bold text-white transition-opacity duration-300" style={{ textShadow: '0 1px 3px #000', opacity: name ? 1 : 0 }}>
-                {name ?? ''}
-            </div>
-            <div className="flex gap-[3px] rounded-sm p-[3px]" style={{ background: 'rgba(22,22,22,.78)', border: '3px solid #3b3b3b', boxShadow: 'inset 0 0 0 2px #151515' }}>
-                {HOTBAR_ITEMS.map((it, i) => {
-                    const selected = it.tool === toolId;
-                    return (
-                        <button
-                            key={it.tool}
-                            type="button"
-                            aria-label={it.label}
-                            className="pointer-events-auto relative flex touch-none items-center justify-center"
-                            style={{
-                                // Shrinks on narrow screens so nine slots always fit the gap.
-                                width: 'min(40px, calc((100vw - 450px) / 9))',
-                                height: 'min(40px, calc((100vw - 450px) / 9))',
-                                background: 'rgba(72,72,72,.72)',
-                                border: selected ? '3px solid #fff' : '3px solid #5a5a5a',
-                                boxShadow: selected ? '0 0 0 2px #000' : 'none',
-                                borderRadius: 2,
-                            }}
-                            onPointerDown={(e) => {
-                                e.preventDefault();
-                                // Tapping the sword slot while holding the sword steps through the swords you own.
-                                if (it.tool === 'sword' && selected && owned > 0) commands.emit({ type: 'sword', delta: 1 });
-                                else commands.emit({ type: 'equip', tool: it.tool });
-                            }}
-                        >
-                            {it.icon ? (
-                                <img src={`images/hud/${it.icon}.png`} width={32} height={32} draggable={false} alt="" />
-                            ) : (
-                                <HandIcon size={26} />
-                            )}
-                            <span className="absolute bottom-[-1px] right-[2px] text-[10px] font-bold leading-none text-white" style={{ textShadow: '0 1px 0 #000, 1px 0 0 #000' }}>
-                                {i + 1}
-                            </span>
-                            {it.tool === 'sword' && owned > 0 && (
-                                <span className="absolute left-[1px] top-[-5px] rounded-full bg-amber-300 px-[4px] text-[10px] font-black leading-[13px] text-[#3b2412]" style={{ border: '1px solid #2b0f1c' }}>
-                                    {owned}
-                                </span>
-                            )}
-                        </button>
-                    );
-                })}
-            </div>
-        </div>
-    );
-}
-
 export default function Hud() {
-    const tileX = useStore((s) => s.tileX);
-    const tileY = useStore((s) => s.tileY);
-    const height = useStore((s) => s.height);
-    const chunkX = useStore((s) => s.chunkX);
-    const chunkY = useStore((s) => s.chunkY);
-    const loaded = useStore((s) => s.loadedChunks);
-    const hp = useStore((s) => s.hp);
-    const maxHp = useStore((s) => s.maxHp);
     const paused = useStore((s) => s.paused);
     const netStatus = useStore((s) => s.netStatus);
     const online = useStore((s) => s.online);
     const roomCode = useStore((s) => s.roomCode);
     const kills = useStore((s) => s.kills);
-    const [more, setMore] = useState(false);
-    const toolId = useStore((s) => s.toolId);
-    const spells = useStore((s) => s.spells);
-    const spellState = useStore((s) => s.spellState);
-    const anyUnlocked = spells.unlocked.some(Boolean);
+    // The story starts with Elder Theron's prologue the first time.
+    useEffect(() => {
+        const id = window.setTimeout(maybeShowIntro, 600);
+        return () => window.clearTimeout(id);
+    }, []);
 
     return (
         <div className="pointer-events-none absolute inset-0 pt-safe-top">
-            {/* Top left: portrait, hearts, plaque */}
+            {/* Top left: portrait, health bar, level bar */}
             <div className="absolute left-3 top-2 flex items-start gap-2 pt-safe-top">
                 <div
                     className="shrink-0 overflow-hidden"
@@ -499,102 +404,49 @@ export default function Hud() {
                         }}
                     />
                 </div>
-                <div className="flex flex-col gap-1">
-                    <div className="flex gap-0.5">
-                        {Array.from({ length: Math.ceil(maxHp / 2) }, (_, i) => i).map((i) => (
-                            <Heart key={i} fill={hp >= (i + 1) * 2 ? 1 : hp >= i * 2 + 1 ? 0.5 : 0} />
-                        ))}
-                    </div>
-                    <div
-                        className="flex items-center gap-2 px-3 font-black tabular-nums"
-                        style={{
-                            height: 34,
-                            borderRadius: 12,
-                            background: `linear-gradient(${TAN_LIGHT}, ${TAN})`,
-                            border: `4px solid ${BROWN}`,
-                            boxShadow: `inset 0 0 0 2px ${TAN_LIGHT}, 0 3px 0 ${BROWN_DARK}`,
-                            color: INK,
-                            fontSize: 17,
-                        }}
-                    >
-                        <span style={{ color: BROWN_DARK }}>LV {height}</span>
-                        <span>{tileX},{tileY}</span>
-                    </div>
-                </div>
+                <VitalsBars />
             </div>
 
-            {/* Top right: clock and pause */}
+            {/* Top right: clock, bag and pause */}
             <div className="absolute right-3 top-2 flex items-center gap-2 pt-safe-top">
+                <SoundButton dark />
                 <Clock />
-                <RoundBtn size={48} label="Pause" onPress={() => store.patch({ phase: 'menu' })}>
-                    <PauseIcon size={24} />
-                </RoundBtn>
+                <GlassButton size={48} label="Bag" onPress={() => store.patch({ bagTab: 'items' })}>
+                    <Pic name="log" size={30} />
+                </GlassButton>
+                <GlassButton size={48} label="Pause" onPress={() => store.patch({ phase: 'menu' })}>
+                    <PauseIcon size={22} color="#fff" />
+                </GlassButton>
             </div>
 
             <FrogPill />
+            <Objective />
+            <WorldPills />
+            <BossBar />
             <UpgradePanel />
+            <HousePanel />
+            <TravelPanel />
+            <NpcPanel />
+            <BuildPanel />
+            <BigMap />
+            <BagPanel />
+            <KingdomChooser />
+            <StoryDialog />
             <GameOver />
-            <Hotbar />
+            <Hotbar4 />
+            <Radar />
+            <DownedOverlay />
             <SkillChips />
             <WavePill />
             <Banner />
             <Buffs />
 
-            {/* Actions, bottom right, in the thumb's arc: Attack (big), Use (the held tool), Actions menu */}
-            <div className="absolute bottom-0 right-0 pb-safe-bottom pr-4">
-                {more && (
-                    <div className="absolute flex gap-2 p-2" style={{ bottom: 168, right: 30 }}>
-                        {!anyUnlocked && (
-                            <span className="max-w-[220px] text-center text-[12px] font-black leading-tight text-white" style={{ textShadow: '0 1px 0 #000, 0 0 5px #000' }}>
-                                No spells yet. Find the frog to unlock one.
-                            </span>
-                        )}
-                        {SPELLS.map((sp, i) => {
-                            if (!spells.unlocked[i]) return null;
-                            const st = spellState[i];
-                            const empty = st.charges < 1;
-                            return (
-                                <div key={sp.name} className="flex flex-col items-center gap-0.5">
-                                    <div className="relative">
-                                        <RoundBtn size={52} label={sp.name} onPress={() => { commands.emit({ type: 'spell', index: i }); setMore(false); }}>
-                                            <img src={`images/${sp.icon}`} width={32} height={32} draggable={false} alt="" style={{ opacity: empty ? 0.35 : 1, objectFit: 'contain' }} />
-                                        </RoundBtn>
-                                        {empty && (
-                                            <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-lg font-black text-white" style={{ textShadow: '0 2px 0 #000, 0 0 6px #000' }}>
-                                                {st.cd}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="flex gap-0.5">
-                                        {Array.from({ length: st.max }, (_, n) => (
-                                            <span key={n} className="inline-block h-2 w-2 rounded-full" style={{ background: n < st.charges ? '#ffd84d' : 'rgba(0,0,0,.5)', border: '1px solid #1a0c10' }} />
-                                        ))}
-                                    </div>
-                                    <span className="text-[11px] font-black text-white" style={{ textShadow: '0 1px 0 #000' }}>{sp.name}</span>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-                <div className="relative h-[190px] w-[250px]">
-                    <div className="absolute bottom-1 right-0">
-                        <RoundBtn size={96} face="red" label="Attack" onPress={emit({ type: 'attack' })}><Pic name="sword" size={80} rotate={-42} /></RoundBtn>
-                    </div>
-                    <div className="absolute bottom-2 right-[112px]">
-                        <RoundBtn size={66} label="Use held item" onPress={emit({ type: 'use' })}>
-                            {toolId === 'none' ? <HandIcon size={38} /> : <Pic name={toolId} size={46} />}
-                        </RoundBtn>
-                    </div>
-                    <div className="absolute bottom-[104px] right-[56px]">
-                        <RoundBtn size={52} label="Spells" onPress={() => setMore((m) => !m)}><Pic name="chest" size={34} /></RoundBtn>
-                    </div>
-                </div>
-            </div>
+            <ActionCluster />
 
             {/* World readout, small */}
             {/* Enemies defeated */}
             {kills > 0 && (
-                <div className="absolute bottom-[50px] left-2 rounded-md bg-black/45 px-2 py-0.5 text-[11px] font-bold text-white">
+                <div className="absolute bottom-[82px] left-3 rounded-md bg-black/45 px-2 py-0.5 text-[11px] font-bold text-white">
                     ⚔️ Defeated · {kills}
                 </div>
             )}
@@ -603,7 +455,7 @@ export default function Hud() {
             {netStatus !== 'off' && (
                 <button
                     type="button"
-                    className="pointer-events-auto absolute bottom-6 left-2 flex touch-manipulation items-center gap-1.5 rounded-md bg-black/50 px-2 py-0.5 text-[11px] font-bold text-white"
+                    className="pointer-events-auto absolute bottom-[22px] left-[72px] flex touch-manipulation items-center gap-1.5 rounded-md bg-black/50 px-2 py-0.5 text-[11px] font-bold text-white"
                     onClick={() => {
                         if (roomCode) {
                             try { void navigator.clipboard?.writeText(roomCode); } catch { /* clipboard unavailable */ }
@@ -618,12 +470,6 @@ export default function Hud() {
                             ? `Room ${roomCode} · ${online}`
                             : `Online · ${online} ${online === 1 ? 'player' : 'players'}`}
                 </button>
-            )}
-
-            {(
-                <div className="absolute bottom-1 left-2 rounded-md bg-black/35 px-2 py-0.5 text-[10px] font-bold tabular-nums text-white/80">
-                    Chunk {chunkX},{chunkY} · {loaded} loaded
-                </div>
             )}
 
             {paused && (

@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { myRank, topScores, type ScoreRow } from '../game/leaderboard.ts';
 import { store, useStore } from '../state/store.ts';
+import { sfx } from '../game/audio.ts';
 import { ICON, PxButton, PxPanel } from './px.tsx';
 
 const INK = '#3b2a22';
@@ -63,7 +64,7 @@ export function GameOver() {
                     <ScoreTable rows={info.top} loading={info.status === 'sending'} />
                 </div>
                 <div className="flex gap-2">
-                    <PxButton className="flex-1" style={{ minHeight: 46 }} icon={ICON.play} onClick={() => store.patch({ gameOver: null, runId: store.get().runId + 1 })}>
+                    <PxButton className="flex-1" style={{ minHeight: 46 }} icon={ICON.play} onClick={() => { sfx('start'); store.patch({ gameOver: null, runId: store.get().runId + 1 }); }}>
                         Play again
                     </PxButton>
                     <PxButton className="flex-1" style={{ minHeight: 46 }} variant="white" icon={ICON.back} onClick={() => store.patch({ gameOver: null, phase: 'menu' })}>

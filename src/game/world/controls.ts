@@ -7,14 +7,14 @@ import { commands, type GameCommand } from '../commands.ts';
 import { net } from '../net/multiplayer.ts';
 import { progress } from '../progress.ts';
 import { store } from '../../state/store.ts';
-import { HOTBAR, type Character } from './character.ts';
+import type { Character } from './character.ts';
+import { HOTBAR_SLOTS, ITEMS } from '../survival.ts';
 
 const KEYS: Record<string, GameCommand> = {
     ' ': { type: 'attack' }, j: { type: 'attack' }, e: { type: 'use' }, f: { type: 'interact' },
-    c: { type: 'sit' }, g: { type: 'dig' }, r: { type: 'fish' },
-    q: { type: 'tool', delta: -1 }, t: { type: 'tool', delta: 1 },
-    // Number keys pick a hotbar slot.
-    ...Object.fromEntries(HOTBAR.map((tool, i) => [String(i + 1), { type: 'equip', tool } as GameCommand])),
+    c: { type: 'sit' }, g: { type: 'dig' }, r: { type: 'fish' }, k: { type: 'dodge' }, l: { type: 'dodge' }, q: { type: 'skill' },
+    // Number keys 1-4 pick a hotbar slot. (Shift is held to sprint: see below.)
+    ...Object.fromEntries(Array.from({ length: HOTBAR_SLOTS }, (_, i) => [String(i + 1), { type: 'slot', index: i } as GameCommand])),
 };
 
 export interface Controls {
@@ -28,6 +28,21 @@ export function bindControls(character: Character): Controls {
     // Tapping the sword slot again cycles through the swords you own (the original iron sword first).
     character.setSword(progress.equippedSword());
     const offCommands = commands.subscribe((c) => {
+        if (c.type === 'item' || c.type === 'dodge' || c.type === 'skill') return; // the scene handles the bag, rolls and skills
+        // A hotbar slot: a tool goes in hand; something to eat, drink or set down is used at once.
+        if (c.type === 'slot') {
+            const id = progress.hotbar()[c.index] ?? null;
+            if (id && !ITEMS[id].tool) {
+                commands.emit({ type: 'item', id });
+                return;
+            }
+            progress.hold(c.index);
+            commands.emit({ type: 'equip', tool: id ? ITEMS[id].tool!.holds : 'none' });
+            return;
+        }
+        // Only tools you own can be held.
+        if (c.type === 'equip' && !progress.hasTool(c.tool)) return;
+        if (c.type === 'tool') return;
         if (c.type === 'sword') {
             const list = [-1, ...progress.ownedSwords()];
             const at = Math.max(0, list.indexOf(character.sword));
@@ -39,7 +54,7 @@ export function bindControls(character: Character): Controls {
         // Hurt costs a heart; Die empties them all. Getting up from death restores health (see tick).
         if (c.type === 'hurt' && !character.dead) store.patch({ hp: Math.max(0, store.get().hp - 2) });
         if (c.type === 'die' && !character.dead) store.patch({ hp: 0 });
-        if (c.type !== 'tool') net.sendAct(c.type);
+        if (c.type !== 'equip' && c.type !== 'spell') net.sendAct(c.type);
         character.command(c);
     });
     const onKey = (e: KeyboardEvent) => {
@@ -51,6 +66,12 @@ export function bindControls(character: Character): Controls {
         }
     };
     window.addEventListener('keydown', onKey);
+    // Hold Shift to sprint.
+    const onShift = (e: KeyboardEvent) => {
+        if (e.key === 'Shift') store.patch({ sprint: e.type === 'keydown' });
+    };
+    window.addEventListener('keydown', onShift);
+    window.addEventListener('keyup', onShift);
 
     let wasDead = false;
     return {
@@ -63,6 +84,9 @@ export function bindControls(character: Character): Controls {
         destroy() {
             offCommands();
             window.removeEventListener('keydown', onKey);
+            window.removeEventListener('keydown', onShift);
+            window.removeEventListener('keyup', onShift);
+            store.patch({ sprint: false });
         },
     };
 }

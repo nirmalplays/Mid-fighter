@@ -68,3 +68,112 @@ body {
 @utility pb-safe-bottom {
     padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
 }
+
+/* ---------------------------------------------------------------------------
+   Title screen (ui/Celestial.tsx): floating islands, Malakor breathing in the
+   fog, rising embers and sparks.
+--------------------------------------------------------------------------- */
+@keyframes eid-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-12px); }
+}
+@keyframes eid-breathe {
+    0%, 100% { transform: scale(1); opacity: 0.9; }
+    50% { transform: scale(1.04); opacity: 1; }
+}
+@keyframes eid-eyes {
+    0%, 92%, 100% { opacity: 1; }
+    95% { opacity: 0.1; }
+}
+@keyframes eid-rise {
+    0% { transform: translateY(0) translateX(0); opacity: 0; }
+    10% { opacity: 1; }
+    100% { transform: translateY(-105vh) translateX(30px); opacity: 0; }
+}
+@keyframes eid-flicker {
+    0% { opacity: 1; }
+    100% { opacity: 0.3; }
+}
+.eid-slab:hover {
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.22), inset 0 -3px 0 rgba(0, 0, 0, 0.35), 0 4px 0 #1b1622, 0 0 14px var(--accent);
+}
+
+/* Home screen painting (ui/Landscape.tsx). */
+@keyframes eid-drift {
+    0% { transform: translateX(-30px); }
+    100% { transform: translateX(40px); }
+}
+@keyframes eid-cranes {
+    0% { transform: translate(-500px, 260px); }
+    100% { transform: translate(1900px, 60px); }
+}
+@keyframes eid-flap {
+    0%, 100% { transform: scaleY(1); }
+    50% { transform: scaleY(-0.6); }
+}
+@keyframes eid-sway {
+    0%, 100% { transform: rotate(-1.6deg); }
+    50% { transform: rotate(1.8deg); }
+}
+@keyframes eid-scarf {
+    0%, 100% { transform: rotate(0deg) skewX(0deg); }
+    50% { transform: rotate(-4deg) skewX(6deg); }
+}
+@keyframes eid-shimmer {
+    0%, 100% { opacity: 0.15; }
+    50% { opacity: 0.6; }
+}
+@keyframes eid-twinkle {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 0.9; }
+}
+@keyframes eid-rise-in {
+    0% { opacity: 0; transform: translateY(14px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------------------------------------------------------------------------
+   Intro cutscene (ui/IntroCutscene.tsx, ui/cutscene/Scenes.tsx).
+--------------------------------------------------------------------------- */
+@keyframes cs-camera { from { transform: var(--from); } to { transform: var(--to); } }
+@keyframes cs-scene-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cs-scene-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes cs-spin { to { transform: rotate(360deg); } }
+@keyframes cs-float { 0% { transform: translate(0, 0); opacity: 0; } 15% { opacity: 1; } 85% { opacity: 1; } 100% { transform: translate(30px, -60px); opacity: 0; } }
+@keyframes cs-rise { 0% { transform: translateY(0); opacity: 0; } 10% { opacity: 1; } 100% { transform: translateY(-60vh); opacity: 0; } }
+@keyframes cs-fall { 0% { transform: translate(0, 0) rotate(0); opacity: 1; } 100% { transform: translate(0, 520px) rotate(200deg) scale(0.4); opacity: 0.2; } }
+@keyframes cs-dash { to { transform: translateY(24px); } }
+@keyframes cs-lava { to { stroke-dashoffset: -96; } }
+@keyframes cs-wind { from { stroke-dashoffset: 720; } to { stroke-dashoffset: 0; } }
+@keyframes cs-panel-in { from { opacity: 0; transform: translateY(6%); filter: brightness(1.8); } to { opacity: 1; transform: translateY(0); filter: brightness(1); } }
+@keyframes cs-fade-up { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes cs-reach { from { transform: rotate(0deg); } to { transform: rotate(-18deg) translate(10px, -10px); } }
+@keyframes cs-beam { 0% { opacity: 0; stroke-width: 1; } 40% { opacity: 0.9; stroke-width: 6; } 100% { opacity: 0.3; stroke-width: 3; } }
+@keyframes cs-eyes { from { transform: scaleY(0.05); opacity: 0; } to { transform: scaleY(1); opacity: 1; } }
+@keyframes cs-whisper { 0% { opacity: 0; filter: blur(8px); transform: translateY(10px); } 30% { opacity: 1; filter: blur(0); transform: translateY(0); } 75% { opacity: 1; filter: blur(0); } 100% { opacity: 0; filter: blur(6px); transform: translateY(-14px); } }
+@keyframes cs-anger { from { fill: #ffd06a; } to { fill: #ff2a1a; } }
+@keyframes cs-crack { from { stroke-dashoffset: 1000; opacity: 0.4; } to { stroke-dashoffset: 0; opacity: 1; } }
+@keyframes cs-burst { 0% { transform: scale(1); opacity: 1; } 100% { transform: scale(14); opacity: 0; } }
+@keyframes cs-flash { 0% { opacity: 0; } 12% { opacity: 0.95; } 100% { opacity: 0; } }
+@keyframes cs-shake { 0%, 100% { transform: translate(0, 0); } 10% { transform: translate(-14px, 8px); } 20% { transform: translate(12px, -10px); } 30% { transform: translate(-10px, -6px); } 40% { transform: translate(8px, 10px); } 55% { transform: translate(-6px, 4px); } 70% { transform: translate(4px, -4px); } 85% { transform: translate(-2px, 2px); } }
+@keyframes cs-split1 { to { transform: translate(-180px, -70px) rotate(-7deg); } }
+@keyframes cs-split2 { to { transform: translate(190px, -60px) rotate(8deg); } }
+@keyframes cs-split3 { to { transform: translate(-150px, 120px) rotate(-10deg); } }
+@keyframes cs-split4 { to { transform: translate(170px, 110px) rotate(9deg); } }
+@keyframes cs-debris { from { transform: translate(0, 0) rotate(0); opacity: 1; } to { transform: translate(0, 420px) rotate(320deg); opacity: 0; } }
+@keyframes cs-bolt { 0% { opacity: 0; } 15% { opacity: 1; } 30% { opacity: 0.2; } 45% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes cs-dawn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cs-word { from { opacity: 0; filter: blur(4px); transform: translateY(4px); } to { opacity: 1; filter: blur(0); transform: translateY(0); } }
+@keyframes cs-grain { 0% { transform: translate(0, 0); } 25% { transform: translate(-3%, 2%); } 50% { transform: translate(2%, -3%); } 75% { transform: translate(-2%, -1%); } 100% { transform: translate(0, 0); } }
+@keyframes cs-letterbox-top { from { transform: translateY(-100%); } to { transform: translateY(0); } }
+@keyframes cs-letterbox-bottom { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes cs-title { 0% { opacity: 0; letter-spacing: 0.5em; filter: blur(10px); } 40% { opacity: 1; letter-spacing: 0.08em; filter: blur(0); } 100% { opacity: 1; letter-spacing: 0.06em; } }
+
+/* ---- the kingdom choice: volcano smoke, rising embers, flying into a land */
+@keyframes ks-smoke { 0% { transform: translate(0, 0) scale(0.6); opacity: 0; } 20% { opacity: 0.7; } 100% { transform: translate(14px, -46px) scale(2); opacity: 0; } }
+@keyframes ks-ember { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(-120px); opacity: 0; } }
+@keyframes ks-flash { 0% { opacity: 0; } 55% { opacity: 0.9; } 100% { opacity: 1; } }
+
+/* ---- the HUD: the action pill sliding in, the big map opening out of the radar */
+@keyframes act-in { from { opacity: 0; transform: translateX(14px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes map-open { from { opacity: 0; transform: scale(.25); } to { opacity: 1; transform: scale(1); } }
