@@ -23,11 +23,11 @@ export type Sfx =
 type Synth = 'swing' | 'chop' | 'mine' | 'thunder';
 
 const FILES: Record<Sfx, string> = {
-    click: 'click.wav', start: 'start.mp3', gameover: 'gameover.mp3', levelup: 'levelup.mp3', chapter: 'chapter.wav',
-    victory: 'victory.wav', kill: 'kill.wav', spell: 'spell.wav', fanfare: 'fanfare.wav', dodge: 'dodge.wav',
-    fall: 'fall.wav', wave: 'wave.wav', hurt: 'hurt.wav', chest: 'chest.wav', pickup: 'pickup.wav', card: 'card.mp3',
+    click: 'click.mp3', start: 'start.mp3', gameover: 'gameover.mp3', levelup: 'levelup.mp3', chapter: 'chapter.mp3',
+    victory: 'victory.mp3', kill: 'kill.mp3', spell: 'spell.mp3', fanfare: 'fanfare.mp3', dodge: 'dodge.mp3',
+    fall: 'fall.mp3', wave: 'wave.mp3', hurt: 'hurt.mp3', chest: 'chest.mp3', pickup: 'pickup.mp3', card: 'card.mp3',
     revive: 'revive.mp3', craft: 'craft.mp3',
-    skill_fire: 'skill_fire.mp3', skill_air: 'skill_air.mp3', skill_water: 'skill_water.mp3', skill_earth: 'skill_earth.mp3', explosion: 'explosion.wav',
+    skill_fire: 'skill_fire.mp3', skill_air: 'skill_air.mp3', skill_water: 'skill_water.mp3', skill_earth: 'skill_earth.mp3', explosion: 'explosion.mp3',
     thunderclap: 'thunder.mp3',
 };
 /** Loudness of each sound (before the master volume), and the least time between two plays. */

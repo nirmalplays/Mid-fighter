@@ -30,7 +30,7 @@ export const FACINGS: { row: number; flip: boolean }[] = [
 ];
 
 /** Drawn this much larger than the iron sword's length, so the pixel art reads at world size. */
-const SWORD_SCALE = 1.75;
+const SWORD_SCALE = 2.1;
 
 /** Milliseconds per frame, by action. */
 const FRAME_MS: Record<string, number> = {
