@@ -1,12 +1,11 @@
 /**
- * The action buttons. One family of buttons: a coloured, glossy face inside a gold bezel, with a
- * raised lip that sinks when pressed and a small name plate on the rim.
- *   Bottom right: Attack, big, in the corner; around it, on one even quarter-circle and all the
- *   same size, Heal · Spells · Skill · Dodge (always in that order, never touching).
- *   Above the hotbar: the action pill (Talk, Build, Chop, Travel...), only when there is
- *   something to do in front of you.
- *   Bottom left: Run, on the movement side.
- * The cluster scales down on short screens so it never runs into the objective panel.
+ * The game controls, all cut from the UI Asset Pack's buttons (stone, and wood for Attack), with
+ * pixel icons, a small name under each and its key in the corner. Laid out like Genshin's:
+ *   bottom right: Attack (large) in the corner, Skill to its left, Spells above-left, Dodge above,
+ *   Heal further left; every button has clear space around it, nothing touches.
+ *   bottom left: Run, on the movement side.
+ *   beside the player: what E does here (Talk, Build, Chop...), only when something is in reach.
+ * The cluster scales down on short screens so it never runs into the panels above it.
  */
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { commands } from '../game/commands.ts';
@@ -14,206 +13,128 @@ import { KINGDOMS } from '../game/eidolon.ts';
 import type { ItemId } from '../game/survival.ts';
 import { SPELLS } from '../game/world/spells.ts';
 import { store, useStore, type ActKind } from '../state/store.ts';
-import { Icon, OUTLINE, press } from './hudKit.tsx';
+import { press } from './hudKit.tsx';
+import { ELEMENT_ICON, Ico, type IconName } from './icons.tsx';
+import { KeyCap, PackButton, PackIcon, slice, SwordSprite } from './px.tsx';
 
-/** A face colour: light (top), main, dark (bottom). */
-type Face = [string, string, string];
-const FACE: Record<string, Face> = {
-    attack: ['#ff9a9a', '#e11d48', '#7f1d1d'],
-    heal: ['#ffc4d0', '#f43f5e', '#881337'],
-    spells: ['#ddd0ff', '#8b5cf6', '#3b0764'],
-    dodge: ['#fff1a8', '#f59e0b', '#7c2d12'],
-    run: ['#e2e8f0', '#64748b', '#1e293b'],
-    runOn: ['#fff1a8', '#eab308', '#713f12'],
-    plain: ['#f5e1c8', '#a8754a', '#4a2a14'],
-};
-const BEZEL = 'linear-gradient(160deg, #fff3c4 0%, #e0b04a 35%, #9a5b16 70%, #fde68a 100%)';
-const LIP = '#3b1d0a';
+const SHADOW = '0 2px 0 #000, 0 0 3px #000';
 
-/** One button of the family. `face` colours it; `plate` names it on its rim; `ring` replaces the gold bezel (the skill's meter). */
-function GameButton({ size, face, label, plate, onPress, children, dim = false, glow, badge, ring }: {
-    size: number; face: Face; label: string; plate?: string; onPress: () => void; children: ReactNode;
-    dim?: boolean; glow?: string; badge?: ReactNode; ring?: string;
-}) {
-    const [down, setDown] = useState(false);
-    const lip = Math.max(3, Math.round(size * 0.06));
+/** A control: the pack button, its name beneath, its key at the top corner. */
+function Control({ size, name, keyHint, children, ...rest }: Parameters<typeof PackButton>[0] & { name: string; keyHint?: string }) {
     return (
-        <button
-            type="button"
-            aria-label={label}
-            className="pointer-events-auto relative touch-none select-none rounded-full"
-            style={{
-                width: size, height: size, padding: 3, background: ring ?? BEZEL,
-                transform: down ? `translateY(${lip - 1}px)` : undefined,
-                boxShadow: `0 ${down ? 1 : lip}px 0 ${LIP}, 0 ${down ? 3 : 8}px 14px rgba(0,0,0,.4)${glow ? `, 0 0 18px ${glow}` : ''}`,
-                opacity: dim ? 0.55 : 1, transition: 'transform 60ms, box-shadow 60ms',
-            }}
-            onPointerDown={(e) => {
-                setDown(true);
-                press(onPress)(e);
-            }}
-            onPointerUp={() => setDown(false)}
-            onPointerLeave={() => setDown(false)}
-            onPointerCancel={() => setDown(false)}
-        >
-            <span className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full" style={{ background: `radial-gradient(circle at 50% 30%, ${face[0]} 0%, ${face[1]} 52%, ${face[2]} 100%)`, boxShadow: 'inset 0 -4px 8px rgba(0,0,0,.35)' }}>
-                {/* the gloss */}
-                <span className="pointer-events-none absolute rounded-full" style={{ left: '14%', right: '14%', top: '5%', height: '42%', background: 'linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,0))' }} />
-                <span className="relative flex items-center justify-center" style={{ filter: 'drop-shadow(0 2px 1px rgba(0,0,0,.45))' }}>{children}</span>
-            </span>
-            {plate && (
-                <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-1.5 text-[9px] font-black uppercase tracking-wider text-white" style={{ bottom: -7, lineHeight: '14px', background: 'rgba(30,16,10,.92)', border: '1.5px solid #e0b04a' }}>
-                    {plate}
-                </span>
-            )}
-            {badge}
-        </button>
+        <div className="relative flex flex-col items-center" style={{ width: size }}>
+            <PackButton size={size} {...rest}>{children}</PackButton>
+            {keyHint && <KeyCap style={{ position: 'absolute', top: -7, right: -7 }}>{keyHint}</KeyCap>}
+            <span className="pointer-events-none mt-0.5 whitespace-nowrap text-[11px] leading-none text-[#f3e3c0]" style={{ textShadow: SHADOW }}>{name}</span>
+        </div>
     );
 }
 
-/** The same button outside the cluster (the top bar's Bag and Pause). */
-export function GlassButton({ size, label, onPress, children }: { size: number; label: string; onPress: () => void; children: ReactNode }) {
-    return <GameButton size={size} face={FACE.plain} label={label} onPress={onPress}>{children}</GameButton>;
-}
-
-/** A picture from public/images/hud. */
-const Pic = ({ name, size, rotate = 0 }: { name: string; size: number; rotate?: number }) => (
-    <img src={`images/hud/${name}.png`} width={size} height={size} draggable={false} alt="" style={{ transform: rotate ? `rotate(${rotate}deg)` : undefined }} />
-);
-const Emoji = ({ c, size }: { c: string; size: number }) => <span style={{ fontSize: size, lineHeight: 1 }}>{c}</span>;
-
-/** White line icons for the moves. */
-function DodgeIcon({ size }: { size: number }) {
+/** The kingdom's skill: the button darkens from the top while it charges; full, it glows (key Q). */
+function SkillControl({ size }: { size: number }) {
+    const meter = useStore((s) => s.meter);
+    const kingdom = useStore((s) => s.kingdom);
+    if (!kingdom) return <div style={{ width: size }} />;
+    const k = KINGDOMS[kingdom];
+    const ready = meter >= 100;
     return (
-        <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="#fff" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 15a8 8 0 0 1 14.5-5" /><path d="M19 4v6h-6" />
-        </svg>
-    );
-}
-function RunIcon({ size }: { size: number }) {
-    return (
-        <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 6l6 6-6 6" /><path d="M13 6l6 6-6 6" />
-        </svg>
-    );
-}
-function SpellIcon({ size }: { size: number }) {
-    return (
-        <svg viewBox="0 0 24 24" width={size} height={size} fill="#fff">
-            <path d="M12 2l1.8 5.2L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.8z" />
-            <path d="M19 14l.9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9z" opacity="0.85" />
-        </svg>
+        <Control size={size} name={ready ? 'Ready!' : `${k.skill.name.split(' ')[0]} ${meter}%`} keyHint="Q" label={`${k.skill.name} (${meter}%)`} glow={ready ? k.css : undefined} onPress={() => commands.emit({ type: 'skill' })}>
+            <Ico name={ELEMENT_ICON[kingdom]} size={size * 0.56} color={k.css} />
+            {!ready && <span className="pointer-events-none absolute inset-x-[6px] top-[6px] bg-black/55" style={{ height: `calc((100% - 14px) * ${1 - meter / 100})` }} />}
+        </Control>
     );
 }
 
-/** The colour, verb and picture of each kind of action. */
-const ACT: Record<ActKind, { color: string; verb: string; icon: (s: number) => ReactNode }> = {
-    talk: { color: '#38bdf8', verb: 'Talk', icon: (s) => <Emoji c="💬" size={s * 0.8} /> },
-    build: { color: '#f59e0b', verb: 'Build', icon: (s) => <Pic name="hammer" size={s} /> },
-    chop: { color: '#22c55e', verb: 'Chop', icon: (s) => <Pic name="axe" size={s} /> },
-    mine: { color: '#22c55e', verb: 'Mine', icon: (s) => <Pic name="pickaxe" size={s} /> },
-    pick: { color: '#22c55e', verb: 'Gather', icon: (s) => <Emoji c="🫐" size={s * 0.8} /> },
-    open: { color: '#eab308', verb: 'Open', icon: (s) => <Pic name="chest" size={s} /> },
-    search: { color: '#eab308', verb: 'Search', icon: (s) => <Emoji c="📦" size={s * 0.8} /> },
-    bench: { color: '#a78bfa', verb: 'Workbench', icon: (s) => <Pic name="hammer" size={s} /> },
-    travel: { color: '#f97316', verb: 'Camp fire', icon: (s) => <Emoji c="🔥" size={s * 0.8} /> },
-    climb: { color: '#94a3b8', verb: 'Climb', icon: (s) => <Emoji c="🗼" size={s * 0.8} /> },
-    challenge: { color: '#ef4444', verb: 'Fight', icon: (s) => <Emoji c="⚔️" size={s * 0.8} /> },
-    fish: { color: '#0ea5e9', verb: 'Fish', icon: (s) => <Pic name="fishingpole" size={s} /> },
-    drink: { color: '#0ea5e9', verb: 'Drink', icon: (s) => <Emoji c="💧" size={s * 0.8} /> },
-    wait: { color: '#6b7280', verb: '', icon: (s) => <Emoji c="⏳" size={s * 0.7} /> },
+/** One tap drinks a healing draught (or eats the best food carried); the count sits on it. */
+function HealControl({ size }: { size: number }) {
+    const bag = useStore((s) => s.bag);
+    const order: ItemId[] = ['potion_red', 'meal', 'cooked_meat', 'berries'];
+    const id = order.find((k) => bag[k] > 0) ?? null;
+    // H heals too.
+    useEffect(() => {
+        const on = (e: KeyboardEvent) => {
+            if (e.repeat || (e.key !== 'h' && e.key !== 'H') || store.get().phase !== 'playing') return;
+            const best = order.find((k) => store.get().bag[k] > 0);
+            if (best) commands.emit({ type: 'item', id: best });
+        };
+        window.addEventListener('keydown', on);
+        return () => window.removeEventListener('keydown', on);
+    });
+    return (
+        <Control size={size} name="Heal" keyHint="H" label="Heal" dim={!id} onPress={() => id && commands.emit({ type: 'item', id })}>
+            <Ico name="flask" size={size * 0.56} color="#ef4444" />
+            <span className="pointer-events-none absolute bottom-[3px] right-[5px] text-[12px] leading-none text-white" style={{ textShadow: SHADOW }}>{id ? bag[id] : 0}</span>
+        </Control>
+    );
+}
+
+/** What each kind of action looks like beside the player. */
+const ACT: Record<ActKind, { verb: string; icon: IconName | 'axe' | 'pickaxe' | 'hammer'; color: string }> = {
+    talk: { verb: 'Talk', icon: 'talk', color: '#bae6fd' },
+    build: { verb: 'Build', icon: 'hammer', color: '#fde68a' },
+    chop: { verb: 'Chop', icon: 'axe', color: '#bbf7d0' },
+    mine: { verb: 'Mine', icon: 'pickaxe', color: '#bbf7d0' },
+    pick: { verb: 'Gather', icon: 'berry', color: '#f9a8d4' },
+    open: { verb: 'Open', icon: 'crate', color: '#fde68a' },
+    search: { verb: 'Search', icon: 'crate', color: '#fde68a' },
+    bench: { verb: 'Workbench', icon: 'hammer', color: '#ddd6fe' },
+    travel: { verb: 'Camp fire', icon: 'campfire', color: '#fdba74' },
+    climb: { verb: 'Climb', icon: 'tower', color: '#e5e7eb' },
+    challenge: { verb: 'Fight', icon: 'swords', color: '#fca5a5' },
+    fish: { verb: 'Fish', icon: 'wave', color: '#bae6fd' },
+    drink: { verb: 'Drink', icon: 'drop', color: '#bae6fd' },
+    wait: { verb: '', icon: 'hourglass', color: '#d1d5db' },
 };
 
-/** The action pill above the hotbar: what Use (E) does right now, as a big button. */
-function ActionPill() {
+/** What E does here, beside the player: the key, a wood plate with the icon and the words. */
+function ActionPrompt() {
     const act = useStore((s) => s.act);
     const revive = useStore((s) => s.reviveTarget);
-    const shown = revive ? { color: '#22c55e', verb: 'Teammate', label: 'Help them up', icon: (s: number) => <Emoji c="🤝" size={s * 0.8} /> } : act ? { ...ACT[act.kind], label: act.label } : null;
+    const shown = revive ? { verb: 'Teammate', icon: 'hands' as IconName, color: '#bbf7d0', label: 'Help them up' } : act ? { ...ACT[act.kind], label: act.label } : null;
     if (!shown) return null;
+    const icon = shown.icon === 'axe' || shown.icon === 'pickaxe' || shown.icon === 'hammer'
+        ? <img src={`images/hud/${shown.icon}.png`} width={26} height={26} alt="" draggable={false} />
+        : <Ico name={shown.icon} size={24} color={shown.color} />;
     return (
-        <div className="pointer-events-none absolute flex justify-center pb-safe-bottom" style={{ left: 150, right: 276, bottom: 76 }} data-quiet>
+        <div className="pointer-events-none absolute" style={{ left: 'calc(50% + 64px)', top: 'calc(50% - 18px)' }} data-quiet>
             <button
                 type="button"
                 aria-label={shown.label}
-                className="pointer-events-auto flex touch-none items-center gap-2.5 rounded-full py-1 pl-1 pr-3 transition-transform active:translate-y-[3px]"
-                style={{ background: BEZEL, boxShadow: `0 4px 0 ${LIP}, 0 8px 16px rgba(0,0,0,.45), 0 0 18px ${shown.color}88`, animation: 'act-in .18s ease-out both' }}
+                className="pointer-events-auto flex touch-none items-center gap-2 transition-transform active:translate-y-[2px]"
+                style={{ animation: 'act-in .15s ease-out both' }}
                 onPointerDown={press(() => commands.emit({ type: 'use' }))}
             >
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full" style={{ background: `radial-gradient(circle at 50% 30%, #fff 0%, ${shown.color} 55%, #1e1b18 120%)`, boxShadow: 'inset 0 -3px 6px rgba(0,0,0,.35)' }}>
-                    {shown.icon(28)}
+                <KeyCap style={{ height: 24, minWidth: 24, fontSize: 13 }}>E</KeyCap>
+                <span className="flex items-center gap-2 py-0.5 pl-1 pr-3" style={{ ...slice('btn3-normal', 2), color: '#fff3d6', textShadow: '0 2px 0 #3b2412' }}>
+                    {icon}
+                    <span className="flex flex-col items-start leading-tight">
+                        {shown.verb && <span className="text-[10px] uppercase tracking-[0.14em] text-[#ffe0a8]">{shown.verb}</span>}
+                        <span className="max-w-[220px] truncate whitespace-nowrap text-[14px]">{shown.label}</span>
+                    </span>
                 </span>
-                <span className="flex flex-col items-start leading-tight">
-                    {shown.verb && <span className="text-[10px] font-black uppercase tracking-[0.16em] text-[#5a2e0c]">{shown.verb}</span>}
-                    <span className="max-w-[240px] truncate whitespace-nowrap text-[15px] font-black text-[#2b1206]">{shown.label}</span>
-                </span>
-                <span className="ml-1 rounded-md px-1.5 text-[10px] font-black text-[#fff3c4]" style={{ background: 'rgba(43,18,6,.75)', lineHeight: '16px' }}>E</span>
             </button>
         </div>
     );
 }
 
-/** The home kingdom's skill: its meter fills the bezel; full, it glows (key Q). */
-function SkillButton({ size }: { size: number }) {
-    const meter = useStore((s) => s.meter);
-    const kingdom = useStore((s) => s.kingdom);
-    if (!kingdom) return null;
-    const k = KINGDOMS[kingdom];
-    const ready = meter >= 100;
-    return (
-        <GameButton
-            size={size}
-            face={['#ffffff', k.css, '#1f1030']}
-            label={`${k.skill.name} (${meter}%)`}
-            plate={ready ? 'Ready!' : `Skill ${meter}%`}
-            ring={`conic-gradient(${k.css} ${meter * 3.6}deg, #4a3a2a 0deg)`}
-            glow={ready ? k.css : undefined}
-            onPress={() => commands.emit({ type: 'skill' })}
-        >
-            <span style={{ fontSize: size * 0.42, lineHeight: 1 }}>{k.glyph}</span>
-        </GameButton>
-    );
-}
-
-/** One tap drinks a healing draught (or eats the best food carried). */
-function HealButton({ size }: { size: number }) {
-    const bag = useStore((s) => s.bag);
-    const order: ItemId[] = ['potion_red', 'meal', 'cooked_meat', 'berries'];
-    const id = order.find((k) => bag[k] > 0) ?? null;
-    return (
-        <GameButton
-            size={size}
-            face={FACE.heal}
-            label="Heal"
-            plate="Heal"
-            dim={!id}
-            onPress={() => id && commands.emit({ type: 'item', id })}
-            badge={<span className="absolute -right-1 -top-1 min-w-[20px] rounded-full px-1 text-center text-[11px] font-black leading-[18px] text-[#2b0f1c]" style={{ background: '#fde68a', border: '2px solid #2b0f1c' }}>{id ? bag[id] : 0}</span>}
-        >
-            <Icon id={id ?? 'potion_red'} size={size * 0.56} />
-        </GameButton>
-    );
-}
-
-/** The Attack button (size) and its centre, from the screen's bottom-right corner. */
-const ATTACK = 92;
-const ORIGIN = 66;
-/** The ring: Heal · Spells · Skill · Dodge, all one size, evenly round the quarter-circle from the left to straight up. */
-const SMALL = 58;
-const RADIUS = 140;
-const RING_ORDER = ['heal', 'spells', 'skill', 'dodge'] as const;
-const ringAt = (n: number): CSSProperties => {
-    const a = Math.PI - (n * Math.PI) / 2 / (RING_ORDER.length - 1);
-    const x = Math.cos(a) * RADIUS, y = Math.sin(a) * RADIUS;
-    return { position: 'absolute', right: ORIGIN - x - SMALL / 2, bottom: ORIGIN + y - SMALL / 2 };
+/** The cluster's layout: each control's centre as (left, up) from the screen's bottom-right corner, and its size. */
+const SPOT: Record<'attack' | 'skill' | 'spells' | 'dodge' | 'heal', { r: number; b: number; s: number }> = {
+    attack: { r: 70, b: 76, s: 84 },
+    skill: { r: 172, b: 56, s: 62 },
+    spells: { r: 156, b: 160, s: 54 },
+    dodge: { r: 64, b: 182, s: 54 },
+    heal: { r: 262, b: 50, s: 52 },
 };
+const place = (k: keyof typeof SPOT): CSSProperties => ({ position: 'absolute', right: SPOT[k].r - SPOT[k].s / 2, bottom: SPOT[k].b - SPOT[k].s / 2 - 8 });
 
 export function ActionCluster() {
     const sprint = useStore((s) => s.sprint);
     const stamina = useStore((s) => s.stamina);
     const spells = useStore((s) => s.spells);
     const spellState = useStore((s) => s.spellState);
+    const swordIdx = useStore((s) => s.swordIdx);
     const [more, setMore] = useState(false);
-    // Short screens: shrink the whole cluster (it is laid out for about 600 px of height).
+    // Short screens: shrink the cluster (laid out for about 600 px of height).
     const [scale, setScale] = useState(1);
     useEffect(() => {
         const fit = () => setScale(Math.max(0.66, Math.min(1, window.innerHeight / 600)));
@@ -222,63 +143,53 @@ export function ActionCluster() {
         return () => window.removeEventListener('resize', fit);
     }, []);
     const anyUnlocked = spells.unlocked.some(Boolean);
-    const button = (key: (typeof RING_ORDER)[number]) => {
-        if (key === 'heal') return <HealButton size={SMALL} />;
-        if (key === 'skill') return <SkillButton size={SMALL} />;
-        if (key === 'spells') {
-            return (
-                <GameButton size={SMALL} face={FACE.spells} label="Spells" plate="Spells" glow={more ? '#a78bfa' : undefined} onPress={() => setMore((m) => !m)}>
-                    <SpellIcon size={28} />
-                </GameButton>
-            );
-        }
-        return (
-            <GameButton size={SMALL} face={FACE.dodge} label="Dodge roll" plate="Dodge" dim={stamina.tired} onPress={() => commands.emit({ type: 'dodge' })}>
-                <DodgeIcon size={28} />
-            </GameButton>
-        );
-    };
+    const box = (k: keyof typeof SPOT, node: ReactNode) => <div style={place(k)}>{node}</div>;
     return (
         <>
             <div className="pointer-events-none absolute bottom-0 right-0 pb-safe-bottom pr-1" data-quiet>
-                <div className="relative" style={{ width: 300, height: 260, transform: `scale(${scale})`, transformOrigin: '100% 100%' }}>
+                <div className="relative" style={{ width: 310, height: 240, transform: `scale(${scale})`, transformOrigin: '100% 100%' }}>
                     {/* the spells, opened from their button */}
                     {more && (
-                        <div className="pointer-events-auto absolute flex items-end gap-3 rounded-2xl px-3 pb-3 pt-2" style={{ right: 40, bottom: 250, background: 'rgba(30,16,10,.88)', border: '2px solid #e0b04a' }}>
-                            {!anyUnlocked && <span className="max-w-[200px] text-center text-[12px] font-bold text-white">No spells yet. Find the frog to unlock one.</span>}
+                        <div className="pointer-events-auto absolute flex items-end gap-3 px-3 pb-3 pt-2" style={{ ...slice('frame5', 2), right: 40, bottom: 222 }}>
+                            {!anyUnlocked && <span className="max-w-[200px] text-center text-[12px] text-[#2f2a35]">No spells yet. Find the frog to unlock one.</span>}
                             {SPELLS.map((sp, i) => {
                                 if (!spells.unlocked[i]) return null;
                                 const st = spellState[i];
                                 const empty = st.charges < 1;
                                 return (
-                                    <div key={sp.name} className="relative flex flex-col items-center">
-                                        <GameButton size={52} face={FACE.spells} label={sp.name} dim={empty} onPress={() => { commands.emit({ type: 'spell', index: i }); setMore(false); }}>
-                                            <img src={`images/${sp.icon}`} width={30} height={30} draggable={false} alt="" style={{ objectFit: 'contain' }} />
-                                            {empty && <span className="absolute inset-0 flex items-center justify-center text-[16px] font-black text-white" style={{ textShadow: OUTLINE }}>{st.cd}</span>}
-                                        </GameButton>
-                                        <div className="mt-1.5 flex gap-0.5">
-                                            {Array.from({ length: st.max }, (_, n) => <span key={n} className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: n < st.charges ? '#fde68a' : 'rgba(255,255,255,.25)' }} />)}
-                                        </div>
-                                    </div>
+                                    <Control key={sp.name} size={48} name={empty ? `${st.cd}s` : `${st.charges}/${st.max}`} label={sp.name} dim={empty} onPress={() => { commands.emit({ type: 'spell', index: i }); setMore(false); }}>
+                                        <img src={`images/${sp.icon}`} width={28} height={28} draggable={false} alt="" style={{ objectFit: 'contain' }} />
+                                    </Control>
                                 );
                             })}
                         </div>
                     )}
-                    <div className="absolute" style={{ right: ORIGIN - ATTACK / 2, bottom: ORIGIN - ATTACK / 2 }}>
-                        <GameButton size={ATTACK} face={FACE.attack} label="Attack" glow="#f43f5e66" onPress={() => commands.emit({ type: 'attack' })}>
-                            <Pic name="sword" size={60} rotate={-42} />
-                        </GameButton>
-                    </div>
-                    {RING_ORDER.map((key, n) => <div key={key} style={ringAt(n)}>{button(key)}</div>)}
+                    {box('attack', (
+                        <Control variant="wood" size={SPOT.attack.s} name="Attack" keyHint="J" label="Attack" onPress={() => commands.emit({ type: 'attack' })}>
+                            <SwordSprite index={swordIdx >= 0 ? swordIdx : 13} size={56} />
+                        </Control>
+                    ))}
+                    {box('skill', <SkillControl size={SPOT.skill.s} />)}
+                    {box('spells', (
+                        <Control size={SPOT.spells.s} name="Spells" label="Spells" glow={more ? '#c4b5fd' : undefined} onPress={() => setMore((m) => !m)}>
+                            <Ico name="star" size={30} color="#c4b5fd" />
+                        </Control>
+                    ))}
+                    {box('dodge', (
+                        <Control size={SPOT.dodge.s} name="Dodge" keyHint="K" label="Dodge roll" dim={stamina.tired} onPress={() => commands.emit({ type: 'dodge' })}>
+                            <PackIcon index={8} size={30} />
+                        </Control>
+                    ))}
+                    {box('heal', <HealControl size={SPOT.heal.s} />)}
                 </div>
             </div>
             {/* Run, on the movement side */}
-            <div className="pointer-events-none absolute bottom-3 left-3 pb-safe-bottom" data-quiet>
-                <GameButton size={50} face={sprint ? FACE.runOn : FACE.run} label="Sprint" plate={sprint ? 'Running' : 'Run'} glow={sprint ? '#eab308' : undefined} onPress={() => store.patch({ sprint: !store.get().sprint })}>
-                    <RunIcon size={24} />
-                </GameButton>
+            <div className="pointer-events-none absolute bottom-3 left-4 pb-safe-bottom" data-quiet>
+                <Control size={50} name={sprint ? 'Running' : 'Run'} keyHint="Shift" label="Sprint" glow={sprint ? '#fde047' : undefined} variant={sprint ? 'wood' : 'stone'} onPress={() => store.patch({ sprint: !store.get().sprint })}>
+                    <PackIcon index={3} size={26} />
+                </Control>
             </div>
-            <ActionPill />
+            <ActionPrompt />
         </>
     );
 }

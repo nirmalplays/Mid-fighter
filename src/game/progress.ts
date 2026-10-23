@@ -594,7 +594,6 @@ export const progress = {
         const d = saveSystem.data;
         if (!d || d.kingdom) return;
         d.kingdom = e;
-        sfx('fanfare');
         const h = homeOf(e);
         d.world = { u: h.u, v: h.v, set: false };
         const maxHp = maxHpOf(d);

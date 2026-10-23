@@ -1,8 +1,8 @@
 /**
- * In-game HUD: a React overlay above the Pixi canvas, styled as chunky tan
- * pixel-art buttons with dark icons, a portrait + health bar + level bar cluster at the
- * top left, and a digital clock with the bag and pause buttons at the top right.
- * The survival parts (bars, objective, bag, story) live in SurvivalHud.tsx.
+ * In-game HUD: a React overlay above the Pixi canvas, kept clean: the minimap, a status line and
+ * the quest tracker top left, the UI Asset Pack's stone buttons top right (HudTop.tsx), the
+ * vitals and hotbar bottom centre, the action buttons bottom right (Actions.tsx). The survival
+ * panels (bag, story, map, build) live in SurvivalHud.tsx.
  *
  * Pattern to keep: the overlay itself is pointer-events-none so touches fall
  * through to the canvas (the movement joystick); each control opts back in with
@@ -11,7 +11,9 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { commands, type GameCommand } from '../game/commands.ts';
-import { ActionCluster, GlassButton } from './Actions.tsx';
+import { ActionCluster } from './Actions.tsx';
+import { Ico, type IconName } from './icons.tsx';
+import { BottomVitals, EdgeArrow, QuestTracker, StatusLine, TopButtons, WavePlaque } from './HudTop.tsx';
 import { store, useStore } from '../state/store.ts';
 import { progress } from '../game/progress.ts';
 import { SKILL_BLURB, SKILL_CAP, upgradeCost } from '../game/skills.ts';
@@ -19,8 +21,8 @@ import type { Skill } from '../shared/sim.ts';
 import { GameOver } from './Scores.tsx';
 import { SoundButton } from './SoundButton.tsx';
 import {
-    BagPanel, BigMap, BossBar, BuildPanel, DownedOverlay, Hotbar4, HousePanel, KingdomChooser, maybeShowIntro, NpcPanel, Objective, Radar,
-    StoryDialog, TravelPanel, VitalsBars, WorldPills,
+    BagPanel, BigMap, BossBar, BuildPanel, DownedOverlay, Hotbar4, HousePanel, KingdomChooser, maybeShowIntro, NpcPanel, Radar,
+    StoryDialog, TravelPanel,
 } from './SurvivalHud.tsx';
 import { CARRY_MAX, COOLDOWN_MAX, cooldownFor, levelCost, maxCharges, SPELLS, UNLOCK_COST } from '../game/world/spells.ts';
 
@@ -40,112 +42,7 @@ const FACES: Record<Face, { light: string; mid: string; dark: string }> = {
     dark: { light: '#6d4d86', mid: '#4a2f63', dark: '#341f48' },
 };
 
-/**
- * A round action button in the same style as the sprites: a thick plum outline, a soft
- * two-tone face with one highlight, and a hard drop shadow that it sinks into when pressed.
- * Keep the diameter at 44 px or more so it is easy to hit with a thumb.
- */
-function RoundBtn({ size, onPress, face = 'tan', label, className = '', children }: {
-    size: number; onPress: () => void; face?: Face; label?: string; className?: string; children: ReactNode;
-}) {
-    const f = FACES[face];
-    const lip = Math.max(3, Math.round(size * 0.055));
-    return (
-        <button
-            type="button"
-            aria-label={label}
-            style={{
-                width: size,
-                height: size,
-                borderRadius: '50%',
-                background: `radial-gradient(circle at 36% 28%, ${f.light} 0%, ${f.mid} 52%, ${f.dark} 100%)`,
-                border: `${Math.max(3, Math.round(size * 0.055))}px solid ${PLUM}`,
-                boxShadow: `inset 0 ${-lip}px 0 rgba(60,20,20,.22), inset 0 ${Math.round(lip * 0.7)}px 0 rgba(255,255,255,.55), 0 ${lip}px 0 ${PLUM}, 0 ${lip + 5}px 10px rgba(0,0,0,.35)`,
-                color: PLUM,
-            }}
-            className={`pointer-events-auto flex touch-none items-center justify-center font-black leading-none transition-transform active:translate-y-[3px] active:brightness-95 ${className}`}
-            onPointerDown={(e) => {
-                e.preventDefault();
-                onPress();
-            }}
-        >
-            {children}
-        </button>
-    );
-}
-
-const emit = (cmd: GameCommand) => () => commands.emit(cmd);
-
-/** An item picture from public/images/hud (the same outlined art as the world), sized to its button. */
-function Pic({ name, size, rotate = 0 }: { name: string; size: number; rotate?: number }) {
-    return (
-        <img
-            src={`images/hud/${name}.png`}
-            width={size}
-            height={size}
-            draggable={false}
-            alt=""
-            style={{ transform: rotate ? `rotate(${rotate}deg)` : undefined, filter: 'drop-shadow(0 2px 0 rgba(43,15,28,.25))' }}
-        />
-    );
-}
-
-/** A cartoon open hand for "bare hands": white with the sprites' plum outline. */
-function HandIcon({ size }: { size: number }) {
-    const shapes = (
-        <>
-            <rect x="7" y="2" width="3.4" height="11" rx="1.7" />
-            <rect x="10.8" y="0.6" width="3.4" height="12.4" rx="1.7" />
-            <rect x="14.6" y="1.6" width="3.4" height="11.4" rx="1.7" />
-            <rect x="18.2" y="4" width="3.2" height="9" rx="1.6" />
-            <rect x="4.6" y="10" width="17.2" height="11" rx="5.2" />
-            <rect x="1.4" y="9.6" width="3.6" height="9" rx="1.8" transform="rotate(-28 3.2 14)" />
-        </>
-    );
-    return (
-        <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
-            <g fill={PLUM} stroke={PLUM} strokeWidth="2.6" strokeLinejoin="round">{shapes}</g>
-            <g fill="#ffffff">{shapes}</g>
-        </svg>
-    );
-}
-
-/** Pause: two rounded bars. */
-function PauseIcon({ size, color = PLUM }: { size: number; color?: string }) {
-    return (
-        <svg viewBox="0 0 16 16" width={size} height={size} aria-hidden="true">
-            <rect x="3" y="2.5" width="3.6" height="11" rx="1.4" fill={color} />
-            <rect x="9.4" y="2.5" width="3.6" height="11" rx="1.4" fill={color} />
-        </svg>
-    );
-}
-
-/** Total play time (from the save), mm:ss, or h:mm:ss past an hour. */
-function Clock() {
-    const t = useStore((s) => s.playSeconds);
-    const hh = Math.floor(t / 3600);
-    const mm = String(Math.floor((t % 3600) / 60)).padStart(2, '0');
-    const ss = String(t % 60).padStart(2, '0');
-    return (
-        <div
-            className="flex items-center justify-center rounded-xl px-3 font-black tabular-nums"
-            style={{
-                height: 46,
-                background: '#1d1216',
-                border: `4px solid ${BROWN}`,
-                boxShadow: `inset 0 0 0 2px #3b2a2f, 0 3px 0 ${BROWN_DARK}`,
-                color: '#ff4a3a',
-                fontFamily: 'ui-monospace, Menlo, Consolas, monospace',
-                fontSize: 26,
-                letterSpacing: 2,
-                textShadow: '0 0 8px rgba(255,74,58,.7)',
-            }}
-        >
-            {hh > 0 ? `${hh}:` : ''}{mm}:{ss}
-        </div>
-    );
-}
-
+/** The four gem skills the frog sells. */
 const SKILL_CHIPS: { key: Skill; color: string; label: string }[] = [
     { key: 'attack', color: '#ff6b6b', label: 'Attack' },
     { key: 'defence', color: '#6ba8ff', label: 'Defence' },
@@ -153,25 +50,6 @@ const SKILL_CHIPS: { key: Skill; color: string; label: string }[] = [
     { key: 'vitality', color: '#ffc94d', label: 'Vitality' },
 ];
 
-/** Gems collected from monster drops and not yet spent: just the gem and the number, under the health plaque. */
-function SkillChips() {
-    const skills = useStore((s) => s.gems);
-    return (
-        <div className="absolute left-3 flex gap-3" style={{ top: 118 }}>
-            {SKILL_CHIPS.map((c) => (
-                <div
-                    key={c.key}
-                    aria-label={`${c.label} gems ${skills[c.key]}`}
-                    className="flex items-center gap-0.5 text-[17px] font-black tabular-nums text-white"
-                    style={{ textShadow: '0 2px 0 #1a0c10, 0 0 4px #1a0c10, 2px 0 0 #1a0c10, -2px 0 0 #1a0c10' }}
-                >
-                    <img src={`images/hud/gem-${c.key}.png`} width={30} height={30} draggable={false} alt="" style={{ filter: 'drop-shadow(0 2px 0 rgba(26,12,16,.6))' }} />
-                    {skills[c.key]}
-                </div>
-            ))}
-        </div>
-    );
-}
 
 /** A visiting frog while it is around: an arrow to it, distance and seconds left. */
 function FrogPill() {
@@ -182,7 +60,7 @@ function FrogPill() {
             className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-xl px-3 text-[13px] font-black tabular-nums text-white"
             style={{ top: 76, height: 28, background: 'rgba(40,90,20,.88)', border: '3px solid #a3e635' }}
         >
-            <span style={{ display: 'inline-block', transform: `rotate(${aim.angle}rad)`, fontSize: 15, lineHeight: 1 }}>➤</span>
+            <span style={{ display: 'inline-flex', transform: `rotate(${aim.angle}rad)` }}><Ico name="pointer" size={14} color="#fff" style={{ transform: 'rotate(45deg)' }} /></span>
             <span>Frog · {Math.round(aim.dist)} tiles · {aim.left}s</span>
         </div>
     );
@@ -286,36 +164,6 @@ function UpgradePanel() {
     );
 }
 
-/**
- * The fight at a glance: safe in camp; a wave on (monsters left, waves still to come in the
- * onslaught); the few seconds before the next wave; or the breather after an onslaught.
- */
-function WavePill() {
-    const wave = useStore((s) => s.wave);
-    const next = useStore((s) => s.nextWaveIn);
-    const left = useStore((s) => s.waveLeft);
-    const more = useStore((s) => s.onslaughtLeft);
-    const fighting = useStore((s) => s.fighting);
-    const shared = useStore((s) => s.sharedMonsters);
-    const camp = useStore((s) => s.wavesCalm);
-    const time = `${Math.floor(next / 60)}:${String(next % 60).padStart(2, '0')}`;
-    const pill = (bg: string, edge: string, top: ReactNode, sub?: ReactNode, pulse = false) => (
-        <div
-            className="absolute left-1/2 flex -translate-x-1/2 flex-col items-center rounded-xl px-3 py-0.5 text-[13px] font-black tabular-nums leading-tight text-white"
-            style={{ top: 8, minHeight: 34, justifyContent: 'center', background: bg, border: `3px solid ${edge}`, animation: pulse ? 'eid-breathe 1s ease-in-out infinite' : undefined }}
-        >
-            <span>{top}{shared ? ' · shared' : ''}</span>
-            {sub && <span className="text-[10px] font-bold opacity-85">{sub}</span>}
-        </div>
-    );
-    if (camp && !(left && left > 0)) return pill('rgba(30,58,110,.85)', '#93c5fd', '🏕️ Safe in camp', 'The waves wait outside');
-    if (left !== null && left > 0) return pill('rgba(120,20,20,.85)', '#ff6b6b', `⚔️ Wave ${wave} · ${left} left`, more > 0 ? `${more} more wave${more > 1 ? 's' : ''} in this onslaught` : 'Last wave of the onslaught!');
-    if (fighting && next > 0) return pill('rgba(130,70,10,.88)', '#fbbf24', `Wave ${wave + 1} in ${next}s`, 'Get ready!', true);
-    if (fighting) return pill('rgba(120,20,20,.85)', '#ff6b6b', `⚔️ Wave ${wave}`, 'Finish them off');
-    if (wave === 0) return pill('rgba(22,12,16,.72)', '#6b4a52', `Wave 1 in ${time}`);
-    return pill(next <= 10 ? 'rgba(130,70,10,.88)' : 'rgba(18,70,40,.85)', next <= 10 ? '#fbbf24' : '#4ade80', `🛡️ Breather · next onslaught in ${time}`, 'Rest, build and brew in camp', next <= 10);
-}
-
 /** A message that fades after a couple of seconds (wave starts, pickups). */
 function Banner() {
     const banner = useStore((s) => s.banner);
@@ -371,7 +219,6 @@ export default function Hud() {
     const netStatus = useStore((s) => s.netStatus);
     const online = useStore((s) => s.online);
     const roomCode = useStore((s) => s.roomCode);
-    const kills = useStore((s) => s.kills);
     // The story starts with Elder Theron's prologue the first time.
     useEffect(() => {
         const id = window.setTimeout(maybeShowIntro, 600);
@@ -380,48 +227,14 @@ export default function Hud() {
 
     return (
         <div className="pointer-events-none absolute inset-0 pt-safe-top">
-            {/* Top left: portrait, health bar, level bar */}
-            <div className="absolute left-3 top-2 flex items-start gap-2 pt-safe-top">
-                <div
-                    className="shrink-0 overflow-hidden"
-                    style={{
-                        width: 66,
-                        height: 66,
-                        borderRadius: 16,
-                        border: `4px solid ${BROWN}`,
-                        boxShadow: `inset 0 0 0 2px #e0b04a, 0 3px 0 ${BROWN_DARK}`,
-                        background: 'radial-gradient(circle at 50% 35%, #7a4fa3, #3b2253)',
-                    }}
-                >
-                    <div
-                        style={{
-                            width: '100%',
-                            height: '100%',
-                            backgroundImage: 'url(images/world/char/idle.png)',
-                            backgroundRepeat: 'no-repeat',
-                            backgroundSize: '1224px 765px',
-                            backgroundPosition: '-47px -27px',
-                        }}
-                    />
-                </div>
-                <VitalsBars />
-            </div>
-
-            {/* Top right: clock, bag and pause */}
-            <div className="absolute right-3 top-2 flex items-center gap-2 pt-safe-top">
-                <SoundButton dark />
-                <Clock />
-                <GlassButton size={48} label="Bag" onPress={() => store.patch({ bagTab: 'items' })}>
-                    <Pic name="log" size={30} />
-                </GlassButton>
-                <GlassButton size={48} label="Pause" onPress={() => store.patch({ phase: 'menu' })}>
-                    <PauseIcon size={22} color="#fff" />
-                </GlassButton>
-            </div>
+            {/* Top: the minimap and what is around (left), the stone buttons (right); bottom: the vitals */}
+            <TopButtons />
+            <StatusLine />
+            <QuestTracker />
+            <EdgeArrow />
+            <BottomVitals />
 
             <FrogPill />
-            <Objective />
-            <WorldPills />
             <BossBar />
             <UpgradePanel />
             <HousePanel />
@@ -436,20 +249,11 @@ export default function Hud() {
             <Hotbar4 />
             <Radar />
             <DownedOverlay />
-            <SkillChips />
-            <WavePill />
+            <WavePlaque />
             <Banner />
             <Buffs />
 
             <ActionCluster />
-
-            {/* World readout, small */}
-            {/* Enemies defeated */}
-            {kills > 0 && (
-                <div className="absolute bottom-[82px] left-3 rounded-md bg-black/45 px-2 py-0.5 text-[11px] font-bold text-white">
-                    ⚔️ Defeated · {kills}
-                </div>
-            )}
 
             {/* Multiplayer: the room's code (tap to copy) and how many are in it */}
             {netStatus !== 'off' && (

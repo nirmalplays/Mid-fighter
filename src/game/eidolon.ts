@@ -21,6 +21,7 @@ export interface Kingdom {
     dir: [number, number];
     color: number;
     css: string;
+    /** Its emblem (an icon name: ui/icons.tsx). */
     glyph: string;
     /** The primal power the kingdom grants (as yours, or absorbed from its warden). */
     power: string;
@@ -35,7 +36,7 @@ export interface Kingdom {
 export const KINGDOMS: Record<Element, Kingdom> = {
     fire: {
         name: 'Pyraxis', land: 'The Volcanic Crags', theme: 'Fire, raw strength and relentless aggression',
-        dir: [1, -1], color: 0xff6a3d, css: '#ff6a3d', glyph: '🔥',
+        dir: [1, -1], color: 0xff6a3d, css: '#ff6a3d', glyph: 'flame',
         power: '+20% damage, hits burn',
         skill: { name: 'Flame Burst', blurb: 'A 360° wave of fire that burns everything around you' },
         warden: { name: 'Ignis Drake', title: 'the Ash-Bound General', kind: 'kobolt', tint: 0xff7a5a, lines: ['Only the strong deserve to live. Show me you are strong!', 'The ash remembers every coward. Will it remember you?'] },
@@ -44,7 +45,7 @@ export const KINGDOMS: Record<Element, Kingdom> = {
     },
     air: {
         name: 'Zephyria', land: 'The Floating Isles', theme: 'Wind, agility, lightning and deception',
-        dir: [-1, -1], color: 0x7dd3fc, css: '#7dd3fc', glyph: '🌪️',
+        dir: [-1, -1], color: 0x7dd3fc, css: '#7dd3fc', glyph: 'wind',
         power: '+15% speed, faster stamina, cheaper dodges',
         skill: { name: 'Lightning Dash', blurb: 'Phase-dash forward, leaving a crackling decoy that shocks anything near it' },
         warden: { name: 'Sylphide', title: 'the Whispering Tempest', kind: 'goblin', tint: 0x9fe8ff, lines: ['Outsiders bring only lies. I taught my people that.', 'You cannot strike what you cannot see, little stranger.'] },
@@ -53,7 +54,7 @@ export const KINGDOMS: Record<Element, Kingdom> = {
     },
     water: {
         name: 'Aquatica', land: 'The Sunken Depths', theme: 'Water, fluid motion, healing and deep-sea pressure',
-        dir: [1, 1], color: 0x38bdf8, css: '#38bdf8', glyph: '🌊',
+        dir: [1, 1], color: 0x38bdf8, css: '#38bdf8', glyph: 'wave',
         power: 'Healing over time (more near water and rest), stronger potions',
         skill: { name: 'Glacial Spike', blurb: 'Raise a wall of ice spikes in front of you that freezes the horde' },
         warden: { name: 'General Vane', title: "Leviathan's Husk", kind: 'skeleton', tint: 0x7ab8ff, lines: ['The tides obey me now. The surface poisoned us, they said.', 'Drown in the lie with the rest of them!'] },
@@ -62,7 +63,7 @@ export const KINGDOMS: Record<Element, Kingdom> = {
     },
     earth: {
         name: 'Terragrim', land: 'The Stone Hollows', theme: 'Stone, roots, endurance and patience',
-        dir: [-1, 1], color: 0xc69c5d, css: '#c69c5d', glyph: '⛰️',
+        dir: [-1, 1], color: 0xc69c5d, css: '#c69c5d', glyph: 'mountain',
         power: '+4 max health, +10% block',
         skill: { name: 'Stone Bulwark', blurb: 'Slam up a rock wall that stuns what is in front, and harden your skin' },
         warden: { name: 'Gravok', title: 'the Rootbound Warden', kind: 'scorpion', tint: 0xd8b07a, lines: ['The mountains do not forgive, and neither do I.', 'Roots grow through stone. I will grow through you.'] },

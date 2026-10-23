@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* The game's lettering (bundled, SIL Open Font License: src/assets/fonts/LICENSE.txt). */
+@font-face { font-family: 'Cinzel Decorative'; font-weight: 900; font-display: block; src: url('../assets/fonts/cinzel-decorative-900.woff2') format('woff2'); }
+@font-face { font-family: 'Jacquard 12'; font-weight: 400; font-display: block; src: url('../assets/fonts/jacquard12.woff2') format('woff2'); }
+@font-face { font-family: 'Pixelify Sans'; font-weight: 400 700; font-display: block; src: url('../assets/fonts/pixelify.woff2') format('woff2'); }
+/* Numbers in Silkscreen (its 5 is a 5): only the digits come from it. */
+@font-face { font-family: 'Game Digits'; font-display: block; src: url('../assets/fonts/silkscreen.woff2') format('woff2'); unicode-range: U+0030-0039; }
+/* The game's two faces: a pixel blackletter for titles (relic), a pixel sans for everything else. */
+:root { --font-relic: 'Jacquard 12', 'Game Digits', 'Pixelify Sans', monospace; --font-pixel: 'Game Digits', 'Pixelify Sans', monospace; }
+
+
 @theme {
     /* ADAPT: game palette — these become Tailwind utilities (bg-primary,
        text-primary, bg-surface, ...). Add the game's full palette here. */
@@ -42,7 +52,10 @@ body {
     -webkit-user-select: none;
     -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
+    font-family: var(--font-pixel);
 }
+/* Everything is pixel lettering: buttons and inputs too. */
+button, input, textarea, select { font-family: inherit; }
 
 #root {
     position: fixed;
@@ -177,3 +190,27 @@ body {
 /* ---- the HUD: the action pill sliding in, the big map opening out of the radar */
 @keyframes act-in { from { opacity: 0; transform: translateX(14px) scale(.96); } to { opacity: 1; transform: none; } }
 @keyframes map-open { from { opacity: 0; transform: scale(.25); } to { opacity: 1; transform: scale(1); } }
+
+/* ---- the MEH FIGHTER title */
+@keyframes logo-breathe { 0%, 100% { opacity: 0.65; } 50% { opacity: 1; } }
+@keyframes logo-shine { 0%, 70% { transform: translateX(0) skewX(-22deg); } 100% { transform: translateX(1700px) skewX(-22deg); } }
+@keyframes logo-twinkle { 0%, 100% { opacity: 0.1; transform: scale(0.5) rotate(0deg); } 50% { opacity: 1; transform: scale(1) rotate(45deg); } }
+
+/* ---- the home screen: the tablet rises, its carved choices glow when touched */
+@keyframes menu-rise { from { opacity: 0; transform: translateY(8%); } to { opacity: 1; transform: none; } }
+.carved { transition: transform .2s ease-out; }
+.carved .carved-text { text-shadow: 0 0 6px rgba(122, 217, 255, .45), 0 2px 0 rgba(20, 30, 22, .9); transition: text-shadow .25s, color .25s; }
+.carved:not(:disabled):hover, .carved:focus-visible { transform: scale(1.06); outline: none; }
+.carved:not(:disabled):hover .carved-text, .carved:focus-visible .carved-text { color: #ffffff; text-shadow: 0 0 10px #7ad9ff, 0 0 26px rgba(122, 217, 255, .85), 0 2px 0 rgba(20, 30, 22, .9); }
+.carved .carved-rune { width: .42em; height: .42em; transform: rotate(45deg) scale(0); background: #bff1ff; box-shadow: 0 0 10px #7ad9ff; transition: transform .25s; }
+.carved:not(:disabled):hover .carved-rune, .carved:focus-visible .carved-rune { transform: rotate(45deg) scale(1); }
+
+/* ---- the kingdom orrery: the Heart's shards drift apart and back */
+@keyframes orb-shard { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(var(--dx, 0px), -3px) scale(1.06); } }
+
+/* ---- the home screen: the list coming in, the sword cursor nudging, blinking prompts */
+@keyframes menu-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes sword-nudge { 0%, 100% { translate: 0 0; } 50% { translate: -5px 0; } }
+@keyframes blink { 0% { opacity: 1; } 100% { opacity: 0; } }
+/* the pack's corner selector: three frames, the brackets breathing in and out */
+@keyframes corners { 0% { background-position: 0 0; } 33% { background-position: -80px 0; } 66% { background-position: -160px 0; } }

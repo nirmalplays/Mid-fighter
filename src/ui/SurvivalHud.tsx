@@ -20,71 +20,21 @@ import {
 } from '../game/eidolon.ts';
 import { mapRef, radar } from '../game/world/mapRef.ts';
 import { useSettings } from '../game/settings.ts';
-import { KingdomMap } from './Celestial.tsx';
+import { KingdomOrbit } from './KingdomSelect.tsx';
 import { Bar, BROWN, BROWN_DARK, Btn, Cost, Icon, INK, OUTLINE, PANEL, Panel, press, ROW, TAN, TAN_LIGHT, Wear } from './hudKit.tsx';
 import { InventoryGrid, RepairList, useInventoryKey } from './InventoryModal.tsx';
 import { MAP_TILES } from '../game/world/constants.ts';
 import { store, useStore, type AppState } from '../state/store.ts';
-
-/** Health with numbers, level and XP, stamina, and the hunger / thirst / rest meters (top left). */
-export function VitalsBars() {
-    const hp = useStore((s) => s.hp);
-    const maxHp = useStore((s) => s.maxHp);
-    const level = useStore((s) => s.level);
-    const xp = useStore((s) => s.xp);
-    const stamina = useStore((s) => s.stamina);
-    const meters = useStore((s) => s.meters);
-    const kingdom = useStore((s) => s.kingdom);
-    const f = maxHp > 0 ? Math.max(0, Math.min(1, hp / maxHp)) : 0;
-    const need = xpToNext(level);
-    const col = f > 0.5 ? '#4ade80' : f > 0.25 ? '#facc15' : '#ef4444';
-    const meter = (label: string, v: number, c: string) => (
-        <div className="flex flex-1 items-center gap-0.5" title={`${label} ${v}`}>
-            <span className="text-[11px] leading-none" style={{ filter: v < 25 ? 'none' : 'grayscale(.2)' }}>{label}</span>
-            <Bar f={v / 100} color={v < 25 ? '#ef4444' : c} h={8} />
-        </div>
-    );
-    return (
-        <div className="flex flex-col gap-1" style={{ width: 'min(230px, 34vw)' }}>
-            <div
-                className="relative overflow-hidden"
-                aria-label={`Health ${hp} of ${maxHp}`}
-                style={{ height: 26, borderRadius: 10, background: '#3a1820', border: `4px solid ${BROWN}`, boxShadow: `0 3px 0 ${BROWN_DARK}` }}
-            >
-                <div className="absolute inset-y-0 left-0 transition-[width] duration-200" style={{ width: `${f * 100}%`, background: `linear-gradient(${col}, ${col}cc)` }} />
-                <div className="absolute inset-x-0 top-0 h-[5px]" style={{ background: 'rgba(255,255,255,.25)' }} />
-                <div className="absolute inset-0 flex items-center justify-between px-2 text-[13px] font-black tabular-nums text-white" style={{ textShadow: OUTLINE }}>
-                    <span>❤ HP{kingdom ? ` · ${KINGDOMS[kingdom].glyph}` : ''}</span>
-                    <span>{hp} / {maxHp}</span>
-                </div>
-            </div>
-            <div className="flex items-center gap-1.5">
-                <span className="rounded-md px-1.5 text-[12px] font-black leading-[18px]" style={{ background: `linear-gradient(${TAN_LIGHT}, ${TAN})`, border: `3px solid ${BROWN}`, color: INK }}>
-                    Lv {level}
-                </span>
-                <Bar f={xp / need} color="linear-gradient(#93c5fd, #3b82f6)" h={12} />
-                <span className="text-[10px] font-black tabular-nums text-white" style={{ textShadow: OUTLINE }}>{xp}/{need}</span>
-            </div>
-            <div className="flex items-center gap-1" aria-label={`Stamina ${stamina.now} of ${stamina.max}`}>
-                <span className="text-[10px] font-black text-white" style={{ textShadow: OUTLINE, width: 26 }}>{stamina.tired ? 'TIRED' : 'STA'}</span>
-                <Bar f={stamina.now / 100} color={stamina.tired ? '#a16207' : 'linear-gradient(#fde68a, #f59e0b)'} h={9} />
-            </div>
-            <div className="flex items-center gap-1.5">
-                {meter('🍖', meters.hunger, '#f59e0b')}
-                {meter('💧', meters.thirst, '#38bdf8')}
-                {meter('💤', meters.rest, '#a78bfa')}
-            </div>
-        </div>
-    );
-}
+import { drawIcon, ELEMENT_ICON, Ico, Sigil, type IconName } from './icons.tsx';
+import { useCompact } from './HudTop.tsx';
 
 /** A boss's name and health across the bottom while one is near. */
 export function BossBar() {
     const boss = useStore((s) => s.boss);
     if (!boss) return null;
     return (
-        <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 flex-col items-center gap-0.5" style={{ bottom: 70, width: 'min(420px, 60vw)' }}>
-            <span className="text-[13px] font-black text-white" style={{ textShadow: OUTLINE }}>☠ {boss.name}</span>
+        <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 flex-col items-center gap-0.5" style={{ top: 50, width: 'min(420px, 50vw)' }}>
+            <span className="flex items-center gap-1 text-[13px] font-bold text-white" style={{ fontFamily: 'var(--font-pixel)', textShadow: OUTLINE }}><Ico name="skull" size={14} color="#fca5a5" /> {boss.name}</span>
             <div className="relative h-[16px] w-full overflow-hidden rounded-md" style={{ background: '#1d1216', border: `3px solid ${boss.css}` }}>
                 <div className="absolute inset-y-0 left-0 transition-[width] duration-150" style={{ width: `${(boss.hp / Math.max(1, boss.max)) * 100}%`, background: `linear-gradient(${boss.css}, #7f1d1d)` }} />
                 <span className="absolute inset-0 flex items-center justify-center text-[10px] font-black tabular-nums text-white" style={{ textShadow: OUTLINE }}>{boss.hp} / {boss.max}</span>
@@ -93,64 +43,20 @@ export function BossBar() {
     );
 }
 
-const WEATHER_INFO: Record<AppState['weather'], [string, string, string]> = { clear: ['☀️', 'Clear', ''], rain: ['🌧️', 'Rain', ' · fires out'], storm: ['⛈️', 'Storm', ''], fog: ['🌫️', 'Fog', ''] };
-/** Region and weather, next to the wave pill. */
-export function WorldPills() {
-    const weather = useStore((s) => s.weather);
-    const region = useStore((s) => s.region);
-    const name = region === 'citadel' ? 'Void Citadel' : region ? KINGDOMS[region].name : '';
-    return (
-        // One row of small chips under the wave pill (it stays clear of the corners on any screen).
-        <div className="pointer-events-none absolute left-1/2 flex -translate-x-1/2 items-center gap-1 whitespace-nowrap" style={{ top: 48 }}>
-            {name && <span className="rounded-lg px-2 text-[11px] font-black text-white" style={{ background: 'rgba(22,12,16,.72)', border: `2px solid ${region && region !== 'citadel' ? KINGDOMS[region].css : '#8b5cf6'}`, lineHeight: '20px' }}>{region && region !== 'citadel' ? KINGDOMS[region].glyph : '🌀'}<span className="hidden min-[1000px]:inline"> {name}</span></span>}
-            <span className="rounded-lg px-2 text-[11px] font-black text-white" style={{ background: 'rgba(22,12,16,.72)', border: '2px solid #6b4a52', lineHeight: '20px' }}>{WEATHER_INFO[weather][0]} {WEATHER_INFO[weather][1]}<span className="hidden min-[1000px]:inline">{WEATHER_INFO[weather][2]}</span></span>
-            <SkyPill />
-        </div>
-    );
-}
-
 // ------------------------------------------------------------------ objective and buttons
 
-/** The current story objective, with an arrow when it points somewhere. Tap for the story. */
-export function Objective() {
-    const obj = useStore((s) => s.objective);
-    const target = useStore((s) => s.target);
-    const kingdom = useStore((s) => s.kingdom);
-    if (!obj || !kingdom) return null;
-    return (
-        <button
-            type="button"
-            className="pointer-events-auto absolute right-3 flex flex-col items-stretch rounded-xl px-2.5 py-1.5 text-left"
-            style={{ top: 64, width: 'min(230px, 36vw)', background: 'rgba(22,12,16,.78)', border: '3px solid #e0b04a', boxShadow: '0 3px 0 #6b4a1a' }}
-            onPointerDown={press(() => store.patch({ bagTab: 'story' }))}
-        >
-            <span className="text-[10px] font-black uppercase tracking-wide" style={{ color: '#ffcb4d' }}>📜 {obj.title}</span>
-            <span className="text-[12px] font-bold leading-tight text-white">{obj.task}</span>
-            <div className="mt-1 flex items-center gap-1.5">
-                <Bar f={obj.have / Math.max(1, obj.need)} color="#ffcb4d" h={8} />
-                <span className="text-[11px] font-black tabular-nums text-white">{obj.have}/{obj.need}</span>
-            </div>
-            {target && (
-                <div className="mt-1 flex items-center gap-1.5 text-[12px] font-black tabular-nums" style={{ color: '#a3e635' }}>
-                    <span style={{ display: 'inline-block', transform: `rotate(${target.angle}rad)`, fontSize: 15, lineHeight: 1 }}>➤</span>
-                    {target.label} · {Math.round(target.dist)} tiles
-                </div>
-            )}
-        </button>
-    );
-}
 
 // ------------------------------------------------------------------ bag tabs
 
 type Tab = NonNullable<AppState['bagTab']>;
-const TABS: { id: Tab; label: string }[] = [
-    { id: 'items', label: 'Bag' },
-    { id: 'craft', label: 'Craft' },
-    { id: 'gear', label: 'Gear' },
-    { id: 'cards', label: 'Cards' },
-    { id: 'camp', label: 'Camp' },
-    { id: 'map', label: 'Map' },
-    { id: 'story', label: 'Story' },
+const TABS: { id: Tab; label: string; title: string; icon: IconName }[] = [
+    { id: 'items', label: 'Bag', title: 'Inventory', icon: 'bag' },
+    { id: 'craft', label: 'Craft', title: 'Crafting', icon: 'flask' },
+    { id: 'gear', label: 'Gear', title: 'Gear & Relics', icon: 'sword' },
+    { id: 'cards', label: 'Cards', title: 'Power Cards', icon: 'star' },
+    { id: 'camp', label: 'Camp', title: 'The Camp', icon: 'tent' },
+    { id: 'map', label: 'Map', title: 'The Map', icon: 'pointer' },
+    { id: 'story', label: 'Story', title: 'The Tale', icon: 'scroll' },
 ];
 
 function CraftTab() {
@@ -164,7 +70,7 @@ function CraftTab() {
     return (
         <div className="flex flex-col gap-1.5">
             <div className="text-[12px] font-bold leading-snug" style={{ color: camp ? '#15803d' : BROWN_DARK }}>
-                {camp ? '🏕️ In camp: brew at the Alchemy tent, cook at the fire, make tools at the bench.' : sheltered ? '🏠 In a house: cook at the hearth, make tools at the bench. Potions are brewed in camp.' : 'Out in the wild you can only look. Go back to camp to brew, cook and craft.'}
+                {camp ? 'In camp: brew at the Alchemy tent, cook at the fire, make tools at the bench.' : sheltered ? 'In a house: cook at the hearth, make tools at the bench. Potions are brewed in camp.' : 'Out in the wild you can only look. Go back to camp to brew, cook and craft.'}
             </div>
             {RECIPES.map((r, i) => {
                 const locked = alchemy < r.alchemy;
@@ -174,7 +80,7 @@ function CraftTab() {
                     <div key={r.out} className="flex items-center gap-2 rounded-xl px-2 py-1" style={{ ...ROW, opacity: locked ? 0.7 : 1 }}>
                         <Icon id={r.out} size={34} dim={locked} />
                         <div className="flex flex-1 flex-col gap-0.5 leading-tight">
-                            <div className="text-[14px] font-black">{ITEMS[r.out].name} <span className="text-[11px]" style={{ color: BROWN_DARK }}>· have {bag[r.out]}{r.fire ? ' · 🔥' : ''}</span></div>
+                            <div className="text-[14px] font-black">{ITEMS[r.out].name} <span className="text-[11px]" style={{ color: BROWN_DARK }}>· have {bag[r.out]}</span></div>
                             {locked ? <div className="text-[12px] font-bold" style={{ color: BROWN_DARK }}>Needs Alchemy tent level {r.alchemy}</div> : <Cost cost={r.cost} bag={bag} />}
                             {!locked && away && <div className="text-[11px] font-black" style={{ color: '#9a3412' }}>Made at {STATION_NAME[r.at]}</div>}
                         </div>
@@ -228,7 +134,7 @@ function RelicRow() {
                             <SwordPic i={r.sword} size={26} dim={!have} />
                             <span className="flex flex-col leading-none">
                                 <span className="text-[10px] font-black">{have ? r.name : '???'}</span>
-                                <span className="text-[9px] font-bold" style={{ color: BROWN_DARK }}>{have ? (held ? 'In hand' : `x${relicMul(progress.tierOf(r.el), r.n)} ${k.glyph}`) : k.glyph}</span>
+                                <span className="flex items-center gap-0.5 text-[9px] font-bold" style={{ color: BROWN_DARK }}>{have && (held ? 'In hand' : `x${relicMul(progress.tierOf(r.el), r.n)}`)}<Ico name={ELEMENT_ICON[r.el]} size={10} color={k.css} /></span>
                             </span>
                         </button>
                     );
@@ -257,7 +163,7 @@ function GearTab() {
         const cost = top ? {} : gearCost(kind, next);
         return (
             <div className="flex items-center gap-2 rounded-xl px-2 py-1" style={ROW}>
-                <span className="text-[26px]">{kind === 'weapon' ? '🗡️' : '🛡️'}</span>
+                <Ico name={kind === 'weapon' ? 'sword' : 'shield'} size={26} color={BROWN_DARK} />
                 <div className="flex flex-1 flex-col gap-0.5 leading-tight">
                     <div className="text-[14px] font-black">{list[now].name} <span className="text-[11px]" style={{ color: BROWN_DARK }}>{kind === 'weapon' ? `· sword damage x${WEAPONS[now].mul}${gear.relic ? ' · put away while a relic is in hand' : ''}` : `· soaks ${Math.round(ARMORS[now].guard * 100)}% of bites`}</span></div>
                     {top ? <div className="text-[12px] font-bold" style={{ color: BROWN_DARK }}>The finest there is. The forge's level still makes it hit harder.</div> : (
@@ -279,7 +185,7 @@ function GearTab() {
             {tierRow('armor')}
             <RepairList bench={inCamp || sheltered} />
 
-            <div className="text-[12px] font-black" style={{ color: BROWN_DARK }}>Element infusion {gear.infusion ? `· now ${KINGDOMS[gear.infusion].glyph} ${INFUSION[gear.infusion]}` : '· none'}</div>
+            <div className="text-[12px] font-black" style={{ color: BROWN_DARK }}>Element infusion {gear.infusion ? `· now ${INFUSION[gear.infusion]}` : '· none'}</div>
             <div className="grid grid-cols-2 gap-1.5">
                 {ELEMENTS.map((e) => (
                     <div key={e} className="flex flex-col gap-1 rounded-xl px-2 py-1" style={{ ...ROW, borderColor: gear.infusion === e ? KINGDOMS[e].css : BROWN }}>
@@ -366,7 +272,7 @@ function CardsTab() {
                             onPointerDown={press(() => owned && progress.toggleCard(id))}
                         >
                             <span className="text-[9px] font-black uppercase" style={{ color: owned ? RARITY_COLOR[c.rarity] : '#7a6a62' }}>{c.rarity}</span>
-                            <span style={{ fontSize: 28, lineHeight: '34px', filter: owned ? 'none' : 'grayscale(1) brightness(.4)' }}>{c.glyph}</span>
+                            <Ico name={c.glyph as IconName} size={30} color={owned ? RARITY_COLOR[c.rarity] : '#5a4a44'} style={{ margin: '2px 0', filter: owned ? 'drop-shadow(0 1px 0 rgba(0,0,0,.35))' : 'none' }} />
                             <span className="text-[11px] font-black leading-tight" style={{ color: INK }}>{owned ? c.name : '???'}</span>
                             {owned && <span className="text-[10px] font-black" style={{ color: BROWN_DARK }}>Lv {lv}{on ? ' · on' : ''}</span>}
                             {owned && <span className="text-[9px] font-bold leading-tight" style={{ color: INK }}>{c.power(lv)}</span>}
@@ -399,7 +305,7 @@ function CampTab() {
                 {inCamp ? 'You are in a liberated camp: you can build here.' : 'Go back to a liberated camp to build.'} Buildings have no top level.
             </div>
             <div className="flex items-center gap-2 rounded-xl px-2 py-1" style={ROW}>
-                <span className="text-[24px]">🔥</span>
+                <Ico name="campfire" size={24} color="#e8590c" />
                 <div className="flex-1 text-[12px] font-bold leading-tight">Rest by the fire: rest refills and half your health comes back.{danger ? ' Not with monsters this close!' : !fire && inCamp ? ' The rain has put the fire out.' : ''}</div>
                 <Btn disabled={!canRest} onPress={restNow}>Rest</Btn>
             </div>
@@ -477,18 +383,18 @@ function MapTab() {
         const n = Math.floor(j / FOG_CELL) * FOG_N + Math.floor(i / FOG_CELL);
         return !!(bits[n >> 3] & (1 << (n & 7)));
     };
-    const pin = (i: number, j: number, text: string, key: string, title: string) => (
-        <span key={key} title={title} className="absolute -translate-x-1/2 -translate-y-1/2 text-[13px] leading-none" style={{ left: `${(i / N) * 100}%`, top: `${(j / N) * 100}%`, transform: 'translate(-50%,-50%) rotate(-45deg)', filter: 'drop-shadow(0 1px 1px #000)' }}>{text}</span>
+    const pin = (i: number, j: number, icon: IconName, color: string, key: string, title: string) => (
+        <span key={key} title={title} className="absolute -translate-x-1/2 -translate-y-1/2 leading-none" style={{ left: `${(i / N) * 100}%`, top: `${(j / N) * 100}%`, transform: 'translate(-50%,-50%) rotate(-45deg)', filter: 'drop-shadow(0 1px 1px #000)' }}><Ico name={icon} size={13} color={color} /></span>
     );
     const pins: ReactNode[] = [];
     for (const L of LANDMARKS) {
         if (!seen(L.i, L.j) && L.kind !== 'citadel') continue;
-        if (L.kind === 'camp') pins.push(pin(L.i, L.j, '⛺', L.id, `${KINGDOMS[L.el!].name} camp`));
-        else if (L.kind === 'tower') pins.push(pin(L.i, L.j, towers.includes(L.id) ? '🗼' : '🏯', L.id, 'Watchtower'));
-        else if (L.kind === 'house') pins.push(pin(L.i, L.j, '🏠', L.id, 'House'));
-        else if (L.kind === 'guard' && !guards.includes(`${L.el}:${L.n}`)) pins.push(pin(L.i, L.j, '☠', L.id, KINGDOMS[L.el!].guard.name));
-        else if (L.kind === 'arena') pins.push(pin(L.i, L.j, wardens.includes(L.el!) ? '✔' : '⚔', L.id, `Arena of ${KINGDOMS[L.el!].name}`));
-        else if (L.kind === 'citadel') pins.push(pin(L.i, L.j, '🌀', L.id, 'Void Citadel'));
+        if (L.kind === 'camp') pins.push(pin(L.i, L.j, 'campfire', '#fb923c', L.id, `${KINGDOMS[L.el!].name} camp`));
+        else if (L.kind === 'tower') pins.push(pin(L.i, L.j, 'tower', towers.includes(L.id) ? '#e5e7eb' : '#9ca3af', L.id, 'Watchtower'));
+        else if (L.kind === 'house') pins.push(pin(L.i, L.j, 'house', '#fde68a', L.id, 'House'));
+        else if (L.kind === 'guard' && !guards.includes(`${L.el}:${L.n}`)) pins.push(pin(L.i, L.j, 'skull', '#f87171', L.id, KINGDOMS[L.el!].guard.name));
+        else if (L.kind === 'arena') pins.push(pin(L.i, L.j, wardens.includes(L.el!) ? 'check' : 'swords', wardens.includes(L.el!) ? '#4ade80' : '#e879f9', L.id, `Arena of ${KINGDOMS[L.el!].name}`));
+        else if (L.kind === 'citadel') pins.push(pin(L.i, L.j, 'vortex', '#c084fc', L.id, 'Void Citadel'));
     }
     return (
         <div className="flex flex-col items-center gap-2">
@@ -499,7 +405,7 @@ function MapTab() {
                     <span className="absolute h-3 w-3 rounded-full" style={{ left: `${(tileX / N) * 100}%`, top: `${(tileY / N) * 100}%`, transform: 'translate(-50%,-50%)', background: '#fff', border: '2px solid #ef4444', boxShadow: '0 0 6px #fff' }} />
                 </div>
             </div>
-            <div className="text-[11px] font-bold" style={{ color: BROWN_DARK }}>Explore or climb watchtowers to clear the fog. ⛺ camp · ☠ guardian · ⚔ arena · 🗼 tower · 🏠 house · 🌀 citadel</div>
+            <div className="text-[11px] font-bold" style={{ color: BROWN_DARK }}>Explore or climb watchtowers to clear the fog. Tap the minimap for the full map.</div>
         </div>
     );
 }
@@ -528,21 +434,21 @@ function StoryTab() {
                     const g = [1, 2, 3].filter((n) => guards.includes(`${e}:${n}`)).length;
                     return (
                         <div key={e} className="flex flex-col rounded-lg p-1.5 leading-tight" style={{ background: freed ? `${k.css}33` : 'rgba(0,0,0,.06)', border: `2px solid ${open ? k.css : '#b8a59a'}` }}>
-                            <span className="text-[13px] font-black">{k.glyph} {k.name}{e === kingdom ? ' · home' : ''}</span>
+                            <span className="flex items-center gap-1 text-[13px] font-black"><Sigil el={e} size={16} /> {k.name}{e === kingdom ? ' · home' : ''}</span>
                             <span className="text-[10px] font-bold" style={{ color: BROWN_DARK }}>{k.land}</span>
-                            <span className="text-[11px] font-bold">{freed ? `✔ ${k.warden.name} defeated` : open ? `Guardians ${g}/3 · ${k.warden.name} waits` : '🔒 Sealed'}</span>
+                            <span className="flex items-center gap-1 text-[11px] font-bold">{freed ? <><Ico name="check" size={12} color="#15803d" /> {k.warden.name} defeated</> : open ? `Guardians ${g}/3 · ${k.warden.name} waits` : <><Ico name="lock" size={12} color={BROWN_DARK} /> Sealed</>}</span>
                             <span className="text-[10px] font-bold" style={{ color: freed || e === kingdom ? '#15803d' : BROWN_DARK }}>Power: {k.power}</span>
                         </div>
                     );
                 })}
             </div>
             <div className="rounded-lg p-1.5 text-[12px] font-bold" style={{ background: 'rgba(139,92,246,.15)', border: '2px solid #8b5cf6' }}>
-                🌀 {MALAKOR.name}, {MALAKOR.title}: {malakor > 0 ? `defeated ${malakor} time${malakor > 1 ? 's' : ''}` : wardens.length >= 4 ? 'waits in the Void Citadel' : `hidden behind ${4 - wardens.length} seal${4 - wardens.length > 1 ? 's' : ''}`}
+                <Ico name="vortex" size={13} color="#7c3aed" /> {MALAKOR.name}, {MALAKOR.title}: {malakor > 0 ? `defeated ${malakor} time${malakor > 1 ? 's' : ''}` : wardens.length >= 4 ? 'waits in the Void Citadel' : `hidden behind ${4 - wardens.length} seal${4 - wardens.length > 1 ? 's' : ''}`}
             </div>
             <div className="text-[12px] font-black" style={{ color: BROWN_DARK }}>The tale so far</div>
             <div className="flex flex-col gap-0.5">
                 {Array.from({ length: Math.min(step, CHAPTER_COUNT) }, (_, i) => (
-                    <div key={i} className="text-[12px] font-bold">✔ {i + 1}. {chapterAt(i, order).title}</div>
+                    <div key={i} className="flex items-center gap-1 text-[12px] font-bold"><Ico name="check" size={12} color="#15803d" /> {i + 1}. {chapterAt(i, order).title}</div>
                 ))}
                 {step === 0 && <div className="text-[12px] font-bold" style={{ color: BROWN_DARK }}>Nothing yet. Your story starts now.</div>}
             </div>
@@ -556,28 +462,69 @@ export function BagPanel() {
     const tab = useStore((s) => s.bagTab);
     useInventoryKey();
     if (!tab) return null;
+    const t = TABS.find((x) => x.id === tab)!;
+    const close = () => store.patch({ bagTab: null });
     return (
-        <Panel z={30} width={490} onClose={() => store.patch({ bagTab: null })}>
-            <div className="flex items-center justify-between gap-2">
-                <div className="flex flex-wrap gap-1">
-                    {TABS.map((t) => (
-                        <button key={t.id} type="button" className="rounded-lg px-2 font-black" style={{ height: 30, background: tab === t.id ? '#fff' : 'rgba(255,255,255,.4)', border: `3px solid ${BROWN}`, fontSize: 12 }} onPointerDown={press(() => store.patch({ bagTab: t.id }))}>
-                            {t.label}
-                        </button>
-                    ))}
+        <div className="pointer-events-auto absolute inset-0 z-30 flex items-center justify-center p-[min(16px,2vh)]" style={{ background: 'rgba(6,4,10,.62)', backdropFilter: 'blur(3px)' }} onPointerDown={(e) => e.target === e.currentTarget && close()} data-quiet>
+            {/* the satchel: dark leather, a double gold edge, gold flourishes in the corners */}
+            <div className="relative flex h-[min(640px,94vh)] w-[min(1060px,97vw)] gap-3 rounded-[14px] p-[min(14px,2vh)]"
+                style={{ background: 'radial-gradient(ellipse at 40% 20%, #45301f 0%, #2a1c12 60%, #1e140c 100%)', border: '3px solid #d9a441', boxShadow: 'inset 0 0 0 4px #2a1c12, inset 0 0 0 5px #8a6424, 0 20px 60px rgba(0,0,0,.6)', animation: 'act-in .2s ease-out both' }}>
+                <BagFlourish className="left-[-10px] top-[-12px]" />
+                <BagFlourish className="right-[-10px] top-[-12px]" flip />
+                {/* the sections, down the left */}
+                <div className="flex shrink-0 flex-col items-center gap-2 rounded-xl px-1.5 py-2" style={{ background: 'linear-gradient(180deg, #24170e, #1a110a)', border: '2px solid #8a6424' }}>
+                    {TABS.map((x) => {
+                        const on = x.id === tab;
+                        return (
+                            <button key={x.id} type="button" title={x.label} aria-label={x.label} onPointerDown={press(() => store.patch({ bagTab: x.id }))}
+                                className="flex h-[min(46px,7.5vh)] w-[min(46px,7.5vh)] items-center justify-center rounded-full transition-transform hover:scale-105"
+                                style={{ background: on ? 'radial-gradient(circle at 50% 35%, #ffe08a, #d9a441 60%, #8a6424)' : 'transparent', border: `2px solid ${on ? '#ffe9b0' : 'transparent'}`, boxShadow: on ? '0 0 12px rgba(255,200,90,.5)' : 'none' }}>
+                                <Ico name={x.icon} size={22} color={on ? '#2a1a10' : '#d9a441'} />
+                            </button>
+                        );
+                    })}
                 </div>
-                <Btn color="#fff" onPress={() => store.patch({ bagTab: null })}>Close</Btn>
+                {/* the page */}
+                <div className="flex min-w-0 flex-1 flex-col gap-2">
+                    <div className="flex items-start justify-between gap-2">
+                        <div className="leading-none">
+                            <div className="text-[min(40px,7vh)] leading-none" style={{ fontFamily: 'var(--font-relic)', color: '#e9b95a', textShadow: '0 2px 0 #1a0f08' }}>{t.title}</div>
+                            <div className="mt-1 text-[12px] font-semibold tracking-[0.18em] text-[#c9b08a]" style={{ fontFamily: 'var(--font-pixel)' }}>{t.label}</div>
+                        </div>
+                        <button type="button" aria-label="Close" onPointerDown={press(close)}
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-transform hover:scale-105"
+                            style={{ background: 'radial-gradient(circle at 50% 35%, #4a3220, #24170e)', border: '2.5px solid #d9a441', boxShadow: '0 0 0 2px #1a110a' }}>
+                            <svg width="22" height="22" viewBox="0 0 24 24"><path d="M10 5 3 12l7 7v-4.5c5 0 8.5 1.5 11 5-1-6-4.5-10.5-11-11.5z" fill="#e9b95a" /></svg>
+                        </button>
+                    </div>
+                    {tab === 'items' ? (
+                        <div className="min-h-0 flex-1"><InventoryGrid /></div>
+                    ) : (
+                        // the other sections on a parchment page, like a journal inside the satchel
+                        <div className="min-h-0 flex-1 overflow-y-auto rounded-lg p-2.5" style={{ background: `linear-gradient(${TAN_LIGHT}, ${TAN})`, border: '2px solid #8a6424', boxShadow: 'inset 0 0 18px rgba(90,50,20,.35)', color: INK }}>
+                            {tab === 'craft' && <CraftTab />}
+                            {tab === 'gear' && <GearTab />}
+                            {tab === 'cards' && <CardsTab />}
+                            {tab === 'camp' && <CampTab />}
+                            {tab === 'map' && <MapTab />}
+                            {tab === 'story' && <StoryTab />}
+                        </div>
+                    )}
+                </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
-                {tab === 'items' && <InventoryGrid />}
-                {tab === 'craft' && <CraftTab />}
-                {tab === 'gear' && <GearTab />}
-                {tab === 'cards' && <CardsTab />}
-                {tab === 'camp' && <CampTab />}
-                {tab === 'map' && <MapTab />}
-                {tab === 'story' && <StoryTab />}
-            </div>
-        </Panel>
+        </div>
+    );
+}
+
+/** A gold flourish for the satchel's top corners. */
+function BagFlourish({ className, flip = false }: { className: string; flip?: boolean }) {
+    return (
+        <svg className={`pointer-events-none absolute ${className}`} width="120" height="70" viewBox="0 0 120 70" style={{ transform: flip ? 'scaleX(-1)' : undefined }}>
+            <path d="M6 64 C6 30 20 12 46 8 C64 5 78 12 84 24 C90 36 80 46 70 42 C62 39 64 30 70 30" fill="none" stroke="#d9a441" strokeWidth="4" strokeLinecap="round" />
+            <path d="M14 64 C16 40 28 24 46 20 C58 18 66 24 66 30" fill="none" stroke="#8a6424" strokeWidth="2.5" strokeLinecap="round" />
+            <path d="M46 8 C54 2 64 2 72 6" fill="none" stroke="#d9a441" strokeWidth="3" strokeLinecap="round" />
+            <circle cx="6" cy="64" r="4" fill="#d9a441" />
+        </svg>
     );
 }
 
@@ -669,7 +616,7 @@ export function TravelPanel() {
             <div className="text-[12px] font-bold" style={{ color: BROWN_DARK }}>Every liberated kingdom's camp fire is linked to the others.</div>
             {ELEMENTS.filter((e) => progress.open(e)).map((e) => (
                 <Btn key={e} color="#fde68a" onPress={() => { const h = homeOf(e); store.patch({ travelTo: h, travel: false }); }}>
-                    {KINGDOMS[e].glyph} {KINGDOMS[e].name} camp {wardens.includes(e) ? '· freed' : ''}
+                    <Sigil el={e} size={18} /> {KINGDOMS[e].name} camp {wardens.includes(e) ? '· freed' : ''}
                 </Btn>
             ))}
             <Btn color="#fff" onPress={close}>Stay here</Btn>
@@ -677,23 +624,15 @@ export function TravelPanel() {
     );
 }
 
-/** Pledge to one of the four kingdoms (after the prologue). */
+/** Pledge to one of the four kingdoms (a save without one): the same orrery as after the intro. */
 export function KingdomChooser() {
     const kingdom = useStore((s) => s.kingdom);
     const popup = useStore((s) => s.storyPopup);
     const phase = useStore((s) => s.phase);
     if (kingdom || popup || phase !== 'playing') return null;
-    const choose = (e: Element) => {
-        progress.chooseKingdom(e);
-        progress.markIntroSeen();
-        const first = progress.chapter();
-        store.patch({ storyPopup: { speaker: 'Elder Theron', title: `Welcome to ${KINGDOMS[e].name}`, lines: [`The essence of ${KINGDOMS[e].name} flows into you: ${KINGDOMS[e].power}. This camp is your home now.`, ...first.say, `Your first task: ${first.task}.`] } });
-    };
     return (
-        <div className="pointer-events-auto absolute inset-0 z-40 flex flex-col items-center justify-center gap-2 overflow-y-auto p-3" style={{ background: 'radial-gradient(circle at 50% 50%, rgba(36,22,52,.95), rgba(7,4,13,.97))' }}>
-            <div className="text-center text-[20px] font-black text-[#efe8fa]" style={{ textShadow: '0 2px 0 #000' }}>Choose your kingdom</div>
-            <div className="text-center text-[12px] font-bold text-[#b9aed0]">Its essence becomes yours, and its camp your home. The other kingdoms lie behind Malakor's barriers.</div>
-            <KingdomMap onPledge={choose} />
+        <div className="pointer-events-auto absolute inset-0 z-40">
+            <KingdomOrbit mode="pledge" />
         </div>
     );
 }
@@ -755,9 +694,9 @@ export function Hotbar4() {
         timer.current = window.setTimeout(() => setName(null), 1500);
     };
     return (
-        <div className="pointer-events-none absolute bottom-2 flex flex-col items-center gap-1 pb-safe-bottom" style={{ left: 150, right: 276 }} data-quiet>
+        <div className="pointer-events-none absolute bottom-2 flex flex-col items-center gap-1 pb-safe-bottom" style={{ left: 150, right: 300 }} data-quiet>
             <div className="h-5 text-sm font-bold text-white transition-opacity duration-300" style={{ textShadow: '0 1px 3px #000', opacity: name ? 1 : 0 }}>{name ?? ''}</div>
-            <div className="flex gap-[4px] rounded-md p-[4px]" style={{ background: 'rgba(22,22,22,.8)', border: '3px solid #3b3b3b', boxShadow: 'inset 0 0 0 2px #151515' }}>
+            <div className="flex gap-[10px]">
                 {hotbar.map((id, n) => {
                     const owned = id ? bag[id] > 0 : true;
                     const sel = n === held && (!id || !!ITEMS[id].tool);
@@ -767,31 +706,23 @@ export function Hotbar4() {
                             type="button"
                             aria-label={id ? ITEMS[id].name : 'Empty slot'}
                             className="pointer-events-auto relative flex touch-none items-center justify-center"
-                            style={{ width: 48, height: 48, background: 'rgba(72,72,72,.72)', border: sel ? '3px solid #fff' : '3px solid #5a5a5a', boxShadow: sel ? '0 0 0 2px #000' : 'none', borderRadius: 4, opacity: owned ? 1 : 0.4 }}
+                            style={{
+                                // the pack's small frames as 9-slices: stone for a slot, wood with studs for the one in hand
+                                width: 50, height: 50, boxSizing: 'border-box', borderStyle: 'solid', borderWidth: 8,
+                                borderImage: `url(images/ui/${sel ? 'slot8' : 'slot5'}.png) 4 fill / 8px stretch`, imageRendering: 'pixelated', opacity: owned ? 1 : 0.45,
+                            }}
                             onPointerDown={press(() => pick(n))}
                         >
-                            {id ? <Icon id={id} size={34} /> : <span className="text-[11px] font-bold text-white/40">hands</span>}
-                            {id && !ITEMS[id].tool && <span className="absolute right-[3px] top-[1px] text-[11px] font-black text-white" style={{ textShadow: '0 1px 0 #000' }}>{bag[id]}</span>}
+                            {id ? <Icon id={id} size={32} /> : <span className="text-[10px] text-[#2f2a35]/70">hands</span>}
+                            {id && !ITEMS[id].tool && <span className="absolute -right-[4px] -top-[5px] text-[11px] text-white" style={{ textShadow: '0 2px 0 #000, 0 0 2px #000' }}>{bag[id]}</span>}
                             {id && <Wear id={id} />}
-                            <span className="absolute bottom-[6px] left-[3px] text-[10px] font-bold leading-none text-white/80" style={{ textShadow: '0 1px 0 #000' }}>{n + 1}</span>
+                            <span className="absolute -bottom-[7px] -left-[4px] text-[10px] leading-none text-white" style={{ textShadow: '0 2px 0 #000, 0 0 2px #000' }}>{n + 1}</span>
+                            {sel && <span className="pointer-events-none absolute -inset-[15px]" style={{ backgroundImage: 'url(images/ui/corners-white.png)', backgroundSize: '240px 80px', imageRendering: 'pixelated', animation: 'corners 0.9s steps(1) infinite' }} />}
                         </button>
                     );
                 })}
             </div>
         </div>
-    );
-}
-
-/** Day or night, and how long until it changes. */
-export function SkyPill() {
-    const sky = useStore((s) => s.sky);
-    const icon = sky.phase === 'day' ? '☀️' : sky.phase === 'night' ? '🌙' : sky.phase === 'dusk' ? '🌇' : '🌅';
-    const mm = Math.floor(sky.left / 60);
-    const ss = String(sky.left % 60).padStart(2, '0');
-    return (
-        <span className="rounded-lg px-2 text-[11px] font-black text-white" style={{ background: sky.phase === 'night' ? 'rgba(30,27,75,.9)' : 'rgba(22,12,16,.72)', border: `2px solid ${sky.phase === 'night' ? '#818cf8' : '#6b4a52'}`, lineHeight: '20px' }}>
-            {icon}<span className="hidden min-[1000px]:inline"> {sky.phase[0].toUpperCase() + sky.phase.slice(1)}</span> {mm}:{ss}{sky.phase === 'night' ? <span className="hidden min-[1000px]:inline"> · hordes!</span> : ''}
-        </span>
     );
 }
 
@@ -815,8 +746,8 @@ export function DownedOverlay() {
 // camp, the bosses still to beat (skulls, the arena's gate, the demon, the citadel), monsters, the
 // side the next wave comes from, and you.
 
-/** Glyphs the map marks camp tents with. */
-const TENT_GLYPH: Record<string, string> = { forge: '⚒️', alchemy: '⚗️', healer: '✚', totem: '🔮', store: '📦' };
+/** The icons and colours the map marks camp tents with. */
+const TENT_ICON: Record<string, [IconName, string]> = { forge: ['anvil', '#fdba74'], alchemy: ['flask', '#7dd3fc'], healer: ['cross', '#fca5a5'], totem: ['crystal', '#c4b5fd'], store: ['crate', '#fde68a'] };
 
 /** The painted land (one pixel per tile) and the trees and rocks, made once per map. */
 const mapArt = { map: null as ReturnType<typeof mapRef.get>, off: null as HTMLCanvasElement | null, nodes: new Map<number, { i: number; j: number; rock: boolean }[]>() };
@@ -926,13 +857,9 @@ function paintMap(ctx: CanvasRenderingContext2D, v: MapView): void {
         }
     }
 
-    const glyph = (c: string, x: number, y: number, size: number, alpha = 1) => {
+    const glyph = (icon: IconName, x: number, y: number, size: number, color: string, alpha = 1) => {
         ctx.globalAlpha = alpha;
-        ctx.font = `${size}px system-ui, "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#fff';
-        ctx.fillText(c, x, y);
+        drawIcon(ctx, icon, x, y, size, color);
         ctx.globalAlpha = 1;
     };
     const ring = (x: number, y: number, r: number, color: string, w = 2) => {
@@ -949,7 +876,7 @@ function paintMap(ctx: CanvasRenderingContext2D, v: MapView): void {
             if (L.kind !== 'camp' || !L.el) continue;
             const q = at(L.i + 0.5, L.j + 0.5);
             if (!inside(q.x, q.y)) continue;
-            ctx.font = `bold ${G * 0.85}px Georgia, serif`;
+            ctx.font = `${Math.round(G * 1.1)}px 'Jacquard 12'`;
             ctx.textAlign = 'center';
             ctx.fillStyle = KINGDOMS[L.el].css;
             ctx.globalAlpha = progress.open(L.el) ? 0.9 : 0.45;
@@ -962,14 +889,17 @@ function paintMap(ctx: CanvasRenderingContext2D, v: MapView): void {
         if (L.kind !== 'house' && L.kind !== 'tower' && L.kind !== 'camp') continue;
         const q = at(L.i + 0.5, L.j + 0.5);
         if (!inside(q.x, q.y) || !seen(L.i, L.j)) continue;
-        glyph(L.kind === 'house' ? '🏠' : L.kind === 'tower' ? '🗼' : '🔥', q.x, q.y, G * (L.kind === 'tower' ? 0.8 : 0.9));
+        if (L.kind === 'house') glyph('house', q.x, q.y, G * 0.8, '#fde68a');
+        else if (L.kind === 'tower') glyph('tower', q.x, q.y, G * 0.75, '#e5e7eb');
+        else glyph('campfire', q.x, q.y, G * 0.85, '#fb923c');
     }
     // Camp tents: forge, apothecary, healer, totem, storehouse (only when zoomed in enough to tell apart).
     if (k > 3.5) {
         for (const t of map.camps) {
             const q = at(t.i + 0.5, t.j + 0.5);
             if (!inside(q.x, q.y) || !seen(t.i, t.j)) continue;
-            glyph(TENT_GLYPH[t.id] ?? '⛺', q.x, q.y, G * 0.75);
+            const [icon, color] = TENT_ICON[t.id] ?? ['tent', '#e5e7eb'];
+            glyph(icon, q.x, q.y, G * 0.7, color);
         }
     }
     // The people of your camp.
@@ -988,14 +918,14 @@ function paintMap(ctx: CanvasRenderingContext2D, v: MapView): void {
     }
 
     // Bosses still to beat in the lands you can enter. Off the edge, pinned to it pointing the way.
-    const marks: { u: number; v: number; g: string; color: string; live: boolean }[] = [];
+    const marks: { u: number; v: number; g: IconName; color: string; live: boolean }[] = [];
     for (const L of LANDMARKS) {
-        if (L.kind === 'guard' && L.el && progress.open(L.el) && !progress.guardDone(L.el, L.n)) marks.push({ u: L.i + 0.5, v: L.j + 0.5, g: '💀', color: '#f87171', live: true });
+        if (L.kind === 'guard' && L.el && progress.open(L.el) && !progress.guardDone(L.el, L.n)) marks.push({ u: L.i + 0.5, v: L.j + 0.5, g: 'skull', color: '#f87171', live: true });
         if (L.kind === 'arena' && L.el && progress.open(L.el) && !progress.wardenDone(L.el)) {
             const locked = progress.guardsLeft(L.el) > 0;
-            marks.push({ u: L.i + 0.5, v: L.j + 0.5, g: locked ? '🔒' : '👹', color: locked ? '#a78bfa' : '#e879f9', live: !locked });
+            marks.push({ u: L.i + 0.5, v: L.j + 0.5, g: locked ? 'lock' : 'demon', color: locked ? '#a78bfa' : '#e879f9', live: !locked });
         }
-        if (L.kind === 'citadel' && progress.open('citadel')) marks.push({ u: L.i + 0.5, v: L.j + 0.5, g: '🌀', color: '#c084fc', live: true });
+        if (L.kind === 'citadel' && progress.open('citadel')) marks.push({ u: L.i + 0.5, v: L.j + 0.5, g: 'vortex', color: '#c084fc', live: true });
     }
     for (const m of marks) {
         let q = at(m.u, m.v);
@@ -1014,7 +944,7 @@ function paintMap(ctx: CanvasRenderingContext2D, v: MapView): void {
         ctx.arc(q.x, q.y, G * 0.62, 0, Math.PI * 2);
         ctx.fill();
         ring(q.x, q.y, G * 0.62 + (m.live && !pinned ? pulse * 2 : 0), m.color, pinned ? 1.5 : 2);
-        glyph(m.g, q.x, q.y + 1, G * (pinned ? 0.7 : 0.85), pinned ? 0.85 : 1);
+        glyph(m.g, q.x, q.y, G * (pinned ? 0.62 : 0.72), m.color, pinned ? 0.85 : 1);
     }
 
     // Monsters, and bosses as they fight.
@@ -1081,6 +1011,7 @@ function paintMap(ctx: CanvasRenderingContext2D, v: MapView): void {
 export function Radar() {
     const ref = useRef<HTMLCanvasElement>(null);
     const on = useSettings().radar;
+    const z = useCompact() ? 96 : 138;
     useEffect(() => {
         if (!on) return;
         let raf = 0;
@@ -1103,7 +1034,7 @@ export function Radar() {
             type="button"
             aria-label="Open the map"
             className="pointer-events-auto absolute left-3 rounded-full transition-transform hover:scale-[1.03] active:scale-95"
-            style={{ top: 152, width: 138, height: 138, padding: 0, border: `3px solid ${BROWN}`, boxShadow: `0 3px 0 ${BROWN_DARK}`, background: '#120c16' }}
+            style={{ top: 10, width: z, height: z, padding: 0, border: '4px solid #2f2a35', boxShadow: '0 0 0 3px #9a948e, 0 0 0 5px #2f2a35, 0 4px 0 5px rgba(0,0,0,.35)', background: '#120c16' }}
             onClick={() => store.patch({ bigMap: true })}
         >
             <canvas ref={ref} width={264} height={264} className="h-full w-full rounded-full" />
@@ -1113,9 +1044,10 @@ export function Radar() {
 }
 
 /** What the map's marks mean. */
-const LEGEND: [string, string][] = [
-    ['➤', 'You'], ['💀', 'Guardian'], ['🔒', 'Arena (sealed)'], ['👹', 'Warden'], ['🌀', 'Citadel'], ['🔥', 'Camp'], ['🏠', 'House'], ['🗼', 'Watchtower'],
-    ['⚒️', 'Forge'], ['⚗️', 'Alchemy'], ['✚', 'Healer'], ['🔵', 'Camp folk'], ['🟢', 'Tree'], ['⬜', 'Rock / ore'], ['🔴', 'Monster'],
+const LEGEND: [IconName | 'dot', string, string][] = [
+    ['pointer', '#ffffff', 'You'], ['skull', '#f87171', 'Guardian'], ['lock', '#a78bfa', 'Arena (sealed)'], ['demon', '#e879f9', 'Warden'], ['vortex', '#c084fc', 'Citadel'],
+    ['campfire', '#fb923c', 'Camp'], ['house', '#fde68a', 'House'], ['tower', '#e5e7eb', 'Watchtower'], ['anvil', '#fdba74', 'Forge'], ['flask', '#7dd3fc', 'Alchemy'],
+    ['cross', '#fca5a5', 'Healer'], ['dot', '#7dd3fc', 'Camp folk'], ['dot', '#3f8f45', 'Tree'], ['dot', '#a9b4d0', 'Rock / ore'], ['dot', '#ef4444', 'Monster'],
 ];
 
 /** The radar opened out: drag to look around, zoom, find yourself again. */
@@ -1181,7 +1113,7 @@ export function BigMap() {
             <div className="relative flex h-full max-h-[760px] w-full max-w-[1200px] flex-col overflow-hidden rounded-2xl" style={{ background: '#120c16', border: `3px solid ${BROWN}`, boxShadow: '0 10px 40px rgba(0,0,0,.6)', animation: 'map-open .25s cubic-bezier(.2,.8,.2,1) both', transformOrigin: '6% 28%' }}>
                 <div className="flex items-center justify-between px-4 py-2" style={{ background: 'linear-gradient(180deg, rgba(60,36,52,.95), rgba(28,17,36,.95))', borderBottom: `2px solid ${BROWN}` }}>
                     <div className="flex items-baseline gap-3">
-                        <span className="text-[18px] font-bold text-white" style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>Map of Eidolon</span>
+                        <span className="text-[18px] font-bold text-white" style={{ fontFamily: 'var(--font-pixel)' }}>Map of Eidolon</span>
                         {region && <span className="text-[12px] font-bold uppercase tracking-widest" style={{ color: region === 'citadel' ? '#c084fc' : KINGDOMS[region].css }}>{region === 'citadel' ? 'The Void Citadel' : KINGDOMS[region].name}</span>}
                     </div>
                     <button type="button" aria-label="Close the map" className={btn} style={btnStyle} onClick={close}>×</button>
@@ -1219,7 +1151,11 @@ export function BigMap() {
                     {/* the legend */}
                     {legend && (
                         <div className="pointer-events-none absolute bottom-14 left-3 grid max-w-[min(520px,70%)] grid-cols-3 gap-x-3 gap-y-0.5 rounded-xl px-3 py-2 text-[11px] font-bold text-white sm:grid-cols-5" style={{ background: 'rgba(18,10,22,.85)', border: '1px solid rgba(233,191,154,.4)' }}>
-                            {LEGEND.map(([g, t]) => <span key={t} className="flex items-center gap-1 whitespace-nowrap"><span className="w-4 text-center">{g}</span>{t}</span>)}
+                            {LEGEND.map(([g, c, t]) => (
+                                <span key={t} className="flex items-center gap-1 whitespace-nowrap">
+                                    <span className="flex w-4 justify-center">{g === 'dot' ? <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: c }} /> : <Ico name={g} size={13} color={c} />}</span>{t}
+                                </span>
+                            ))}
                         </div>
                     )}
                     <button type="button" className="pointer-events-auto absolute bottom-3 left-3 rounded-full px-3 py-1.5 text-[12px] font-black text-white" style={btnStyle} onPointerDown={(e) => { e.stopPropagation(); setLegend((l) => !l); }}>

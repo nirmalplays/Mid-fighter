@@ -26,6 +26,7 @@ import {
 import { CHAR_CELL } from './characterAtlas.ts';
 import { MAP_TILES, TILE_DX } from './constants.ts';
 import { STONE, WATER, type WorldMap } from './mapGen.ts';
+import { FX } from './fxAtlas.ts';
 import type { ViewMonster } from './monsters.ts';
 
 /** What a prop gives when gathered, the tool it takes, and how long it takes to grow back (ms). */
@@ -81,6 +82,8 @@ export function createSurvivalLayer(o: {
     banner: (text: string) => void;
     /** Sparkle on the ground at a spot. */
     sparkle: (u: number, v: number) => void;
+    /** Gold bursting from an opened chest. */
+    coins?: (u: number, v: number) => void;
     /** Bring a boss in (the simulation refuses a second copy of one already alive). */
     summon: (code: number, tier: number, u: number, v: number) => void;
     /** Hurt monsters within r of (u, v). */
@@ -140,6 +143,13 @@ export function createSurvivalLayer(o: {
     const open = (r: Region) => progress.open(r);
     const regionAt = (u: number, v: number): Region => REGION_OF(map.region[Math.floor(v) * MAP_TILES + Math.floor(u)]);
 
+    // The camp fires' flames (Super Pixel Effects: fire_looping_004A).
+    const campFire = (() => {
+        const sheet = Assets.get<Texture>('fx_campfire');
+        sheet.source.scaleMode = 'nearest';
+        return Array.from({ length: FX.campfire.n }, (_, f) => new Texture({ source: sheet.source, frame: new Rectangle((f % FX.campfire.c) * FX.campfire.w, Math.floor(f / FX.campfire.c) * FX.campfire.h, FX.campfire.w, FX.campfire.h) }));
+    })();
+
     // ---- Camps: the same five tents in every kingdom's camp, ruined until that kingdom is liberated.
     const tents = map.camps.map((c) => {
         const tex = Assets.get<Texture>(BUILDINGS[c.id].art);
@@ -164,8 +174,10 @@ export function createSurvivalLayer(o: {
         const at = ground(u, v);
         logs.position.set(at.x, at.y);
         logs.zIndex = o.zFor(u, v);
-        const flame = new Graphics().poly([0, -34, 12, -6, 0, 0, -12, -6]).fill({ color: 0xffb340 }).poly([0, -22, 6, -6, 0, -2, -6, -6]).fill({ color: 0xfff1a0 });
-        flame.position.set(at.x, at.y - 2);
+        // the pack's looping fire, a frame every 80 ms
+        const flame = new Sprite(campFire[0]);
+        flame.anchor.set(0.5, 0.9);
+        flame.position.set(at.x, at.y + 2);
         flame.zIndex = o.zFor(u, v) + 0.02;
         o.layer.addChild(logs, flame);
         all.push(logs, flame);
@@ -497,7 +509,7 @@ export function createSurvivalLayer(o: {
             return n + extra;
         }
         const got = progress.addItem(item, n + extra);
-        if (got > 0) o.say(`+${got} ${ITEMS[item].name}${extra ? ' ✦' : ''}`, color);
+        if (got > 0) o.say(`+${got} ${ITEMS[item].name}${extra ? ' (bonus)' : ''}`, color);
         return got;
     };
     const essenceChance = (u: number, v: number, chance: number) => {
@@ -519,11 +531,12 @@ export function createSurvivalLayer(o: {
         }
         progress.openChest(c.id);
         o.sparkle(c.u, c.v);
+        o.coins?.(c.u, c.v);
         sfx('chest');
         if (Math.random() < 0.75) {
             const card = progress.rollCard(0.1 + Math.min(0.4, store.get().wave * 0.02));
             const lv = progress.addCard(card);
-            o.banner(lv === 1 ? `New card: ${CARDS[card].glyph} ${CARDS[card].name}!` : `${CARDS[card].name} reached level ${lv}!`);
+            o.banner(lv === 1 ? `New card: ${CARDS[card].name}!` : `${CARDS[card].name} reached level ${lv}!`);
         }
         // The loot spills out on the ground (anyone nearby can take it).
         o.loot(c.u, c.v + 0.8, chestLoot(regionAt(c.u, c.v)));
@@ -696,6 +709,12 @@ export function createSurvivalLayer(o: {
             const c = nearestOf(chests, (x) => progress.chestReady(x.id) && open(regionAt(x.u, x.v)));
             return c ? { u: c.u, v: c.v, label: 'Chest' } : null;
         }
+        // Fighting tasks: the waves never come into camp, so first, out of it (away from the Citadel).
+        if (atHome && ((goal.kind === 'stat' && goal.stat === 'kills') || goal.kind === 'wave' || goal.kind === 'level')) {
+            const [dx, dy] = KINGDOMS[home].dir;
+            const len = Math.hypot(dx, dy) || 1;
+            return { u: homeCamp.u + (dx / len) * (CAMP_RADIUS + 5), v: homeCamp.v + (dy / len) * (CAMP_RADIUS + 5), label: 'Leave camp' };
+        }
         const campWork = goal.kind === 'build' || goal.kind === 'gear' || (goal.kind === 'stat' && (goal.stat === 'cooked' || goal.stat === 'potions'));
         if (campWork && !atHome) return { u: homeCamp.u, v: homeCamp.v, label: 'Home camp' };
         if (campWork) {
@@ -730,6 +749,31 @@ export function createSurvivalLayer(o: {
             return best;
         }
         return null;
+    };
+
+    // ---- The objective's marker: a beam of light, a ring on the ground and a gold diamond over the place the story points at.
+    const marker = new Graphics();
+    marker.zIndex = 1e6;
+    o.layer.addChild(marker);
+    all.push(marker);
+    let markAt: { u: number; v: number } | null = null;
+    let markT = 0;
+    const drawMarker = (dtMs: number, u: number, v: number) => {
+        markT += dtMs;
+        marker.clear();
+        if (!markAt) return;
+        const near = Math.hypot(markAt.u - u, markAt.v - v);
+        if (near < 1.4) return; // you are there
+        const at = ground(markAt.u, markAt.v);
+        const bob = Math.sin(markT / 320) * 6;
+        const pulse = (markT % 1400) / 1400;
+        marker.rect(at.x - 9, at.y - 170, 18, 170).fill({ color: 0xffd98a, alpha: 0.07 });
+        marker.rect(at.x - 2.5, at.y - 170, 5, 170).fill({ color: 0xffe9b0, alpha: 0.28 });
+        marker.ellipse(at.x, at.y, 16 + pulse * 26, 8 + pulse * 13).stroke({ color: 0xffd98a, width: 2.5, alpha: 1 - pulse });
+        const y = at.y - 140 + bob;
+        marker.circle(at.x, y, 22).fill({ color: 0xffd98a, alpha: 0.18 });
+        marker.poly([at.x, y - 17, at.x + 12, y, at.x, y + 17, at.x - 12, y]).fill(0xfff1c4).stroke({ color: 0x7a4a14, width: 3 });
+        marker.poly([at.x, y - 9, at.x + 6, y, at.x, y + 9, at.x - 6, y]).fill(0xe0a948);
     };
 
     const progressRefill = (id: string) => (progress.houseReady(id) ? 'The crate is empty' : 'Already searched. It fills again later');
@@ -816,6 +860,7 @@ export function createSurvivalLayer(o: {
 
         update(dtMs, u, v, facing, tool, monsters) {
             clock += dtMs;
+            drawMarker(dtMs, u, v);
             // Regrowth and shakes.
             for (const [n, left] of regrow) {
                 const l = left - dtMs;
@@ -840,7 +885,8 @@ export function createSurvivalLayer(o: {
                 c.flame.visible = lit;
                 c.fire.alpha = 0.45 + 0.15 * Math.sin(clock / 120) + 0.08 * Math.sin(clock / 47);
                 c.fire.scale.set(0.9 + 0.08 * Math.sin(clock / 90));
-                c.flame.scale.set(1 + 0.08 * Math.sin(clock / 70), 1 + 0.12 * Math.sin(clock / 53));
+                c.flame.texture = campFire[Math.floor(clock / 80) % campFire.length];
+                c.flame.scale.set(1.5 + 0.06 * Math.sin(clock / 70), 1.5 + 0.1 * Math.sin(clock / 53));
             }
             for (const g of gates) {
                 const lit = g.L.kind === 'citadel' ? s.wardens.length >= 4 : !!g.L.el && !s.wardens.includes(g.L.el) && progress.guardsLeft(g.L.el) === 0;
@@ -938,7 +984,7 @@ export function createSurvivalLayer(o: {
                 }
                 for (const g of guards) {
                     const done = progress.guardDone(g.L.el!, g.L.n);
-                    g.t.text = done || !open(g.L.el!) ? '' : `☠ ${KINGDOMS[g.L.el!].guard.name}`;
+                    g.t.text = done || !open(g.L.el!) ? '' : `${KINGDOMS[g.L.el!].guard.name}`;
                 }
             }
 
@@ -974,6 +1020,7 @@ export function createSurvivalLayer(o: {
                 act = actionFor(t, hint, tool);
             }
             const target = objectiveTarget(u, v);
+            markAt = target ? { u: target.u, v: target.v } : null;
             const aimTo = target
                 ? {
                     angle: Math.atan2((target.u - u + (target.v - v)) * 31, (target.u - u - (target.v - v)) * 62),

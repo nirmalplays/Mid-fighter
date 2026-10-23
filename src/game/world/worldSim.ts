@@ -122,6 +122,8 @@ export function createWorldSim(opts: {
             potionMul: opts.potionMul,
         },
     );
+    // Debug (?spawn=): the local simulation, for automated checks.
+    if (new URLSearchParams(window.location.search).has('spawn')) (window as unknown as { __sim?: GameSim }).__sim = local;
     let wasOnline = false;
     let cachedSnap: SimSnapshot | null = null;
     let cachedMonsters: ViewMonster[] = [];
@@ -204,7 +206,7 @@ export function createWorldSim(opts: {
                 drops: [...local.drops.values()].map((d) => ({ id: d.id, skill: d.skill, sword: d.sword, u: d.u, v: d.v, age: d.age })),
                 run: p ? { wave: p.wave, toSpawn: p.toSpawn } : null,
                 wave: local.wave,
-                nextIn: local.fighting ? 0 : Math.max(0, Math.ceil(local.clock / 1000)),
+                nextIn: local.phase === 'clearing' || local.runs.length > 0 ? 0 : Math.max(0, Math.ceil(local.clock / 1000)),
                 fighting: local.fighting,
                 waveDir: local.dir,
                 calm: local.calm,

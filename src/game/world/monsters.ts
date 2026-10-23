@@ -129,6 +129,8 @@ export function createMonsterView(opts: {
     zFor: (u: number, v: number) => number;
     levelH: number;
     player: () => { u: number; v: number };
+    /** A monster was hit, fell, or just arrived (the scene plays the effect). */
+    onFx?: (what: 'hurt' | 'die' | 'spawn', u: number, v: number, big: boolean) => void;
 }): MonsterView {
     // Sheets load in the background; a monster is drawn once its kind's sheets are in.
     const frames = new Map<string, Texture[][]>();
@@ -197,6 +199,7 @@ export function createMonsterView(opts: {
                 if (!s) {
                     s = create(m);
                     shown.set(m.id, s);
+                    if (!m.boss && m.state !== 'dying') opts.onFx?.('spawn', m.u, m.v, false);
                 }
                 // Ease toward the simulation's position (snap if it jumped far, e.g. knockback glitches).
                 const prevU = s.u;
@@ -211,9 +214,13 @@ export function createMonsterView(opts: {
                     s.v += (m.v - s.v) * k;
                 }
                 s.walking = m.state === 'chase' && Math.hypot(s.u - prevU, s.v - prevV) / Math.max(dt, 0.001) > 0.35;
-                if (m.hp < s.hp) s.flash = 150;
+                if (m.hp < s.hp) {
+                    s.flash = 150;
+                    if (m.state !== 'dying') opts.onFx?.('hurt', s.u, s.v, s.big > 1);
+                }
                 s.hp = m.hp;
                 if (m.state !== s.state) {
+                    if (m.state === 'dying') opts.onFx?.('die', s.u, s.v, s.big > 1);
                     s.state = m.state;
                     s.t = m.t;
                 } else {

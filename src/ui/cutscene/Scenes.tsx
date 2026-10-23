@@ -5,6 +5,8 @@
  * (cs-* keyframes in styles/app.css): a slow camera push on every shot, drifting clouds,
  * embers, rain, light shafts.
  */
+import type { Element } from '../../game/eidolon.ts';
+import { ELEMENT_ICON, ICON_PATHS, Sigil } from '../icons.tsx';
 import type { CSSProperties, ReactNode } from 'react';
 import { Cloud, Crane, LandscapeBackdrop } from '../Landscape.tsx';
 import type { SceneId } from '../../game/narration.ts';
@@ -125,13 +127,13 @@ function OneWorld({ d }: { d: number }) {
 }
 
 // ---------------------------------------------------------------- 2. the four peoples
-function Panel({ i, d, title, sub, glyph, children }: { i: number; d: number; title: string; sub: string; glyph: string; children: ReactNode }) {
+function Panel({ i, d, title, sub, el, children }: { i: number; d: number; title: string; sub: string; el: Element; children: ReactNode }) {
     return (
         <div className="absolute inset-y-0 overflow-hidden" style={{ left: `${i * 25}%`, width: '25%', borderLeft: i ? '2px solid rgba(255,214,140,.55)' : undefined, ...at('cs-panel-in', d, 0.04 + i * 0.22, 0.12) }}>
             <div className="absolute inset-0" style={{ animation: `cs-camera ${d}s linear both`, ['--from' as string]: 'scale(1.06)', ['--to' as string]: 'scale(1)' }}>{children}</div>
             <div className="absolute inset-x-0 bottom-[14%] text-center" style={at('cs-fade-up', d, 0.1 + i * 0.22, 0.08)}>
-                <div className="text-[min(34px,5vh)]">{glyph}</div>
-                <div className="text-[min(30px,4.6vh)] font-bold tracking-wide text-white" style={{ fontFamily: "Georgia, 'Times New Roman', serif", textShadow: '0 3px 12px rgba(0,0,0,.6)' }}>{title}</div>
+                <div className="flex justify-center"><Sigil el={el} size={40} /></div>
+                <div className="text-[min(30px,4.6vh)] font-bold tracking-wide text-white" style={{ fontFamily: 'var(--font-pixel)', textShadow: '0 3px 12px rgba(0,0,0,.6)' }}>{title}</div>
                 <div className="text-[min(12px,2vh)] font-semibold uppercase tracking-[0.3em] text-white/75">{sub}</div>
             </div>
         </div>
@@ -140,7 +142,7 @@ function Panel({ i, d, title, sub, glyph, children }: { i: number; d: number; ti
 function Peoples({ d }: { d: number }) {
     return (
         <div className="absolute inset-0 bg-black">
-            <Panel i={0} d={d} title="Pyraxis" sub="Fire" glyph="🔥">
+            <Panel i={0} d={d} title="Pyraxis" sub="Fire" el="fire">
                 <svg viewBox="0 140 400 700" preserveAspectRatio="xMidYMid meet" className="absolute inset-0 h-full w-full overflow-visible">
                     <defs><linearGradient id="p1" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="900"><stop offset="0" stopColor="#1a0505" /><stop offset="0.55" stopColor="#7a1f10" /><stop offset="1" stopColor="#ff7a3a" /></linearGradient></defs>
                     <rect x="-800" y="-600" width="2000" height="2200" fill="url(#p1)" />
@@ -152,7 +154,7 @@ function Peoples({ d }: { d: number }) {
                 </svg>
                 <Particles n={22} color="#ffb84a" glow="#ff6a1a" size={4} area={{ x: 10, y: 50, w: 80, h: 50 }} speed={6} />
             </Panel>
-            <Panel i={1} d={d} title="Zephyria" sub="Wind" glyph="🌪️">
+            <Panel i={1} d={d} title="Zephyria" sub="Wind" el="air">
                 <svg viewBox="0 140 400 700" preserveAspectRatio="xMidYMid meet" className="absolute inset-0 h-full w-full overflow-visible">
                     <defs><linearGradient id="p2" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="900"><stop offset="0" stopColor="#7fb6e8" /><stop offset="0.7" stopColor="#d6ecff" /><stop offset="1" stopColor="#f6fbff" /></linearGradient></defs>
                     <rect x="-800" y="-600" width="2000" height="2200" fill="url(#p2)" />
@@ -170,7 +172,7 @@ function Peoples({ d }: { d: number }) {
                     ))}
                 </svg>
             </Panel>
-            <Panel i={2} d={d} title="Aquatica" sub="Tide" glyph="🌊">
+            <Panel i={2} d={d} title="Aquatica" sub="Tide" el="water">
                 <svg viewBox="0 140 400 700" preserveAspectRatio="xMidYMid meet" className="absolute inset-0 h-full w-full overflow-visible">
                     <defs><linearGradient id="p3" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="900"><stop offset="0" stopColor="#2a8ab0" /><stop offset="0.5" stopColor="#0a3a5a" /><stop offset="1" stopColor="#041a2a" /></linearGradient></defs>
                     <rect x="-800" y="-600" width="2000" height="2200" fill="url(#p3)" />
@@ -181,7 +183,7 @@ function Peoples({ d }: { d: number }) {
                 </svg>
                 <Particles n={20} color="rgba(220,250,255,.7)" glow="#9ef" size={6} area={{ x: 10, y: 50, w: 80, h: 50 }} speed={7} />
             </Panel>
-            <Panel i={3} d={d} title="Terragrim" sub="Stone" glyph="⛰️">
+            <Panel i={3} d={d} title="Terragrim" sub="Stone" el="earth">
                 <svg viewBox="0 140 400 700" preserveAspectRatio="xMidYMid meet" className="absolute inset-0 h-full w-full overflow-visible">
                     <defs><radialGradient id="p4" gradientUnits="userSpaceOnUse" cx="200" cy="315" r="720"><stop offset="0" stopColor="#8a6a3a" /><stop offset="0.5" stopColor="#3a2412" /><stop offset="1" stopColor="#140a04" /></radialGradient></defs>
                     <rect x="-800" y="-600" width="2000" height="2200" fill="url(#p4)" />
@@ -327,7 +329,7 @@ function Whispers({ d }: { d: number }) {
                 <div
                     key={n}
                     className="absolute whitespace-nowrap italic"
-                    style={{ left: `${w.x}%`, top: `${w.y}%`, fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 'min(30px, 4.6vh)', color: '#e9d5ff', textShadow: '0 0 18px #a855f7, 0 0 4px #a855f7', ...at('cs-whisper', d, 0.18 + n * 0.13, 0.32, 'ease-in-out both') }}
+                    style={{ left: `${w.x}%`, top: `${w.y}%`, fontFamily: 'var(--font-pixel)', fontSize: 'min(30px, 4.6vh)', color: '#e9d5ff', textShadow: '0 0 18px #a855f7, 0 0 4px #a855f7', ...at('cs-whisper', d, 0.18 + n * 0.13, 0.32, 'ease-in-out both') }}
                 >
                     {w.t}
                 </div>
@@ -387,7 +389,7 @@ function Sunder({ d }: { d: number }) {
 
 // ---------------------------------------------------------------- 7. the kingdoms and the citadel
 function Kingdoms({ d }: { d: number }) {
-    const isles: [number, number, string, string][] = [[330, 520, '#ff6a3d', '🔥'], [560, 300, '#7dd3fc', '🌪️'], [1060, 320, '#38bdf8', '🌊'], [1290, 540, '#c69c5d', '⛰️']];
+    const isles: [number, number, string, Element][] = [[330, 520, '#ff6a3d', 'fire'], [560, 300, '#7dd3fc', 'air'], [1060, 320, '#38bdf8', 'water'], [1290, 540, '#c69c5d', 'earth']];
     return (
         <Camera d={d} from="translateX(2%) scale(0.98)" to="translateX(-2%) scale(1.05)" origin="50% 50%">
             <Svg>
@@ -409,7 +411,9 @@ function Kingdoms({ d }: { d: number }) {
                             <path d="M-110 0 Q0 -18 110 0 L70 50 L10 120 L-50 60 Z" fill="#2a2040" stroke="#0a0618" strokeWidth="4" />
                             <ellipse cx="0" cy="0" rx="112" ry="20" fill={c} opacity="0.85" stroke="#0a0618" strokeWidth="4" />
                             <path d="M-120 4 Q-120 -150 0 -150 Q120 -150 120 4" fill="url(#s7-dome)" stroke="#d8b4fe" strokeWidth="2" opacity="0.9" style={{ animation: `eid-shimmer ${2.5 + n * 0.4}s ease-in-out infinite` }} />
-                            <text x="0" y="-60" textAnchor="middle" fontSize="44">{g}</text>
+                            {/* the kingdom's emblem glowing inside its barrier */}
+                            <circle cx="0" cy="-62" r="30" fill={c} opacity="0.25" />
+                            <g transform="translate(-24 -86) scale(2)"><path d={ICON_PATHS[ELEMENT_ICON[g]]} fill="#fff7e0" fillRule="evenodd" style={{ filter: `drop-shadow(0 0 3px ${c})` }} /></g>
                         </g>
                     </g>
                 ))}

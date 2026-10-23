@@ -16,8 +16,9 @@ import { estimateSeconds, NARRATION } from '../game/narration.ts';
 import { store } from '../state/store.ts';
 import { settings } from '../game/settings.ts';
 import { CHAPTER, SCENES } from './cutscene/Scenes.tsx';
+import { PixelLogo } from './PixelLogo.tsx';
 
-const SERIF = "Georgia, 'Times New Roman', serif";
+const SERIF = 'var(--font-pixel)';
 const FADE = 1.2;
 /** Gap after the narrator finishes before the next shot. */
 const TAIL = 1.4;
@@ -177,11 +178,11 @@ export default function IntroCutscene() {
                 {prev !== null && prev < NARRATION.length && scene(prev, true)}
                 {!title && scene(index, false)}
                 {title && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ background: 'radial-gradient(circle at 50% 50%, #2a1a4a 0%, #07040d 70%)', animation: `cs-scene-in ${FADE}s ease-in-out both` }}>
-                        <div className="text-center font-bold text-white" style={{ fontFamily: SERIF, fontSize: 'min(120px, 17vh, 10vw)', textShadow: '0 0 40px rgba(255,190,120,.45), 0 6px 30px rgba(0,0,0,.6)', animation: 'cs-title 3.2s cubic-bezier(.2,.7,.2,1) both', whiteSpace: 'nowrap' }}>
-                            MEH FIGHTER
+                    <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ background: '#030806', animation: `cs-scene-in ${FADE}s ease-in-out both` }}>
+                        <div style={{ width: 'min(900px, 74vw, 160vh)' }}>
+                            <PixelLogo intro />
                         </div>
-                        <div className="mt-3 text-[min(15px,2.6vh)] font-semibold uppercase tracking-[0.5em] text-[#e9ddff]" style={{ animation: 'cs-fade-up 1.6s ease-out 1.4s both' }}>The Fracture of Eidolon</div>
+                        <div className="-mt-[2vh] text-[min(15px,2.6vh)] uppercase tracking-[0.5em] text-[#f3e3c0]" style={{ animation: 'cs-fade-up 1.2s ease-out 2.4s both' }}>The Fracture of Eidolon</div>
                     </div>
                 )}
             </div>
@@ -190,7 +191,7 @@ export default function IntroCutscene() {
             <div className="pointer-events-none absolute -inset-[10%] opacity-[0.07] mix-blend-overlay" style={{ backgroundImage: GRAIN, animation: 'cs-grain 0.6s steps(3) infinite' }} />
             {/* letterbox */}
             <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center justify-between bg-black px-6" style={{ height: BAR_TOP, animation: 'cs-letterbox-top 1.2s ease-out both' }}>
-                <span key={`c${index}`} className="text-[min(13px,2.2vh)] font-semibold uppercase tracking-[0.35em] text-[#c9b8e8]" style={{ fontFamily: SERIF, animation: 'cs-fade-up 1.2s ease-out .4s both' }}>
+                <span key={`c${index}`} className="text-[min(13px,2.2vh)] font-semibold uppercase tracking-[0.35em] text-[#c9b8e8]" style={{ fontFamily: 'var(--font-pixel)', animation: 'cs-fade-up 1.2s ease-out .4s both' }}>
                     {title ? '' : CHAPTER[NARRATION[index].scene]}
                 </span>
                 <span className="flex gap-1.5">

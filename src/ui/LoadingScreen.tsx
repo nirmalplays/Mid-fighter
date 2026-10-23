@@ -5,6 +5,7 @@
  */
 import { useStore } from '../state/store.ts';
 import { PxPanel } from './px.tsx';
+import { PixelLogo } from './PixelLogo.tsx';
 import { UI_SLICES } from './uiSlices.ts';
 
 /** The bar pieces are drawn at 2x like the rest of the UI. */
@@ -23,12 +24,9 @@ export default function LoadingScreen() {
     const progress = useStore((s) => s.loadProgress);
     const pct = Math.round(progress * 100);
     return (
-        <div className="flex h-full items-center justify-center px-6">
-            <PxPanel frame={6} className="flex flex-col items-center gap-2 px-6 py-4" style={{ width: 'min(380px, 86vw)' }}>
-                <img src="images/logo.png" alt="" style={{ height: 'min(84px, 18vh)' }} draggable={false} />
-                <h1 className="text-center text-2xl font-black leading-none tracking-wide" style={{ color: '#fff3d6', textShadow: '0 3px 0 #3b2412' }}>
-                    MEH FIGHTER
-                </h1>
+        <div className="flex h-full flex-col items-center justify-center gap-4 px-6" style={{ background: '#030806' }}>
+            <div style={{ width: 'min(620px, 80vw, 110vh)' }}><PixelLogo /></div>
+            <PxPanel frame={6} className="flex flex-col items-center gap-2 px-6 py-3" style={{ width: 'min(380px, 86vw)' }}>
                 <div
                     className="w-full"
                     role="progressbar"

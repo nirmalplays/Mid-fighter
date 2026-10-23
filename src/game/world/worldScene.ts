@@ -213,6 +213,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             playFx('sparkle', u, v, { scale: 2.2, squash: 0.55, life: 750 });
             playFx('heal', u, v, { scale: 1.6, life: 1000, lift: 40 });
         },
+        coins: (u, v) => playFx('coins', u, v, { scale: 1.4, life: 2000, lift: 40 }),
         renderer: app.renderer,
         isoSprite,
         summon: (code, tier, u, v) => sim.summon(code, tier, u, v),
@@ -617,6 +618,9 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     let barrierNote = 0;
     /** The wave a warning was last given for. */
     let warnedWave = 0;
+    /** The level and story step last seen (their rise shows an effect). */
+    let shownLevel = 0;
+    let shownStep = -1;
     let rainShown = 0;
     /** Ms since the last fight ended (exploration music comes back after a short breath). */
     let calmFor = 0;
@@ -656,6 +660,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             sfx('revive');
         }
         store.patch({ hp });
+        playFx('splat', pu, pv, { scale: 2.2, life: 600, lift: 44 });
         sfx(hp === 0 ? 'fall' : 'hurt');
         character.command({ type: 'hurt' });
         net.sendAct('hurt');
@@ -694,7 +699,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                     if (Math.random() < 0.8) {
                         const card = progress.rollCard(0.4);
                         const lv = progress.addCard(card);
-                        banner(lv === 1 ? `New card: ${CARDS[card].glyph} ${CARDS[card].name}!` : `${CARDS[card].name} reached level ${lv}!`);
+                        banner(lv === 1 ? `New card: ${CARDS[card].name}!` : `${CARDS[card].name} reached level ${lv}!`);
                     }
                 }
                 // Night-stalker eyes come from the dark; glands from anything.
@@ -720,11 +725,12 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                 if (Math.random() < 0.012 + 0.001 * store.get().wave) {
                     const card = progress.rollCard(0.05 * store.get().wave);
                     const lv = progress.addCard(card);
-                    banner(lv === 1 ? `New card: ${CARDS[card].glyph} ${CARDS[card].name}!` : `${CARDS[card].name} reached level ${lv}!`);
+                    banner(lv === 1 ? `New card: ${CARDS[card].name}!` : `${CARDS[card].name} reached level ${lv}!`);
                 }
             },
             gain: (kind: DropKind, sword: number) => {
                 sfx(kind === 'sword' ? 'card' : 'pickup');
+                playFx('pickup', pu, pv, { scale: 2, life: 1150, lift: 50 });
                 if (kind.startsWith('item_')) {
                     const id = kind.slice(5) as ItemId;
                     const got = ITEMS[id] ? progress.addItem(id, Math.max(1, sword)) : 0;
@@ -783,6 +789,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             },
             wave: (n) => {
                 sfx('wave');
+                playFx('alert', pu, pv, { scale: 2, life: 930, lift: 120 });
                 progress.reachWave(n);
                 banner(`Wave ${n}! They come from the ${sideName(sim.view().waveDir)}`);
                 store.patch({ wave: n });
@@ -803,6 +810,12 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         zFor: sortZ,
         levelH: LEVEL_H,
         player: () => ({ u: pu, v: pv }),
+        // Hits spark, the fallen go up in skull smoke, new arrivals rise from a puff of dust.
+        onFx: (what, u, v, big) => {
+            if (what === 'hurt') playFx('hit', u, v, { scale: big ? 2.6 : 1.7, life: 420, lift: big ? 60 : 32 });
+            else if (what === 'die') playFx('death', u, v, { scale: big ? 4.5 : 3, life: 800, lift: 30 });
+            else playFx('spawn', u, v, { scale: 2.6, life: 650, lift: 12 });
+        },
     });
     const shotView = createShotView({ layer: objects, toScreen: worldPoint, heightAt, zFor: sortZ, levelH: LEVEL_H });
     const dropView = createDropView({
@@ -856,7 +869,8 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         if (!t) {
             const sheet = Assets.get<Texture>(`fx_${name}`);
             sheet.source.scaleMode = 'nearest';
-            t = new Texture({ source: sheet.source, frame: new Rectangle(f * FX[name].w, 0, FX[name].w, FX[name].h) });
+            const { w, h, c } = FX[name];
+            t = new Texture({ source: sheet.source, frame: new Rectangle((f % c) * w, Math.floor(f / c) * h, w, h) });
             fxTex.set(k, t);
         }
         return t;
@@ -1071,6 +1085,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             const st = store.get();
             if (got.sick) {
                 store.patch({ hp: Math.max(1, st.hp - 1) });
+                playFx('poison', pu, pv, { scale: 2.4, life: 1600, lift: 64 });
                 dropView.text(player.x, player.y - 78, 'Your stomach turns…', 0x9be36b);
             } else if (got.heal > 0 && st.hp < st.maxHp) {
                 const amount = Math.max(1, Math.round(got.heal * power.potion));
@@ -1103,6 +1118,8 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             const c = BUFF_OF[id];
             if (c) {
                 buffMs[c] = BUFF_MS[c] * power.potion;
+                const look: FxName = id === 'potion_blue' || id === 'oil_fire' ? 'atkup' : id === 'potion_purple' || id === 'oil_ice' ? 'defup' : id === 'potion_yellow' ? 'haste' : 'pickup';
+                playFx(look, pu, pv, { scale: 2.4, life: 1300, lift: 56 });
                 if (id === 'potion_yellow') stamina = staminaMax();
                 sfx('levelup', 0.7);
                 banner(`${ITEMS[id].name}: ${ITEMS[id].blurb.toLowerCase()}`);
@@ -1163,7 +1180,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         }
         meter = 0;
         const dmg = Math.max(3, Math.round(5 * power.damage));
-        banner(`${KINGDOMS[home].glyph} ${KINGDOMS[home].skill.name}!`);
+        banner(`${KINGDOMS[home].skill.name}!`);
         sfx(home === 'fire' ? 'skill_fire' : home === 'air' ? 'skill_air' : home === 'water' ? 'skill_water' : 'skill_earth');
         if (home === 'fire') {
             // Flame Burst: a ring of fire all around, and the ground keeps burning a moment.
@@ -1175,6 +1192,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             burns.push({ t: 700, u: pu, v: pv, dmg: Math.max(1, Math.round(dmg * 0.4)), r: 3 }, { t: 1400, u: pu, v: pv, dmg: Math.max(1, Math.round(dmg * 0.4)), r: 3 });
         } else if (home === 'air') {
             // Lightning Dash: phase forward, leaving a crackling decoy behind.
+            playFx('aura', pu, pv, { scale: 3.2, life: 1000, lift: 40 });
             zone(pu, pv, { t: 4500, every: 600, r: 2.4, dmg: Math.max(1, Math.round(dmg * 0.5)), stun: 400, fx: 'bolt', color: 0x7dd3fc });
             const a = (character.facing * Math.PI) / 4;
             const ru = (Math.cos(a) + Math.sin(a)) / Math.SQRT2, rv = (Math.sin(a) - Math.cos(a)) / Math.SQRT2;
@@ -1366,6 +1384,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             pv = go.v;
             pz = heightAt(pu, pv) * LEVEL_H;
             store.patch({ travelTo: null, travel: false });
+            playFx('warp', pu, pv, { scale: 1.8, life: 700, lift: 40 });
         }
         pu = Math.min(MAP_TILES - 0.01, Math.max(0, pu));
         pv = Math.min(MAP_TILES - 0.01, Math.max(0, pv));
@@ -1633,6 +1652,8 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                 sim.strike(pu, pv, character.facing, dmg);
                 if (crit) {
                     shakeMs = 220;
+                    const ca = (character.facing * Math.PI) / 4;
+                    playFx('crit', pu + (Math.cos(ca) + Math.sin(ca)) / Math.SQRT2, pv + (Math.sin(ca) - Math.cos(ca)) / Math.SQRT2, { scale: 1.6, life: 460, lift: 34 });
                     dropView.text(player.x + 30, player.y - 110, 'CRIT!', 0xffd84d);
                     sfx('explosion', 0.25);
                 }
@@ -1746,6 +1767,14 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             if (!character.dead && net.online()) for (const r of net.remotes.values()) if (r.pose?.dead && Math.hypot(r.pose.u - pu, r.pose.v - pv) < 1.8) target = r.id;
             if (target !== store.get().reviveTarget) store.patch({ reviveTarget: target });
             progress.publishObjective();
+            // A level gained, an objective done: the pack's lettering rises over the player.
+            {
+                const st = store.get();
+                if (shownLevel > 0 && st.level > shownLevel) playFx('levelup', pu, pv, { scale: 0.9, life: 2900, lift: 118 });
+                if (shownStep >= 0 && st.objective && st.objective.step > shownStep) playFx('complete', pu, pv, { scale: 0.9, life: 3700, lift: 118 });
+                shownLevel = st.level;
+                shownStep = st.objective?.step ?? shownStep;
+            }
             // The waves never stop out in the world. They hold only while a story page or a talk is
             // open, and a camp is safe ground: monsters lose you there (alone, no wave comes at all).
             {

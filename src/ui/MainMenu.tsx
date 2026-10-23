@@ -1,30 +1,37 @@
 /**
- * The home screen: a painted dusk landscape (ui/Landscape.tsx) with a top bar (Co-op, Kingdoms,
- * Leaderboard, Settings, your kingdom), a big serif title and a Start button. Other screens:
- *   title    - New Game (the intro cutscene, then choosing a kingdom), Continue (only with a save), Play with friends
- *   online   - Quick Play (the public room), Create Private Room (share its code), Join with Code
+ * The home screen, laid out like a console classic: a pixel-art forest (menu/PixelForest.tsx) with
+ * the ruin of an arch and a wanderer by a stream, the MEH FIGHTER title at the left, and the
+ * choices in a right-aligned list: the chosen one gets a gold band and the pack's sword cursor;
+ * a rule beneath, then what it does and the keys. Up / Down / Enter / Escape, or the pointer.
+ * The first time in a session the title is forged at the centre first (PixelLogo's intro), then
+ * settles to the left and the list comes in. Screens:
+ *   title    - Continue (only with a save), New Game (the intro cutscene, then a kingdom), Co-op,
+ *              Kingdoms (the orrery, to read about the four lands), Legends, Settings
+ *   online   - Quick Play (the public room), Create a Room (share its code), Join a Room
  *   join     - type a friend's room code
- *   kingdoms - the celestial map: each kingdom's lore, passive and active skill (pledge here if you have none)
- *   settings - effects, night darkness, hints, radar, and starting a new game
  * Saves are per RUN account, so a friend has their own progress in any room.
  */
-import { useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { settings, useSettings } from '../game/settings.ts';
+import { slice } from './px.tsx';
+import { PixelIcon, StoneButton } from './HudTop.tsx';
+import { PixelLogo } from './PixelLogo.tsx';
+import { PixelForest } from './menu/PixelForest.tsx';
 import { net } from '../game/net/multiplayer.ts';
 import { progress } from '../game/progress.ts';
 import { KINGDOMS } from '../game/eidolon.ts';
 import { store, useStore } from '../state/store.ts';
 import { TopScores } from './Scores.tsx';
 import { sfx, useMusicBlocked } from '../game/audio.ts';
-import { KingdomMap, SettingsPanel, StoneSlab } from './Celestial.tsx';
-import { LandscapeBackdrop } from './Landscape.tsx';
-import { SoundButton } from './SoundButton.tsx';
+import { SettingsPanel } from './Celestial.tsx';
+import { KingdomOrbit } from './KingdomSelect.tsx';
 
-/** The title face: a heavy serif, like a painted travel poster. */
-const SERIF = "Georgia, 'Times New Roman', serif";
-/** The links in the top bar. */
-const NAV: [string, Screen][] = [['Co-op', 'online'], ['Kingdoms', 'kingdoms'], ['Leaderboard', 'scores'], ['Settings', 'settings']];
 
 type Screen = 'title' | 'online' | 'join' | 'scores' | 'kingdoms' | 'settings';
+/** A choice in the list: its words, a line on what it does, and whether it is shown greyed or as a warning. */
+type Item = { label: string; hint?: string; act: () => void; off?: boolean; warn?: boolean };
+/** The title is forged once a session; after that the menu opens straight away. */
+let introPlayed = false;
 
 function playedLabel(seconds: number, kills: number): string {
     const m = Math.floor(seconds / 60);
@@ -78,147 +85,218 @@ export default function MainMenu() {
         start();
     };
 
-    const heading = (text: string, bad = false) => (
-        <p className="text-center text-[15px] font-black tracking-wide" style={{ color: bad ? '#fca5a5' : '#e9ddff', textShadow: '0 2px 0 #120d18' }}>{text}</p>
-    );
+    // The scene parts as the pointer moves.
+    const [look, setLook] = useState({ x: 0, y: 0 });
+    useEffect(() => {
+        const on = (e: PointerEvent) => setLook({ x: e.clientX / window.innerWidth - 0.5, y: e.clientY / window.innerHeight - 0.5 });
+        window.addEventListener('pointermove', on);
+        return () => window.removeEventListener('pointermove', on);
+    }, []);
 
+    // The title's entrance: once a session. If the browser keeps the page silent until touched,
+    // it waits on "Press any key" first, so the strike is heard.
+    const blocked = useMusicBlocked();
+    const [intro, setIntro] = useState<'wait' | 'play' | 'done'>(() => (introPlayed ? 'done' : 'wait'));
+    useEffect(() => {
+        if (intro !== 'wait') return;
+        const id = window.setTimeout(() => !blocked && setIntro('play'), 450);
+        return () => window.clearTimeout(id);
+    }, [intro, blocked]);
+    useEffect(() => {
+        if (intro !== 'wait' || !blocked) return;
+        const go = () => setIntro('play');
+        window.addEventListener('pointerdown', go, { once: true });
+        window.addEventListener('keydown', go, { once: true });
+        return () => {
+            window.removeEventListener('pointerdown', go);
+            window.removeEventListener('keydown', go);
+        };
+    }, [intro, blocked]);
+    const settle = () => {
+        introPlayed = true;
+        setIntro('done');
+    };
+    useEffect(() => {
+        if (intro !== 'play') return;
+        const skip = () => settle();
+        const id = window.setTimeout(() => {
+            window.addEventListener('pointerdown', skip, { once: true });
+            window.addEventListener('keydown', skip, { once: true });
+        }, 300);
+        return () => {
+            window.clearTimeout(id);
+            window.removeEventListener('pointerdown', skip);
+            window.removeEventListener('keydown', skip);
+        };
+    }, [intro]);
+    const ready = intro === 'done';
+
+    const back = () => {
+        setError(null);
+        setScreen('title');
+    };
+    // What the list offers on each screen.
+    const items: Item[] =
+        screen === 'online'
+            ? [
+                { label: 'Quick Play', hint: 'Join the public room', act: () => enter({ kind: 'public' }), off: busy },
+                { label: 'Create a Room', hint: 'Get a code to share with friends', act: () => enter({ kind: 'create' }), off: busy },
+                { label: 'Join a Room', hint: "Type a friend's room code", act: () => { setError(null); setScreen('join'); }, off: busy },
+                { label: 'Back', act: back },
+            ]
+            : screen === 'join'
+                ? [
+                    { label: 'Join', act: () => enter({ kind: 'join', code }), off: busy || code.length < 6 },
+                    { label: 'Back', act: () => { setError(null); setScreen('online'); } },
+                ]
+                : screen === 'scores'
+                    ? [{ label: 'Back', act: back }]
+                    : [
+                        ...(hasSave ? [{ label: 'Continue', hint: kingdom ? `${KINGDOMS[kingdom].name} · ${playedLabel(progress.saved?.playSeconds ?? 0, progress.saved?.kills ?? 0)}` : undefined, act: () => { net.leave(); start(); } }] : []),
+                        { label: hasSave ? (confirmNew ? 'Erase and begin anew?' : 'New Game') : 'Begin', hint: confirmNew ? 'Select again to erase your progress' : 'The story from the start', act: newGame, warn: confirmNew },
+                        { label: 'Co-op', hint: 'Fight the waves beside friends', act: () => { setError(null); setScreen('online'); } },
+                        { label: 'Kingdoms', hint: 'The four lands of Eidolon', act: () => setScreen('kingdoms') },
+                        { label: 'Legends', hint: 'The best runs', act: () => setScreen('scores') },
+                        { label: 'Settings', act: () => setScreen('settings') },
+                    ];
+    const [sel, setSel] = useState(0);
+    useEffect(() => setSel(0), [screen]);
+    const cur = Math.min(sel, items.length - 1);
+    // Keys: up and down choose, Enter selects, Escape steps back.
+    useEffect(() => {
+        if (!ready || screen === 'kingdoms' || screen === 'settings') return;
+        const on = (e: KeyboardEvent) => {
+            if (e.target instanceof HTMLInputElement && e.key !== 'Enter' && e.key !== 'Escape') return;
+            if (e.key === 'ArrowDown' || e.key === 's') setSel((n) => (Math.min(n, items.length - 1) + 1) % items.length);
+            else if (e.key === 'ArrowUp' || e.key === 'w') setSel((n) => (Math.min(n, items.length - 1) + items.length - 1) % items.length);
+            else if (e.key === 'Enter') {
+                const it = items[cur];
+                if (it && !it.off) it.act();
+            } else if (e.key === 'Escape' && screen !== 'title') back();
+            else return;
+            e.preventDefault();
+        };
+        window.addEventListener('keydown', on);
+        return () => window.removeEventListener('keydown', on);
+    });
+
+    const heading = screen === 'online' ? (busy ? 'Connecting...' : error ?? 'Co-op') : screen === 'join' ? (busy ? 'Connecting...' : error ?? 'Room code') : screen === 'scores' ? 'Legends of Eidolon' : null;
     return (
-        <div className="relative flex h-full w-full items-center justify-center overflow-hidden">
-            <LandscapeBackdrop />
+        <div className="relative h-full w-full overflow-hidden" style={{ background: '#030806' }}>
+            <PixelForest look={look} />
+            {/* shade where the words sit, so they read over the forest */}
+            <div className="pointer-events-none absolute inset-0" style={{ background: 'linear-gradient(90deg, rgba(2,6,4,.55) 0%, rgba(2,6,4,0) 38%, rgba(2,6,4,0) 58%, rgba(2,6,4,.6) 100%)', opacity: ready ? 1 : 0, transition: 'opacity 1.2s' }} />
+            {/* darkness before the title is forged */}
+            <div className="pointer-events-none absolute inset-0 bg-black" style={{ opacity: intro === 'done' ? 0 : intro === 'wait' ? 1 : 0.55, transition: 'opacity 1.6s' }} />
 
-            {/* The navigation bar along the top (on every menu screen). */}
-            <nav className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-[min(40px,5vw)] pt-safe-top" style={{ height: 56 }}>
-                <button type="button" onClick={() => setScreen('title')} className="text-[17px] font-black tracking-wide text-white" style={{ fontFamily: SERIF, textShadow: '0 2px 8px rgba(0,0,0,.4)' }}>
-                    Meh Fighter
-                </button>
-                <div className="flex items-center gap-[min(34px,3.5vw)] text-[13px] font-semibold text-white/90">
-                    <SoundButton />
-                    {NAV.map(([label, to]) => (
-                        <button key={to} type="button" onClick={() => { setError(null); setScreen(to); }} className="hidden transition-colors hover:text-[#ffd98a] sm:inline" style={{ color: screen === to ? '#ffd98a' : undefined }}>{label}</button>
-                    ))}
-                    <button type="button" onClick={() => setScreen('kingdoms')} className="rounded-sm px-4 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-white hover:text-[#2a1f5c]" style={{ border: '1.5px solid rgba(255,255,255,.85)' }}>
-                        {kingdom ? `${KINGDOMS[kingdom].glyph} ${KINGDOMS[kingdom].name}` : 'Choose kingdom'}
-                    </button>
+            {/* the title: forged at the centre, then settles to the left */}
+            {intro !== 'wait' && (
+                <div className="pointer-events-none absolute" style={{ ...(ready ? { left: '5vw', top: '56%', width: 'min(46vw, 760px, 120vh)', transform: 'translate(0, -50%)' } : { left: '50%', top: '46%', width: 'min(78vw, 1100px, 170vh)', transform: 'translate(-50%, -50%)' }), transition: 'all 1.1s cubic-bezier(.65,0,.25,1)' }}>
+                    <PixelLogo intro={intro === 'play'} onImpact={() => sfx('thunderclap', 0.55)} onDone={settle} />
+                    <p className="-mt-[2.5vh] text-center text-[min(15px,2.6vh)] tracking-[0.42em] text-[#f3e3c0]" style={{ textShadow: '0 2px 0 #000', opacity: ready ? 0.9 : 0, transition: 'opacity .8s .6s' }}>
+                        THE FRACTURE OF EIDOLON
+                    </p>
                 </div>
-            </nav>
+            )}
+            {intro === 'wait' && blocked && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-[min(22px,4vh)] tracking-[0.3em] text-[#f3e3c0]" style={{ animation: 'blink 1.1s steps(2) infinite' }}>PRESS ANY KEY</span>
+                </div>
+            )}
+            {intro === 'play' && <span className="absolute bottom-[4vh] left-1/2 -translate-x-1/2 text-[12px] tracking-[0.3em] text-white/40">PRESS ANY KEY TO SKIP</span>}
 
-            {screen === 'title' && (
-                <div className="relative flex h-full w-full flex-col justify-center px-[min(64px,7vw)] pt-10" style={{ animation: 'eid-rise-in .7s ease-out both' }}>
-                    <p className="flex items-center gap-2 text-[13px] font-medium text-white/85" style={{ textShadow: '0 1px 6px rgba(0,0,0,.35)' }}>
-                        <svg width="22" height="16" viewBox="0 0 22 16" aria-hidden="true"><rect x="0" y="6" width="4" height="10" rx="1" fill="#c9c3ff" /><rect x="6" y="2" width="4" height="14" rx="1" fill="#c9c3ff" /><rect x="12" y="0" width="4" height="16" rx="1" fill="#c9c3ff" /><rect x="18" y="5" width="4" height="11" rx="1" fill="#c9c3ff" /></svg>
-                        Journey to the shattered kingdoms. Journey to the Void Citadel.
-                    </p>
-                    <h1 className="mt-[min(14px,2vh)] font-bold leading-[0.9] text-white" style={{ fontFamily: SERIF, fontSize: 'min(124px, 18vh, 10vw)', letterSpacing: '0.02em', whiteSpace: 'nowrap', textShadow: '0 6px 30px rgba(30,10,60,.45)' }}>
-                        MEH FIGHTER
-                    </h1>
-                    <p className="mt-[min(16px,2.2vh)] max-w-[min(420px,48vw)] text-[min(13px,2.2vh)] font-medium leading-relaxed text-white/90" style={{ textShadow: '0 1px 6px rgba(0,0,0,.4)' }}>
-                        Far beyond the old roads of the sundered realm, four kingdoms smoulder behind Malakor&apos;s barriers. Pyraxis burns, Zephyria storms,
-                        Aquatica sinks and Terragrim waits in stone. Pledge to one, survive the night, and bring them home.
-                    </p>
-                    <div className="mt-[min(22px,3vh)] flex flex-wrap items-center gap-3">
-                        {hasSave && (
-                            <button type="button" onClick={() => { net.leave(); start(); }} className="rounded-sm bg-white px-5 py-2.5 text-[14px] font-semibold text-[#2a1f5c] shadow-lg transition-transform hover:-translate-y-0.5 active:translate-y-0">
-                                Continue the journey
-                            </button>
-                        )}
-                        <button type="button" onClick={newGame} className={`rounded-sm px-5 py-2.5 text-[14px] font-semibold shadow-lg transition-transform hover:-translate-y-0.5 active:translate-y-0 ${hasSave ? (confirmNew ? 'bg-[#e2563a] text-white' : 'text-white') : 'bg-white text-[#2a1f5c]'}`} style={hasSave && !confirmNew ? { border: '1.5px solid rgba(255,255,255,.8)' } : undefined}>
-                            {hasSave ? (confirmNew ? 'Tap again: erase and start over' : 'New Game') : 'Start the journey'}
-                        </button>
-                        <button type="button" onClick={() => { setError(null); setScreen('online'); }} className="rounded-sm px-5 py-2.5 text-[14px] font-semibold text-white transition-colors hover:bg-white/15" style={{ border: '1.5px solid rgba(255,255,255,.8)' }}>
-                            Play with friends
-                        </button>
-                        {(progress.saved?.playSeconds ?? 0) >= 60 && <span className="text-[12px] font-medium text-white/75">{playedLabel(progress.saved?.playSeconds ?? 0, progress.saved?.kills ?? 0)}</span>}
+            {ready && (
+                <>
+                    {/* sound, top right */}
+                    <div className="absolute right-[2.5vw] top-[3vh] z-10" style={{ animation: 'menu-in .6s ease-out .3s both' }}>
+                        <SoundToggle />
                     </div>
                     {inRoom && (
-                        <p className="mt-3 flex items-center gap-2 text-[12px] font-semibold text-emerald-200">
-                            Online · {online} {online === 1 ? 'player' : 'players'}{roomCode ? ` · ${roomCode}` : ''}
+                        <p className="absolute left-[5vw] top-[4vh] flex items-center gap-2 text-[13px] text-emerald-200" style={{ textShadow: '0 2px 0 #000' }}>
+                            Online · {online} {online === 1 ? 'player' : 'players'}{roomCode ? ` · room ${roomCode}` : ''}
                             <button type="button" onClick={() => net.leave()} className="underline decoration-dotted">leave</button>
                         </p>
                     )}
-                </div>
+
+                    {/* the list, right */}
+                    <nav className="absolute right-[6vw] top-1/2 flex w-[min(460px,40vw)] -translate-y-[38%] flex-col items-end" aria-label="Main menu">
+                        {heading && <p className="mb-2 text-[min(14px,2.6vh)] tracking-[0.25em]" style={{ color: error ? '#ff9a8a' : '#d8c89a', textShadow: '0 2px 0 #000' }}>{heading.toUpperCase()}</p>}
+                        {screen === 'join' && (
+                            <input
+                                autoFocus
+                                value={code}
+                                onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
+                                placeholder="ABC123"
+                                maxLength={6}
+                                autoComplete="off"
+                                spellCheck={false}
+                                aria-label="Room code"
+                                className="mb-2 w-[min(280px,36vw)] px-3 py-2 text-right text-[min(26px,4.6vh)] tracking-[0.3em] text-[#fff3d6] outline-none placeholder:text-white/25"
+                                style={{ ...slice('btn2-pressed', 3), color: '#2f2a35' }}
+                            />
+                        )}
+                        {screen === 'scores' && (
+                            <div className="mb-2 max-h-[46vh] w-full overflow-y-auto p-2" style={{ ...slice('frame5', 3), color: '#2f2a35' }}>
+                                <TopScores />
+                            </div>
+                        )}
+                        {items.map((it, n) => (
+                            <MenuRow key={`${screen}-${it.label}`} item={it} on={n === cur} delay={n * 0.07} onHover={() => setSel(n)} />
+                        ))}
+                        <div className="mt-3 h-[2px] w-full" style={{ background: 'linear-gradient(270deg, rgba(243,227,192,.85), rgba(243,227,192,0))', animation: 'menu-in .6s ease-out .4s both' }} />
+                        <div className="mt-2 flex min-h-[18px] items-center gap-3 text-[min(13px,2.4vh)] text-white/80" style={{ textShadow: '0 2px 0 #000', animation: 'menu-in .6s ease-out .5s both' }}>
+                            <span className="mr-auto text-white/60">{items[cur]?.hint ?? ''}</span>
+                            {screen !== 'title' && <span className="flex items-center gap-1.5"><Key>Esc</Key> Back</span>}
+                            <span className="flex items-center gap-1.5"><Key>Enter</Key> Select</span>
+                        </div>
+                    </nav>
+                    <p className="absolute bottom-[3vh] right-[6vw] text-[11px] tracking-[0.2em] text-white/35">MEH FIGHTER · EARLY ACCESS</p>
+                </>
             )}
 
-            {screen === 'online' && (
-                <div className="relative flex w-[min(340px,90vw)] flex-col gap-2 rounded-2xl p-4" style={{ background: 'rgba(20,12,30,.85)', border: '2px solid #7dd3fc' }}>
-                    {heading(busy ? 'Connecting…' : error ?? 'Multiplayer Co-op', !!error)}
-                    <StoneSlab accent="#86efac" disabled={busy} sub="Join the public room" onClick={() => enter({ kind: 'public' })}>Quick Play</StoneSlab>
-                    <StoneSlab accent="#7dd3fc" disabled={busy} sub="Get a code to share" onClick={() => enter({ kind: 'create' })}>Create Private Room</StoneSlab>
-                    <StoneSlab accent="#c4b5fd" disabled={busy} sub="Enter a friend's code" onClick={() => { setError(null); setScreen('join'); }}>Join with Code</StoneSlab>
-                    <p className="text-[11px] font-bold text-[#b9aed0]">Fallen teammates can be helped up with Use before they bleed out. Chest loot lands on the ground for everyone.</p>
-                    <StoneSlab size="sm" accent="#9ca3af" disabled={busy} onClick={() => { setError(null); setScreen('title'); }}>Back</StoneSlab>
-                </div>
-            )}
-
-            {screen === 'join' && (
-                <div className="relative flex w-[min(340px,90vw)] flex-col gap-2 rounded-2xl p-4" style={{ background: 'rgba(20,12,30,.85)', border: '2px solid #c4b5fd' }}>
-                    {heading(busy ? 'Connecting…' : error ?? 'Room code', !!error)}
-                    <input
-                        value={code}
-                        onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))}
-                        placeholder="ABC123"
-                        inputMode="text"
-                        autoCapitalize="characters"
-                        autoComplete="off"
-                        spellCheck={false}
-                        maxLength={6}
-                        className="w-full rounded-md bg-[#0b0614] px-2 py-2 text-center text-2xl font-black tracking-[0.35em] text-[#efe8fa] outline-none placeholder:text-[#efe8fa]/30"
-                        style={{ touchAction: 'manipulation', border: '2px solid #4b3b66' }}
-                        aria-label="Room code"
-                    />
-                    <StoneSlab accent="#86efac" disabled={busy || code.length < 6} onClick={() => enter({ kind: 'join', code })}>Join Room</StoneSlab>
-                    <StoneSlab size="sm" accent="#9ca3af" disabled={busy} onClick={() => { setError(null); setScreen('online'); }}>Back</StoneSlab>
-                </div>
-            )}
-
-            {screen === 'scores' && (
-                <div className="relative flex w-[min(340px,90vw)] flex-col gap-2 rounded-2xl p-4" style={{ background: 'rgba(20,12,30,.85)', border: '2px solid #fbbf24' }}>
-                    {heading('Leaderboard')}
-                    <TopScores />
-                    <StoneSlab size="sm" accent="#9ca3af" onClick={() => setScreen('title')}>Back</StoneSlab>
-                </div>
-            )}
-
-            {screen === 'kingdoms' && (
-                <div className="relative flex max-h-full w-full justify-center overflow-y-auto px-4 py-3">
-                    <KingdomMap onPledge={(e) => progress.chooseKingdom(e)} onBack={() => setScreen('title')} />
-                </div>
-            )}
-
+            {screen === 'kingdoms' && <KingdomOrbit mode="view" onClose={back} />}
             {screen === 'settings' && (
-                <div className="relative">
-                    <SettingsPanel onBack={() => setScreen('title')} />
+                <div className="absolute inset-0 z-20 flex items-center justify-center p-4" style={{ background: 'rgba(2,6,4,.72)' }} onPointerDown={(e) => e.target === e.currentTarget && back()}>
+                    <SettingsPanel onBack={back} />
                 </div>
             )}
-
-            <TapToBegin />
         </div>
     );
 }
 
-/**
- * Browsers that keep a page silent until it is touched: the home page asks for that first touch
- * (and takes it, so it does not also press a button), and the intro theme starts with it.
- * Where sound may start on its own (as on RUN), this never shows.
- */
-function TapToBegin() {
-    const blocked = useMusicBlocked();
-    const [gone, setGone] = useState(false);
-    if (!blocked || gone) return null;
+/** One choice: right-aligned words; chosen, a gold band behind them and the sword pointing at them. */
+function MenuRow({ item, on, delay, onHover }: { item: Item; on: boolean; delay: number; onHover: () => void }) {
     return (
-        <div
-            data-quiet
-            className="absolute inset-0 z-50 flex cursor-pointer flex-col items-center justify-end pb-[12vh]"
-            style={{ background: 'linear-gradient(180deg, rgba(10,6,24,0) 40%, rgba(10,6,24,.6) 100%)' }}
-            onPointerDown={(e) => {
-                e.stopPropagation();
-                setGone(true);
-            }}
-            onClick={(e) => e.stopPropagation()}
+        <button
+            type="button"
+            disabled={item.off}
+            onPointerEnter={onHover}
+            onFocus={onHover}
+            onClick={item.act}
+            className="relative flex w-full items-center justify-end py-[0.4vh] pr-3 disabled:opacity-40"
+            style={{ animation: `menu-in .5s ease-out ${0.15 + delay}s both` }}
         >
-            <div className="text-[min(22px,4.6vh)] font-bold tracking-[0.2em] text-white" style={{ fontFamily: SERIF, textShadow: '0 2px 12px rgba(0,0,0,.6)', animation: 'eid-breathe 2.2s ease-in-out infinite' }}>
-                TAP ANYWHERE TO BEGIN
-            </div>
-            <div className="mt-1 text-[12px] font-semibold tracking-wider text-white/70">🔊 Sound on for the full story</div>
-        </div>
+            <span className="pointer-events-none absolute inset-y-0 right-0 transition-[width,opacity] duration-200" style={{ width: on ? '100%' : '0%', opacity: on ? 1 : 0, background: 'linear-gradient(270deg, rgba(196,148,52,.75) 0%, rgba(196,148,52,.35) 45%, rgba(196,148,52,0) 100%)' }} />
+            {on && <img src="images/ui/cursor-sword.png" alt="" draggable={false} className="pointer-events-none absolute" style={{ right: 'calc(100% - 26px)', width: 32, height: 32, imageRendering: 'pixelated', transform: 'scaleX(-1) rotate(-45deg)', animation: 'sword-nudge 1s ease-in-out infinite' }} />}
+            <span className="relative text-[min(26px,4.6vh)] leading-none" style={{ color: item.warn ? '#ffb4a0' : on ? '#ffffff' : '#e6dcc2', textShadow: '0 2px 0 #000, 0 0 2px #000' }}>
+                {item.label}
+            </span>
+        </button>
+    );
+}
+
+/** A keyboard key, as a little white pack button. */
+function Key({ children }: { children: ReactNode }) {
+    return <span className="inline-flex items-center px-1 text-[11px] leading-none" style={{ ...slice('btn1-normal', 1.5), color: '#33284f', textShadow: 'none', minWidth: 22, justifyContent: 'center' }}>{children}</span>;
+}
+
+/** Sound on and off, as a stone pack button. */
+function SoundToggle() {
+    const s = useSettings();
+    const muted = !s.sound && !s.music;
+    return (
+        <StoneButton label={muted ? 'Sound off' : 'Sound on'} onPress={() => settings.set({ sound: muted, music: muted })}>
+            <PixelIcon name={muted ? 'mute' : 'sound'} />
+        </StoneButton>
     );
 }
