@@ -31,6 +31,8 @@ export function createWeather(app: Application, opts: {
     region: () => Region | null;
     /** Lightning struck near the player (the scene decides where and what it hits). */
     strike: () => void;
+    /** Under a roof of rock: no rain, fog or lightning reaches the player. */
+    indoors?: () => boolean;
 }): Weather {
     const root = new Container();
     app.stage.addChildAt(root, app.stage.getChildIndex(opts.above) + 1);
@@ -92,7 +94,8 @@ export function createWeather(app: Application, opts: {
             }
             const wet = kind === 'rain' || kind === 'storm';
             // With weather effects off, the sky still changes (fires still go out) but nothing is drawn.
-            root.visible = settings.get().weatherFx;
+            const inside = !!opts.indoors?.();
+            root.visible = settings.get().weatherFx && !inside;
             dim.clear();
             if (wet || kind === 'fog') dim.rect(0, 0, W, H).fill({ color: kind === 'fog' ? 0x9aa3b0 : 0x1a2840, alpha: (kind === 'storm' ? 0.28 : kind === 'rain' ? 0.18 : 0.12) * amount });
 
@@ -127,7 +130,7 @@ export function createWeather(app: Application, opts: {
 
             // Storms: lightning now and then.
             flashT = Math.max(0, flashT - dtMs);
-            if (kind === 'storm' && amount > 0.8) {
+            if (kind === 'storm' && amount > 0.8 && !inside) {
                 boltIn -= dtMs;
                 if (boltIn <= 0) {
                     boltIn = 5000 + Math.random() * 9000;

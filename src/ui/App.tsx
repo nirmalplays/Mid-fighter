@@ -6,7 +6,7 @@
  * portrait column that fills phones edge-to-edge and letterboxes on desktop.
  * Everything — canvas and DOM UI — lives inside it, so they always align.
  */
-import { lazy, Suspense, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useStore } from '../state/store.ts';
 import { music, sfx } from '../game/audio.ts';
 import LoadingScreen from './LoadingScreen.tsx';
@@ -16,9 +16,6 @@ import KingdomSelect from './KingdomSelect.tsx';
 import Hud from './Hud.tsx';
 import GameCanvas from '../game/GameCanvas.tsx';
 
-/** Dev only: the narration maker (?voicegen). Left out of production builds entirely. */
-const VoiceGen = import.meta.env.DEV ? lazy(() => import('./dev/VoiceGen.tsx')) : null;
-const voiceGenOpen = import.meta.env.DEV && new URLSearchParams(window.location.search).has('voicegen');
 
 export default function App() {
     // A soft tap for menu and panel buttons (gameplay buttons sit inside [data-quiet]).
@@ -37,15 +34,6 @@ export default function App() {
         if (phase === 'intro') music.set('cutscene');
         else if (phase !== 'playing') music.set('title');
     }, [phase]);
-    if (voiceGenOpen && VoiceGen) {
-        return (
-            <div id="app-frame" className="bg-surface text-white">
-                <Suspense fallback={null}>
-                    <VoiceGen />
-                </Suspense>
-            </div>
-        );
-    }
     return (
         <div id="app-frame" className="bg-surface text-white">
             {phase === 'loading' && <LoadingScreen />}

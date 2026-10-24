@@ -5,13 +5,14 @@
  *   Drag anywhere to swing the whole system round (and up and down to tilt it); it keeps turning
  *   by itself, slowly. Hover a land and it lights up with its element (embers, wind, bubbles,
  *   stone dust) and shows its lore; click it and the camera swings to it and closes in, with its
- *   full card and a way in. Entering flies into the land: you pledge, its camp becomes home, and
- *   Elder Theron welcomes you.
+ *   full card and a way in. The story always begins in Pyraxis: the other lands are sealed by the
+ *   Abyssal Maelstrom until their turn comes. Entering flies into the land and Land 1 begins.
  * `KingdomOrbit mode="view"` is the same sky from the home screen, to read about the kingdoms.
  * No sound effects here: only the music.
  */
 import { memo, useEffect, useRef, useState } from 'react';
 import { progress } from '../game/progress.ts';
+import { quest } from '../game/story/quest.ts';
 import { ELEMENTS, KINGDOMS, nextKingdom, type Element } from '../game/eidolon.ts';
 import { store } from '../state/store.ts';
 import { LAND } from './kingdom/Islands.tsx';
@@ -84,14 +85,13 @@ export function KingdomOrbit({ mode, onClose }: { mode: Mode; onClose?: () => vo
     const pledge = (e: Element) => {
         progress.chooseKingdom(e);
         progress.markIntroSeen();
-        const first = progress.chapter();
-        store.patch({
-            phase: 'playing',
-            storyPopup: { speaker: 'Elder Theron', title: `Welcome to ${KINGDOMS[e].name}`, lines: [`The essence of ${KINGDOMS[e].name} flows into you: ${KINGDOMS[e].power}. This camp is your home now.`, ...first.say, `Your first task: ${first.task}.`] },
-        });
+        store.patch({ phase: 'playing' });
+        quest.begin();
     };
+    /** The story begins in Pyraxis; the other lands wait behind the Maelstrom. */
+    const sealed = (e: Element) => mode === 'pledge' && e !== 'fire';
     const enter = (e: Element) => {
-        if (mode !== 'pledge' || state.current.entering) return;
+        if (mode !== 'pledge' || state.current.entering || sealed(e)) return;
         setEntering(e);
         window.setTimeout(() => pledge(e), 1200);
     };
@@ -334,10 +334,10 @@ export function KingdomOrbit({ mode, onClose }: { mode: Mode; onClose?: () => vo
             {/* title */}
             <div className="pointer-events-none absolute inset-x-0 top-[3vh] text-center" style={{ zIndex: 500, opacity: entering || locked ? 0 : 1, transition: 'opacity .4s' }}>
                 <h2 className="text-[min(48px,8vh)] leading-none text-[#ffd98a]" style={{ fontFamily: 'var(--font-relic)', textShadow: '0 3px 0 #1b0f08, 0 0 18px rgba(255,170,80,.45)' }}>
-                    {mode === 'pledge' ? 'Choose your kingdom' : 'The Kingdoms of Eidolon'}
+                    {mode === 'pledge' ? 'Your journey begins' : 'The Shattered Lands'}
                 </h2>
                 <p className="text-[min(12px,2.4vh)] font-semibold tracking-[0.2em] text-[#c9b8e8]" style={{ fontFamily: CINZEL }}>
-                    {locked ? (mode === 'pledge' ? `Tap ${KINGDOMS[locked].name} again, or Enter, to make it yours` : 'Drag to look at another') : 'Drag to turn the world · tap a land to look closer'}
+                    {locked ? (mode === 'pledge' ? (sealed(locked) ? 'Sealed by the Abyssal Maelstrom' : `Tap ${KINGDOMS[locked].name} again, or Enter, to begin`) : 'Drag to look at another') : mode === 'pledge' ? 'The ash-caverns of Pyraxis call · tap a land to look closer' : 'Drag to turn the world · tap a land to look closer'}
                 </p>
             </div>
 
@@ -372,7 +372,7 @@ export function KingdomOrbit({ mode, onClose }: { mode: Mode; onClose?: () => vo
                     <p className="text-[min(13px,3vh)] font-medium leading-snug text-white/85">{k.theme}.</p>
                     {locked && (
                         <>
-                            <p className="text-[min(12px,2.8vh)] leading-snug text-white/70">Ruled now by {k.warden.name}, {k.warden.title}, who holds the seal to {KINGDOMS[nextKingdom(card)].name}.</p>
+                            <p className="text-[min(12px,2.8vh)] leading-snug text-white/70">{card === 'fire' ? 'Ignis the Molten Scourge woke in the ash-caverns and swallowed the Memory Pillar, and Lyra with it. Your story begins here.' : sealed(card) ? `Adrift beyond the Abyssal Maelstrom. Its bridge opens only when ${KINGDOMS[card === 'air' ? 'fire' : card === 'water' ? 'air' : 'water'].name} is pacified.` : `Ruled now by ${k.warden.name}, ${k.warden.title}, who holds the seal to ${KINGDOMS[nextKingdom(card)].name}.`}</p>
                             <div className="rounded-lg px-2.5 py-1.5" style={{ background: 'rgba(255,255,255,.06)' }}>
                                 <div className="text-[10px] font-black uppercase tracking-[0.18em]" style={{ color: k.css }}>Passive</div>
                                 <div className="text-[min(13px,3vh)] font-semibold">{k.power}</div>
@@ -382,7 +382,7 @@ export function KingdomOrbit({ mode, onClose }: { mode: Mode; onClose?: () => vo
                                 <div className="text-[min(13px,3vh)] font-semibold">{k.skill.blurb}</div>
                             </div>
                             <div className="mt-1 flex gap-2">
-                                {mode === 'pledge' && (
+                                {mode === 'pledge' && !sealed(card) && (
                                     <PxButton variant="wood" className="flex-1 py-1.5" onClick={() => enter(card)}>Enter {k.name}</PxButton>
                                 )}
                                 <PxButton variant="stone" className="py-1.5" onClick={() => setLocked(null)}>Back</PxButton>

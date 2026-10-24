@@ -89,6 +89,9 @@ export interface SaveSystem<S extends { version: number }> {
     importJson(jsonStr: string): Promise<boolean>;
     /** Expose window.<name>.export()/.import(json) console helpers for QA. */
     exposeConsoleHelpers(name: string): void;
+    /** The storage key in use, and a switch to another (a save slot); load() reads from it after. */
+    getKey(): string;
+    setKey(k: string): void;
 }
 
 export function createSaveSystem<S extends { version: number }>(
@@ -105,6 +108,7 @@ export function createSaveSystem<S extends { version: number }>(
 
     let _dirty = false;
     let _timer = 0;
+    let currentKey = key;
 
     const sys: SaveSystem<S> = {
         data: null,
@@ -116,7 +120,7 @@ export function createSaveSystem<S extends { version: number }>(
         async load(): Promise<S> {
             const def = defaultSave();
             try {
-                const raw = await RundotGameAPI.appStorage.getItem(key);
+                const raw = await RundotGameAPI.appStorage.getItem(currentKey);
                 if (raw === null || raw === undefined) {
                     sys.data = def; // first launch
                     return sys.data;
@@ -170,7 +174,7 @@ export function createSaveSystem<S extends { version: number }>(
         async flush(): Promise<void> {
             if (!sys.data) return;
             try {
-                await RundotGameAPI.appStorage.setItem(key, JSON.stringify(sys.data));
+                await RundotGameAPI.appStorage.setItem(currentKey, JSON.stringify(sys.data));
             } catch { /* storage errors must never crash the game */ }
         },
 
@@ -207,6 +211,14 @@ export function createSaveSystem<S extends { version: number }>(
             } catch { /* mock mode without lifecycles */ }
         },
 
+        getKey(): string {
+            return currentKey;
+        },
+        setKey(k: string): void {
+            currentKey = k;
+            _dirty = false;
+        },
+
         exportJson(): string {
             return JSON.stringify(sys.data, null, 2);
         },
@@ -222,7 +234,7 @@ export function createSaveSystem<S extends { version: number }>(
             try { parsed = JSON.parse(jsonStr); } catch { return false; }
             if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
             try {
-                await RundotGameAPI.appStorage.setItem(key, JSON.stringify(parsed));
+                await RundotGameAPI.appStorage.setItem(currentKey, JSON.stringify(parsed));
                 return true;
             } catch { return false; }
         },

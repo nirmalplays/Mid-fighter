@@ -5,7 +5,8 @@
  * a rule beneath, then what it does and the keys. Up / Down / Enter / Escape, or the pointer.
  * The first time in a session the title is forged at the centre first (PixelLogo's intro), then
  * settles to the left and the list comes in. Screens:
- *   title    - Continue (only with a save), New Game (the intro cutscene, then a kingdom), Co-op,
+ *   title    - Continue (the last journey), New Game (name and dress a hero in a new save slot),
+ *              Load Journey (every save slot: load, rename, delete), Co-op,
  *              Kingdoms (the orrery, to read about the four lands), Legends, Settings
  *   online   - Quick Play (the public room), Create a Room (share its code), Join a Room
  *   join     - type a friend's room code
@@ -25,9 +26,11 @@ import { TopScores } from './Scores.tsx';
 import { sfx, useMusicBlocked } from '../game/audio.ts';
 import { SettingsPanel } from './Celestial.tsx';
 import { KingdomOrbit } from './KingdomSelect.tsx';
+import { CharacterCreator, JourneyList } from './CharacterCreator.tsx';
+import { slots } from '../game/slots.ts';
 
 
-type Screen = 'title' | 'online' | 'join' | 'scores' | 'kingdoms' | 'settings';
+type Screen = 'title' | 'online' | 'join' | 'scores' | 'kingdoms' | 'settings' | 'create' | 'journeys';
 /** A choice in the list: its words, a line on what it does, and whether it is shown greyed or as a warning. */
 type Item = { label: string; hint?: string; act: () => void; off?: boolean; warn?: boolean };
 /** The title is forged once a session; after that the menu opens straight away. */
@@ -48,21 +51,16 @@ export default function MainMenu() {
     const roomCode = useStore((s) => s.roomCode);
     const online = useStore((s) => s.online);
     const kingdom = useStore((s) => s.kingdom);
+    useStore((s) => s.slotsVersion);
     const played = (progress.saved?.playSeconds ?? 0) > 5;
     /** A save worth continuing: some play, or a kingdom already chosen. */
     const hasSave = played || !!kingdom;
-    const [confirmNew, setConfirmNew] = useState(false);
-    /** New Game: wipe any save (after a second tap), then the intro and the choice of kingdom. */
+    const curSlot = slots.current();
+    const journeys = slots.list().length;
+    /** New Game: name and dress a hero in a new save slot (the other journeys stay), then the opening. */
     const newGame = () => {
-        if (hasSave && !confirmNew) {
-            setConfirmNew(true);
-            window.setTimeout(() => setConfirmNew(false), 4000);
-            return;
-        }
-        setConfirmNew(false);
         net.leave();
-        progress.reset();
-        store.patch({ phase: 'intro' });
+        setScreen('create');
     };
     const inRoom = netStatus === 'online';
 
@@ -152,8 +150,9 @@ export default function MainMenu() {
                 : screen === 'scores'
                     ? [{ label: 'Back', act: back }]
                     : [
-                        ...(hasSave ? [{ label: 'Continue', hint: kingdom ? `${KINGDOMS[kingdom].name} · ${playedLabel(progress.saved?.playSeconds ?? 0, progress.saved?.kills ?? 0)}` : undefined, act: () => { net.leave(); start(); } }] : []),
-                        { label: hasSave ? (confirmNew ? 'Erase and begin anew?' : 'New Game') : 'Begin', hint: confirmNew ? 'Select again to erase your progress' : 'The story from the start', act: newGame, warn: confirmNew },
+                        ...(hasSave ? [{ label: 'Continue', hint: `${curSlot ? `${curSlot.name} · ` : ''}${progress.saved?.hero?.name || (kingdom ? KINGDOMS[kingdom].name : '')} · ${playedLabel(progress.saved?.playSeconds ?? 0, progress.saved?.kills ?? 0)}`, act: () => { net.leave(); start(); } }] : []),
+                        { label: hasSave || journeys ? 'New Game' : 'Begin', hint: 'A new hero, a new journey (your saves stay)', act: newGame },
+                        ...(journeys ? [{ label: 'Load Journey', hint: `${journeys} saved ${journeys === 1 ? 'journey' : 'journeys'}`, act: () => setScreen('journeys') }] : []),
                         { label: 'Co-op', hint: 'Fight the waves beside friends', act: () => { setError(null); setScreen('online'); } },
                         { label: 'Kingdoms', hint: 'The four lands of Eidolon', act: () => setScreen('kingdoms') },
                         { label: 'Legends', hint: 'The best runs', act: () => setScreen('scores') },
@@ -164,7 +163,7 @@ export default function MainMenu() {
     const cur = Math.min(sel, items.length - 1);
     // Keys: up and down choose, Enter selects, Escape steps back.
     useEffect(() => {
-        if (!ready || screen === 'kingdoms' || screen === 'settings') return;
+        if (!ready || screen === 'kingdoms' || screen === 'settings' || screen === 'create' || screen === 'journeys') return;
         const on = (e: KeyboardEvent) => {
             if (e.target instanceof HTMLInputElement && e.key !== 'Enter' && e.key !== 'Escape') return;
             if (e.key === 'ArrowDown' || e.key === 's') setSel((n) => (Math.min(n, items.length - 1) + 1) % items.length);
@@ -190,11 +189,11 @@ export default function MainMenu() {
             <div className="pointer-events-none absolute inset-0 bg-black" style={{ opacity: intro === 'done' ? 0 : intro === 'wait' ? 1 : 0.55, transition: 'opacity 1.6s' }} />
 
             {/* the title: forged at the centre, then settles to the left */}
-            {intro !== 'wait' && (
+            {intro !== 'wait' && screen !== 'create' && screen !== 'journeys' && (
                 <div className="pointer-events-none absolute" style={{ ...(ready ? { left: '5vw', top: '56%', width: 'min(46vw, 760px, 120vh)', transform: 'translate(0, -50%)' } : { left: '50%', top: '46%', width: 'min(78vw, 1100px, 170vh)', transform: 'translate(-50%, -50%)' }), transition: 'all 1.1s cubic-bezier(.65,0,.25,1)' }}>
                     <PixelLogo intro={intro === 'play'} onImpact={() => sfx('thunderclap', 0.55)} onDone={settle} />
                     <p className="-mt-[2.5vh] text-center text-[min(15px,2.6vh)] tracking-[0.42em] text-[#f3e3c0]" style={{ textShadow: '0 2px 0 #000', opacity: ready ? 0.9 : 0, transition: 'opacity .8s .6s' }}>
-                        THE FRACTURE OF EIDOLON
+                        THE WEAVER OF UNWRITTEN ASHES
                     </p>
                 </div>
             )}
@@ -205,7 +204,7 @@ export default function MainMenu() {
             )}
             {intro === 'play' && <span className="absolute bottom-[4vh] left-1/2 -translate-x-1/2 text-[12px] tracking-[0.3em] text-white/40">PRESS ANY KEY TO SKIP</span>}
 
-            {ready && (
+            {ready && screen !== 'create' && screen !== 'journeys' && (
                 <>
                     {/* sound, top right */}
                     <div className="absolute right-[2.5vw] top-[3vh] z-10" style={{ animation: 'menu-in .6s ease-out .3s both' }}>
@@ -255,6 +254,8 @@ export default function MainMenu() {
             )}
 
             {screen === 'kingdoms' && <KingdomOrbit mode="view" onClose={back} />}
+            {screen === 'create' && <CharacterCreator onBack={back} />}
+            {screen === 'journeys' && <JourneyList onBack={back} onLoaded={() => { net.leave(); start(); }} />}
             {screen === 'settings' && (
                 <div className="absolute inset-0 z-20 flex items-center justify-center p-4" style={{ background: 'rgba(2,6,4,.72)' }} onPointerDown={(e) => e.target === e.currentTarget && back()}>
                     <SettingsPanel onBack={back} />

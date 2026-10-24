@@ -9,12 +9,12 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { commands } from '../game/commands.ts';
 import { progress } from '../game/progress.ts';
 import {
-    BACKPACK_TOP, backpackCost, backpackSlots, FOOD, HOTBAR_SLOTS, ITEM_IDS, ITEMS, repairCost, slotsUsed, stackOf, TOOL_ITEMS, WEAPONS,
+    BACKPACK_TOP, backpackCost, backpackSlots, FOOD, HOTBAR_SLOTS, ITEM_IDS, ITEMS, slotsUsed, stackOf, WEAPONS,
     type ItemId,
 } from '../game/survival.ts';
 import { Ico, type IconName } from './icons.tsx';
 import { store, useStore } from '../state/store.ts';
-import { BROWN, BROWN_DARK, Btn, Cost, Icon, INK, press, ROW, Wear } from './hudKit.tsx';
+import { BROWN, BROWN_DARK, Btn, Cost, Icon, INK, press, ROW } from './hudKit.tsx';
 
 /** The gold of the bag's frame and lettering. */
 export const GOLD = '#d9a441';
@@ -56,7 +56,6 @@ function Slot({ id, n, on, onPick }: { id?: ItemId; n?: number; on?: boolean; on
         >
             {id && <Icon id={id} size={40} />}
             {id && n !== undefined && n > 1 && <span className="absolute bottom-0.5 right-1 text-[12px] font-black tabular-nums text-white" style={{ textShadow: '0 1px 2px #000, 0 0 4px #000' }}>x{n}</span>}
-            {id && ITEMS[id].tool && <Wear id={id} />}
         </button>
     );
 }
@@ -185,7 +184,6 @@ export function InventoryGrid() {
                         <div className="text-center text-[12px] font-semibold leading-snug" style={{ color: CREAM }}>
                             {ITEMS[sel].blurb}.
                             {food && <span className="mt-1 block">{[food.hunger ? `Hunger +${food.hunger}` : '', food.thirst ? `Thirst +${food.thirst}` : '', food.heal ? `Health +${food.heal}` : ''].filter(Boolean).join(' · ')}</span>}
-                            {ITEMS[sel].tool && <span className="mt-1 block">Wear {progress.durability(sel).now}/{progress.durability(sel).max}</span>}
                             <span className="mt-1 block text-white/60">You carry {bag[sel]}</span>
                         </div>
                         <div className="mt-auto flex flex-col items-center gap-1.5">
@@ -213,30 +211,12 @@ export function InventoryGrid() {
     );
 }
 
-/** Mending tools and weapons (at a workbench: in a liberated camp or a house), and upgrading the backpack. */
-export function RepairList({ bench }: { bench: boolean }) {
+/** At a workbench (in a liberated camp or a house): upgrading the backpack. */
+export function RepairList(_: { bench: boolean }) {
     const bag = useStore((s) => s.bag);
-    const weapon = useStore((s) => s.gear.weapon);
-    useStore((s) => s.durability);
     const backpack = useStore((s) => s.backpack);
-    const owned = TOOL_ITEMS.filter((k) => bag[k] > 0);
     return (
         <div className="flex flex-col gap-1.5">
-            <div className="text-[12px] font-black" style={{ color: BROWN_DARK }}>Repairs {bench ? '' : '· at a workbench (a liberated camp or a house)'}</div>
-            {owned.map((k) => {
-                const d = progress.durability(k);
-                const cost = repairCost(k, weapon);
-                return (
-                    <div key={k} className="flex items-center gap-2 rounded-xl px-2 py-0.5" style={ROW}>
-                        <div className="relative"><Icon id={k} size={30} /></div>
-                        <div className="flex flex-1 flex-col gap-0.5 leading-tight">
-                            <div className="text-[12px] font-black">{k === 'tool_sword' ? WEAPONS[weapon].name : ITEMS[k].name} · {d.now}/{d.max}{d.now <= 0 ? ' · BROKEN' : ''}</div>
-                            <Cost cost={cost} bag={bag} />
-                        </div>
-                        <Btn disabled={!bench || d.now >= d.max || !progress.has(cost)} onPress={() => progress.repair(k)}>Repair</Btn>
-                    </div>
-                );
-            })}
             <div className="flex items-center gap-2 rounded-xl px-2 py-1" style={ROW}>
                 <Ico name="bag" size={24} color="#7d4636" />
                 <div className="flex flex-1 flex-col gap-0.5 leading-tight">

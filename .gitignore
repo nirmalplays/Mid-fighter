@@ -10,3 +10,7 @@ Thumbs.db
 rundot/skills/
 .vite/
 rundot/docs/
+
+# Python cache
+__pycache__/
+*.pyc

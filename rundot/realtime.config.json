@@ -11,7 +11,7 @@
         "autoPersist": false,
         "idleTimeout": 120,
         "metadata": {
-          "waveEverySec": 20,
+          "waveEverySec": 90,
           "firstWaveSec": 20
         }
       }

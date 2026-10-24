@@ -16,6 +16,7 @@ import { KINDS } from '../../shared/sim.ts';
 import { FACINGS } from './character.ts';
 import { TILE_DX, TILE_DY } from './constants.ts';
 import { ENEMY_CELL, ENEMY_FEET, ENEMY_SHEETS } from './enemyAtlas.ts';
+import { DEMON_CELL, DEMON_FEET, DEMON_HEIGHT, DEMON_SHEETS } from './demonAtlas.ts';
 import { bossInfo, MIMIC_CODE } from '../eidolon.ts';
 
 /** Drawn at 2x for sharpness (like the player); this brings enemies to the player's size. */
@@ -34,9 +35,20 @@ const LOOK: Record<string, { size: number; barY: number; hop: number; moveFrameM
     brute: { size: 2.1, barY: 160, hop: 0, moveFrameMs: 190, base: 'goblin', tint: 0xc0906a },
     wraith: { size: 1.3, barY: 108, hop: 0, moveFrameMs: 100, base: 'skeleton', tint: 0x9fe8ff, alpha: 0.55 },
     bomber: { size: 1.6, barY: 60, hop: 9, moveFrameMs: 100, base: 'slime', tint: 0xffd0b0, gear: 'fuse', art: 2 },
+    hollowed: { size: 1.3, barY: 100, hop: 0, moveFrameMs: 170, base: 'goblin', tint: 0xa8a29e, alpha: 0.9 },
 };
+// The story's bosses and demons have art of their own (tools/build-demons.py), sized so a guardian
+// stands about twice the hero's height once the boss scale is applied.
+const DEMON_LORDS = new Set(['d_ignis', 'd_vael', 'd_hydros', 'd_reliquary', 'd_malakor']);
+for (const [kind, h] of Object.entries(DEMON_HEIGHT)) {
+    // (a land's demon and Malakor are drawn bigger by their rank already)
+    const size = (DEMON_LORDS.has(kind) ? 160 : 200) / h;
+    LOOK[kind] = { size, barY: h * 0.5 * size + 8, hop: 0, moveFrameMs: 120 };
+}
+const isDemon = (kind: string) => kind in DEMON_HEIGHT;
 /** The art a kind is drawn with (the newer foes borrow an older one's). */
 const baseOf = (kind: string): string => LOOK[kind]?.base ?? kind;
+const feetOf = (art: string): [number, number] => ENEMY_FEET[art] ?? DEMON_FEET[art] ?? [90, 168];
 
 /** The extras a dressed-up foe wears, in its sprite's own pixels (feet at 0, 0; they flip and scale with it). */
 function gearFor(g: Gear): { gfx: Graphics; glow: Graphics } {
@@ -62,7 +74,7 @@ function gearFor(g: Gear): { gfx: Graphics; glow: Graphics } {
 }
 /** The art id of a kind in a colour tier: `goblin`, `goblin_1`, `goblin_2` (see tools/build-enemies.py). */
 const artOf = (kind: string, tier: number): string => (tier > 0 ? `${kind}_${tier}` : kind);
-const KIND_LIST = [...new Set(Object.keys(LOOK).map(baseOf))];
+const KIND_LIST = [...new Set(Object.keys(LOOK).filter((k) => !isDemon(k)).map(baseOf))];
 const DIE_FRAME_MS = 110;
 const DYING_FADE_MS = 450;
 /** A monster fades in and pops up over this long when it first appears. */
@@ -136,15 +148,19 @@ export function createMonsterView(opts: {
     const frames = new Map<string, Texture[][]>();
     const ready = new Set<string>();
     let destroyed = false;
-    const load = (art: string) =>
-        Promise.all((['move', 'attack', 'die'] as const).map(async (anim) => {
+    const loading = new Set<string>();
+    const load = (art: string) => {
+        loading.add(art);
+        const cell = isDemon(art) ? DEMON_CELL : ENEMY_CELL;
+        return Promise.all((['move', 'attack', 'die'] as const).map(async (anim) => {
             const key = `${art}-${anim}`;
             const sheet = await Assets.load<Texture>({ alias: `enemy:${key}`, src: `images/world/enemy/${key}.png` });
-            const cols = ENEMY_SHEETS[key];
+            const cols = ENEMY_SHEETS[key] ?? DEMON_SHEETS[key];
             frames.set(key, Array.from({ length: 5 }, (_, row) =>
                 Array.from({ length: cols }, (__, col) =>
-                    new Texture({ source: sheet.source, frame: new Rectangle(col * ENEMY_CELL, row * ENEMY_CELL, ENEMY_CELL, ENEMY_CELL) }))));
+                    new Texture({ source: sheet.source, frame: new Rectangle(col * cell, row * cell, cell, cell) }))));
         })).then(() => { if (!destroyed) ready.add(art); }).catch(() => { /* this one just is not drawn */ });
+    };
     // The first colour of every kind now; the tougher colours right after (a monster of a colour that is not in yet wears the first).
     void Promise.all(KIND_LIST.map((kind) => load(kind))).then(() => {
         for (const tier of [1, 2]) for (const kind of KIND_LIST) void load(artOf(kind, tier));
@@ -156,13 +172,14 @@ export function createMonsterView(opts: {
         const look = LOOK[m.kind];
         const base = baseOf(m.kind);
         // (a few foes always wear one colour of their art: the bomber is the red slime)
-        const want = artOf(base, look.art ?? m.tier);
+        const want = isDemon(base) ? base : artOf(base, look.art ?? m.tier);
         const art = ready.has(want) ? want : base;
         const mimic = m.boss === MIMIC_CODE;
         const sprite = new Sprite(mimic ? Assets.get<Texture>('chest') : frames.get(`${art}-move`)![0][0]);
-        const [fx, fy] = ENEMY_FEET[art];
+        const [fx, fy] = feetOf(art);
+        const cell = isDemon(art) ? DEMON_CELL : ENEMY_CELL;
         if (mimic) sprite.anchor.set(0.5, 0.85);
-        else sprite.anchor.set(fx / ENEMY_CELL, fy / ENEMY_CELL);
+        else sprite.anchor.set(fx / cell, fy / cell);
         const info = m.boss ? bossInfo(m.boss) : null;
         const big = mimic ? 1 : info ? (info.rank === 'malakor' ? 2.8 : info.rank === 'warden' ? 2.2 : 1.5) : 1;
         sprite.scale.set(mimic ? 0.9 : SCALE * look.size * big);
@@ -193,7 +210,11 @@ export function createMonsterView(opts: {
             const p = opts.player();
 
             for (const m of list) {
-                if (!ready.has(baseOf(m.kind))) continue;
+                if (!ready.has(baseOf(m.kind))) {
+                    // A boss's own art loads the first time it is met.
+                    if (isDemon(m.kind) && !loading.has(m.kind)) void load(m.kind);
+                    continue;
+                }
                 seen.add(m.id);
                 let s = shown.get(m.id);
                 if (!s) {

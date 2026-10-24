@@ -115,6 +115,7 @@ export function StatusLine() {
     const region = useStore((s) => s.region);
     const weather = useStore((s) => s.weather);
     const sky = useStore((s) => s.sky);
+    const indoors = useStore((s) => s.indoors);
     const mm = Math.floor(sky.left / 60);
     const ss = String(sky.left % 60).padStart(2, '0');
     const night = sky.phase === 'night';
@@ -124,11 +125,18 @@ export function StatusLine() {
             {region && region !== 'citadel' ? <Sigil el={region} size={16} /> : <Ico name="vortex" size={14} color="#c084fc" />}
             <span>{region === 'citadel' ? 'Void Citadel' : region ? KINGDOMS[region].name : ''}</span>
             <span className="text-white/40">·</span>
-            <Ico name={WEATHER[weather][0]} size={13} color="#e2e8f0" />
-            <span>{WEATHER[weather][1]}</span>
-            <span className="text-white/40">·</span>
-            <Ico name={SKY[sky.phase]} size={13} color={night ? '#a5b4fc' : '#fde68a'} />
-            <span style={{ color: night ? '#c7d2fe' : undefined }}>{sky.phase[0].toUpperCase() + sky.phase.slice(1)} {mm}:{ss}</span>
+            {indoors ? (
+                // Underground: where you are instead of the sky.
+                <span style={{ color: '#fde68a' }}>{indoors}</span>
+            ) : (
+                <>
+                    <Ico name={WEATHER[weather][0]} size={13} color="#e2e8f0" />
+                    <span>{WEATHER[weather][1]}</span>
+                    <span className="text-white/40">·</span>
+                    <Ico name={SKY[sky.phase]} size={13} color={night ? '#a5b4fc' : '#fde68a'} />
+                    <span style={{ color: night ? '#c7d2fe' : undefined }}>{sky.phase[0].toUpperCase() + sky.phase.slice(1)} {mm}:{ss}</span>
+                </>
+            )}
         </div>
     );
 }
@@ -187,7 +195,11 @@ export function QuestTracker() {
     const obj = useStore((s) => s.objective);
     const target = useStore((s) => s.target);
     const kingdom = useStore((s) => s.kingdom);
-    const s = useStore((x) => x);
+    // Only the few numbers it shows (a whole-state subscription re-rendered it on every change).
+    const lyra = useStore((x) => x.saga.lyra);
+    const pressure = useStore((x) => x.saga.pressure);
+    const nightIn = useStore((x) => x.saga.nightIn);
+    const s = { saga: { lyra, pressure, nightIn } };
     const compact = useCompact();
     if (!obj || !kingdom) return null;
     const f = obj.need > 0 ? Math.min(1, obj.have / obj.need) : 0;
@@ -199,18 +211,51 @@ export function QuestTracker() {
             style={{ top: compact ? 130 : 176, maxWidth: compact ? 250 : undefined, background: 'linear-gradient(90deg, rgba(8,6,14,.62), rgba(8,6,14,.25) 80%, rgba(8,6,14,0))', textShadow: SHADOW }}
             aria-label={`Objective: ${obj.task}`}
         >
+            {obj.act && <span className="text-[10px] font-black uppercase tracking-[0.18em] text-[#e0a948]">Act {roman(obj.act)} · {obj.land ?? 'Pyraxis'}</span>}
             <span className="flex items-center gap-1.5 text-[20px] leading-none" style={{ fontFamily: 'var(--font-relic)', color: '#ffd98a' }}>
                 <Ico name="scroll" size={16} color="#ffd98a" />
                 {obj.title}
             </span>
             <span className="text-[14px] font-black leading-snug text-white">{obj.task}</span>
-            {!compact && <span className="text-[11px] font-semibold leading-snug text-[#d8e4f0]">{howTo(s)}</span>}
+            {!compact && <span className="text-[11px] font-semibold leading-snug text-[#d8e4f0]">{obj.how ?? howTo(store.get())}</span>}
             {obj.need > 1 && (
                 <span className="mt-0.5 flex w-full items-center gap-2">
                     <span className="relative h-[5px] flex-1 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,.18)' }}>
                         <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${f * 100}%`, background: 'linear-gradient(90deg, #ffd98a, #f59e0b)' }} />
                     </span>
                     <span className="text-[11px] font-black tabular-nums text-[#ffd98a]">{Math.min(obj.have, obj.need)}/{obj.need}</span>
+                </span>
+            )}
+            {s.saga.lyra !== null && (
+                <span className="mt-1 flex w-full items-center gap-1.5" title={`What Lyra still remembers: ${s.saga.lyra}%`}>
+                    <Ico name="crystal" size={13} color={s.saga.lyra < 25 ? '#f87171' : '#7dd3fc'} />
+                    <span className="text-[11px] font-black text-[#bae6fd]">Lyra</span>
+                    <span className="relative h-[6px] flex-1 overflow-hidden" style={{ background: 'rgba(0,0,0,.55)', outline: '1px solid #1e3a5f' }}>
+                        <span className="absolute inset-y-0 left-0" style={{ width: `${s.saga.lyra}%`, background: s.saga.lyra < 25 ? '#f87171' : 'linear-gradient(90deg, #38bdf8, #bae6fd)' }} />
+                    </span>
+                    <span className="text-[11px] font-black tabular-nums text-[#bae6fd]">{s.saga.lyra}%</span>
+                </span>
+            )}
+            {s.saga.pressure !== null && (
+                <span className="flex w-full items-center gap-1.5" title={`The Mist pressing into her mind: ${s.saga.pressure}%`}>
+                    <Ico name="thorn" size={13} color={s.saga.pressure > 70 ? '#f87171' : '#c4b5fd'} />
+                    <span className="text-[11px] font-black text-[#ddd6fe]">Mist</span>
+                    <span className="relative h-[6px] flex-1 overflow-hidden" style={{ background: 'rgba(0,0,0,.55)', outline: '1px solid #3b2a5f' }}>
+                        <span className="absolute inset-y-0 left-0" style={{ width: `${s.saga.pressure}%`, background: s.saga.pressure > 70 ? '#f87171' : 'linear-gradient(90deg, #a78bfa, #ddd6fe)' }} />
+                    </span>
+                    <span className="text-[11px] font-black tabular-nums text-[#ddd6fe]">{s.saga.pressure}%</span>
+                </span>
+            )}
+            {!compact && s.saga.nightIn !== null && s.saga.nightIn <= 10 && (
+                <span className="text-[11px] font-semibold text-[#fca5a5]">{s.saga.nightIn === 0 ? 'Core-Bleed Siege at the Sanctuary!' : `Core-Bleed Siege in ${s.saga.nightIn} min`}</span>
+            )}
+            {!compact && obj.sides && obj.sides.length > 0 && (
+                <span className="mt-1 flex flex-col gap-0.5">
+                    {obj.sides.slice(0, 2).map((x) => (
+                        <span key={x.title} className="text-[11px] font-semibold leading-snug text-[#c8d4e0]">
+                            <span className="text-[#e0a948]">Side · </span>{x.task}
+                        </span>
+                    ))}
                 </span>
             )}
             {target && (
@@ -313,29 +358,44 @@ export function WavePlaque() {
     const fighting = useStore((s) => s.fighting);
     const shared = useStore((s) => s.sharedMonsters);
     const camp = useStore((s) => s.wavesCalm);
+    const held = useStore((s) => s.wavesHeld);
+    const indoors = useStore((s) => s.indoors);
     const compact = useCompact();
+    // Waves come in onslaughts of five: where in this one, and which onslaught.
+    const ONS = 5;
+    const inOns = ((Math.max(1, wave) - 1) % ONS) + 1;
+    const onsN = Math.ceil(Math.max(1, wave) / ONS);
     const time = `${Math.floor(next / 60)}:${String(next % 60).padStart(2, '0')}`;
     let title: string, line: string, ink: string, pulse = false;
-    if (camp && !(left && left > 0)) {
+    if (indoors && !fighting) {
+        title = 'Underground';
+        line = 'The waves cannot reach you here';
+        ink = '#c4b5fd';
+    } else if (held) {
+        title = 'Calm';
+        line = 'The waves have not found you yet';
+        ink = '#1e4a8a';
+    } else if (camp && !(left && left > 0)) {
         title = 'Sanctuary';
-        line = 'The waves wait outside camp';
+        line = fighting ? 'Safe here · the onslaught waits outside' : `Safe here · respite ${time}`;
         ink = '#1e4a8a';
     } else if (left !== null && left > 0) {
-        title = `Wave ${roman(wave)}`;
-        line = `${left} ${left === 1 ? 'foe' : 'foes'} remain · ${more > 0 ? `${more} more ${more === 1 ? 'wave' : 'waves'}` : 'last wave'}`;
+        title = `Wave ${inOns} of ${ONS}`;
+        line = `Onslaught ${roman(onsN)} · ${left} ${left === 1 ? 'foe' : 'foes'} remain`;
         ink = '#8a1c1c';
     } else if (fighting && (next > 0 || wave === 0)) {
-        title = `Wave ${roman(wave + 1)}`;
+        const nextIn = wave % ONS === 0 ? 1 : inOns + 1;
+        title = `Wave ${wave === 0 ? 1 : nextIn} of ${ONS}`;
         line = next > 0 ? `approaches in ${next}s` : 'approaches';
         ink = '#8a4a0c';
         pulse = next > 0 && next <= 5;
     } else if (fighting) {
-        title = `Wave ${roman(wave)}`;
-        line = 'finish the last of them';
+        title = more > 0 ? `Wave ${inOns} of ${ONS}` : 'Last stand';
+        line = more > 0 ? 'finish the last of them' : 'clear the field for a respite';
         ink = '#8a1c1c';
     } else {
         title = 'Respite';
-        line = `next onslaught in ${time}`;
+        line = `${time} · rest, build and brew`;
         ink = '#1d5a2e';
         pulse = next <= 10;
     }

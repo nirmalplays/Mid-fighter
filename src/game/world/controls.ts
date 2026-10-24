@@ -12,7 +12,7 @@ import { HOTBAR_SLOTS, ITEMS } from '../survival.ts';
 
 const KEYS: Record<string, GameCommand> = {
     ' ': { type: 'attack' }, j: { type: 'attack' }, e: { type: 'use' }, f: { type: 'interact' },
-    c: { type: 'sit' }, g: { type: 'dig' }, r: { type: 'fish' }, k: { type: 'dodge' }, l: { type: 'dodge' }, q: { type: 'skill' },
+    c: { type: 'sit' }, g: { type: 'dig' }, r: { type: 'hymn' }, k: { type: 'dodge' }, l: { type: 'dodge' }, q: { type: 'skill' },
     // Number keys 1-4 pick a hotbar slot. (Shift is held to sprint: see below.)
     ...Object.fromEntries(Array.from({ length: HOTBAR_SLOTS }, (_, i) => [String(i + 1), { type: 'slot', index: i } as GameCommand])),
 };

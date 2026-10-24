@@ -5,12 +5,32 @@
  */
 import { createSaveSystem, fillMissing } from './helpers/save.ts';
 import { CARRY_MAX, COOLDOWN_MAX, defaultSpellSave, SPELLS, type SpellSave } from './game/world/spells.ts';
-import { MAP_TILES } from './game/world/constants.ts';
+import { MAP_TILES, WORLD_TILES } from './game/world/constants.ts';
 import {
     BACKPACK_TOP, BUILDING_IDS, CARD_IDS, emptyBag, emptyBuildings, emptyStats, GEAR_TOP, HOTBAR_SLOTS, ITEM_IDS, ITEMS, maxDurability, TOOL_ITEMS,
     type Bag, type Buildings, type CardId, type ItemId, type Stats,
 } from './game/survival.ts';
 import { ELEMENTS, LANDMARKS, NPCS, type Element, type NpcId } from './game/eidolon.ts';
+import { ACC_COLORS, ACCS, DEFAULT_LOOK, HAIR_COLORS, HAIRS, OUTFITS, SKINS, type HeroLook } from './game/world/heroLook.ts';
+
+/** The story's quest line (Land 1: game/story/quest.ts). */
+export interface QuestSave {
+    /** The land the story is in (1-4), the main line's step in it, and each side quest's (absent = not open yet). */
+    land: number;
+    main: number;
+    side: Record<string, number>;
+    /** Story flags: abilities, people met, zones open, props broken ('broke:id'), steps done ('done:id'). */
+    flags: string[];
+    /** Counters (torches placed for a step: 'torches:rune_torch'). */
+    n: Record<string, number>;
+    /** Lyra's soul stability and her crystallization pressure, 0-100. */
+    lyra: number;
+    pressure: number;
+    /** The whole story is finished (or this save never had it: a campaign begun before it). */
+    done: boolean;
+    /** Defences set down in the Sanctuary (they stay): item and tile. */
+    placed: { id: ItemId; u: number; v: number }[];
+}
 
 export interface FighterSave {
     version: number;
@@ -67,6 +87,8 @@ export interface FighterSave {
     houses: Record<string, number>;
     /** People in camp spoken to (some give something the first time). */
     talked: NpcId[];
+    /** The caves, dungeons and ruins found so far (world/interiors.ts ids). */
+    found: string[];
     /** The four hotbar slots (item kinds held: tools, weapons, consumables) and which one is in hand. */
     hotbar: (ItemId | null)[];
     held: number;
@@ -80,13 +102,16 @@ export interface FighterSave {
     stats: Stats;
     /** Chests opened: chest id -> play seconds when opened (they refill after a while). */
     chests: Record<string, number>;
+    quest: QuestSave;
+    /** The hero this journey follows: the name the player chose and their look (world/heroLook.ts). */
+    hero: { name: string; look: HeroLook };
 }
 
 export function defaultSave(): FighterSave {
     return {
-        version: 4,
+        version: 5,
         scene: 'world',
-        world: { u: MAP_TILES / 2 + 0.5, v: MAP_TILES / 2 + 0.5, set: false },
+        world: { u: WORLD_TILES / 2 + 0.5, v: WORLD_TILES / 2 + 0.5, set: false },
         tool: 'none',
         hp: 6,
         playSeconds: 0,
@@ -114,6 +139,7 @@ export function defaultSave(): FighterSave {
         towers: [],
         houses: {},
         talked: [],
+        found: [],
         hotbar: ['tool_sword', 'tool_axe', 'tool_pickaxe', null],
         held: 0,
         durability: { tool_sword: 80, tool_axe: 150, tool_pickaxe: 150, tool_fishingpole: 100 },
@@ -121,12 +147,14 @@ export function defaultSave(): FighterSave {
         story: { step: 0, base: 0, introSeen: false },
         stats: emptyStats(),
         chests: {},
+        quest: { land: 1, main: 0, side: {}, flags: [], n: {}, lyra: 30, pressure: 0, done: false, placed: [] },
+        hero: { name: '', look: { ...DEFAULT_LOOK } },
     };
 }
 
 export const saveSystem = createSaveSystem<FighterSave>({
     key: 'bounce-lab-save',
-    version: 4,
+    version: 5,
     defaultSave,
     migrations: {
         // v2: the map grew from 256 to 384 tiles, so an old position no longer matches the land.
@@ -148,6 +176,10 @@ export const saveSystem = createSaveSystem<FighterSave>({
             s.bag = bag;
             s.hotbar = [...def.hotbar];
             s.durability = { ...def.durability, tool_shovel: 120, tool_hammer: 140 };
+        },
+        // v5: the story's quest line. A game already under way keeps its campaign (Land 1 counts as done).
+        5: (s, def) => {
+            s.quest = { ...def.quest, done: s.kingdom !== null && s.kingdom !== undefined };
         },
     },
     validate(s, def) {
@@ -224,6 +256,7 @@ export const saveSystem = createSaveSystem<FighterSave>({
         }
         if (!(Number.isInteger(s.backpack) && s.backpack >= 0)) s.backpack = 0;
         s.backpack = Math.min(BACKPACK_TOP, s.backpack);
+        s.found = Array.isArray(s.found) ? [...new Set((s.found as unknown[]).filter((x): x is string => typeof x === 'string'))] : [];
         s.talked = Array.isArray(s.talked) ? [...new Set((s.talked as unknown[]).filter((x): x is NpcId => typeof x === 'string' && x in NPCS))] : [];
         if (typeof s.story !== 'object' || !s.story) s.story = { ...def.story };
         fillMissing(s.story, def.story);
@@ -232,6 +265,40 @@ export const saveSystem = createSaveSystem<FighterSave>({
         s.story.introSeen = s.story.introSeen === true;
         if (typeof s.chests !== 'object' || !s.chests || Array.isArray(s.chests)) s.chests = {};
         if (s.world.u >= MAP_TILES || s.world.v >= MAP_TILES) s.world = { ...def.world };
+        // The hero's name and look.
+        if (typeof s.hero !== 'object' || !s.hero) s.hero = { name: '', look: { ...DEFAULT_LOOK } };
+        if (typeof s.hero.name !== 'string') s.hero.name = '';
+        s.hero.name = s.hero.name.slice(0, 20);
+        if (typeof s.hero.look !== 'object' || !s.hero.look) s.hero.look = { ...DEFAULT_LOOK };
+        fillMissing(s.hero.look, DEFAULT_LOOK);
+        const lk = s.hero.look;
+        const idx = (v: unknown, n: number) => (Number.isInteger(v) && (v as number) >= 0 && (v as number) < n ? (v as number) : 0);
+        lk.skin = idx(lk.skin, SKINS.length);
+        lk.outfit = idx(lk.outfit, OUTFITS.length);
+        lk.hairColor = idx(lk.hairColor, HAIR_COLORS.length);
+        lk.accColor = idx(lk.accColor, ACC_COLORS.length);
+        if (!HAIRS.includes(lk.hair)) lk.hair = DEFAULT_LOOK.hair;
+        if (!ACCS.includes(lk.acc)) lk.acc = DEFAULT_LOOK.acc;
+        // The quest line.
+        if (typeof s.quest !== 'object' || !s.quest) s.quest = { ...def.quest };
+        fillMissing(s.quest, def.quest);
+        const qs = s.quest;
+        if (!(Number.isInteger(qs.land) && qs.land >= 1 && qs.land <= 4)) qs.land = 1;
+        if (!(Number.isInteger(qs.main) && qs.main >= 0)) qs.main = 0;
+        qs.pressure = Number.isFinite(qs.pressure) ? Math.min(100, Math.max(0, qs.pressure)) : 0;
+        if (typeof qs.side !== 'object' || !qs.side || Array.isArray(qs.side)) qs.side = {};
+        for (const [k, v] of Object.entries(qs.side)) if (!(Number.isInteger(v) && (v as number) >= 0)) delete qs.side[k];
+        qs.flags = Array.isArray(qs.flags) ? [...new Set((qs.flags as unknown[]).filter((x): x is string => typeof x === 'string'))] : [];
+        if (typeof qs.n !== 'object' || !qs.n || Array.isArray(qs.n)) qs.n = {};
+        for (const [k, v] of Object.entries(qs.n)) if (!(typeof v === 'number' && v >= 0)) delete qs.n[k];
+        qs.lyra = Number.isFinite(qs.lyra) ? Math.min(100, Math.max(0, qs.lyra)) : 30;
+        qs.done = qs.done === true;
+        qs.placed = Array.isArray(qs.placed)
+            ? (qs.placed as unknown[]).filter((x): x is { id: ItemId; u: number; v: number } => {
+                const p = x as { id?: unknown; u?: unknown; v?: unknown };
+                return !!p && typeof p.id === 'string' && p.id in ITEMS && Number.isFinite(p.u) && Number.isFinite(p.v);
+            }).slice(0, 80)
+            : [];
         if (!(s.hp >= 0)) s.hp = 1;
     },
 });

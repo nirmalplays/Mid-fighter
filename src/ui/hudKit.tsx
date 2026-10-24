@@ -3,8 +3,9 @@
  * colours, an item icon with its wear bar, chunky buttons, cost chips, a modal panel and a
  * progress bar.
  */
+import { Ico, type IconName } from './icons.tsx';
 import type { ReactNode } from 'react';
-import { ITEMS, maxDurability, type Bag, type ItemId } from '../game/survival.ts';
+import { ITEMS, type Bag, type ItemId } from '../game/survival.ts';
 import { useStore } from '../state/store.ts';
 
 export const TAN = '#e9bf9a';
@@ -23,6 +24,9 @@ export const press = (fn: () => void) => (e: React.PointerEvent) => {
 };
 
 export function Icon({ id, size = 28, dim = false }: { id: ItemId; size?: number; dim?: boolean }) {
+    // Story items are drawn from the game's pixel icons ('ico:<icon>:<colour>').
+    const ico = ITEMS[id].icon.startsWith('ico:') ? ITEMS[id].icon.split(':') : null;
+    if (ico) return <Ico name={ico[1] as IconName} size={size} color={ico[2]} style={{ opacity: dim ? 0.4 : 1 }} />;
     return <img src={`images/${ITEMS[id].icon}`} width={size} height={size} draggable={false} alt="" style={{ objectFit: 'contain', opacity: dim ? 0.4 : 1, filter: 'drop-shadow(0 2px 0 rgba(43,15,28,.25))' }} />;
 }
 
@@ -79,17 +83,4 @@ export function Bar({ f, color, h = 10, children }: { f: number; color: string; 
     );
 }
 
-/** A wear bar under a tool's picture. */
-export function Wear({ id }: { id: ItemId }) {
-    const wear = useStore((s) => s.durability[id]);
-    const weapon = useStore((s) => s.gear.weapon);
-    if (!ITEMS[id].tool) return null;
-    const max = maxDurability(id, weapon);
-    const f = Math.max(0, Math.min(1, (wear ?? max) / max));
-    return (
-        <span className="absolute bottom-[2px] left-[3px] right-[3px] h-[4px] rounded-full" style={{ background: 'rgba(0,0,0,.6)' }}>
-            <span className="block h-full rounded-full" style={{ width: `${f * 100}%`, background: f <= 0 ? '#ef4444' : f < 0.25 ? '#f97316' : '#4ade80' }} />
-        </span>
-    );
-}
 

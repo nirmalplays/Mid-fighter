@@ -25,7 +25,13 @@ export type ItemId =
     | 'trap_spike' | 'barricade'
     | 'tool_sword' | 'tool_axe' | 'tool_pickaxe' | 'tool_fishingpole' | 'tool_shovel' | 'tool_hammer'
     | 'resin' | 'bark' | 'honey' | 'gale_blossom' | 'glowing_moss' | 'stalker_eye' | 'gland' | 'crystal_dust'
-    | 'potion_night' | 'oil_fire' | 'oil_ice';
+    | 'potion_night' | 'oil_fire' | 'oil_ice'
+    // Land 1 (Pyraxis): the Archaeologist's kit, the draughts that hold Lyra, the Sanctuary's engines.
+    | 'rune_torch' | 'cinder_lotus' | 'stasis_draught' | 'filter_draught' | 'solstice_tablet' | 'ballista' | 'flame_turret' | 'catapult'
+    // Lands 2-4 and the Archaeologist's systems: materials, draughts, wedges, conduits and the newer engines.
+    | 'lichen' | 'copper_ore' | 'storm_quartz' | 'gale_silk' | 'thunder_thistle' | 'grounding_draught' | 'beryl_spring'
+    | 'shark_tooth' | 'kelp_fiber' | 'thermal_salts' | 'lure_lantern' | 'crampons' | 'iron_boots'
+    | 'resonant_wedge' | 'ley_conduit' | 'copper_rod' | 'harpoon_launcher' | 'tesla_coil' | 'brazier_beacon' | 'steam_mortar';
 
 export interface ItemDef {
     name: string;
@@ -92,6 +98,34 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     potion_night: { name: 'Night-Vision Elixir', icon: 'items/potion_night.png', blurb: 'See far in the dark for a while', usable: true, keep: true },
     oil_fire: { name: 'Fire coating oil', icon: 'items/oil_fire.png', blurb: 'Your hits burn for a minute', usable: true, keep: true },
     oil_ice: { name: 'Frost coating oil', icon: 'items/oil_ice.png', blurb: 'Your hits may freeze monsters for a minute', usable: true, keep: true },
+    rune_torch: { name: 'Runic Way-Torch', icon: 'ico:campfire:#fbbf24', blurb: 'Set it down: its light holds the Amnesia Mist back', placeable: true, keep: true },
+    cinder_lotus: { name: 'Cinder-Lotus', icon: 'ico:flame:#fb7185', blurb: 'Blooms only in sudden heat. Brewed into the Brimstone Lucid Draught', keep: true },
+    stasis_draught: { name: 'Brimstone Lucid Draught', icon: 'ico:flask:#f97316', blurb: 'Holds the Amnesia Mist out of a mind for a while. Give it to Lyra', keep: true },
+    filter_draught: { name: 'Filter Draught', icon: 'ico:flask:#a3e635', blurb: 'Drink it to breathe sulfur fog for five minutes', usable: true, keep: true },
+    solstice_tablet: { name: 'Solstice Tablet', icon: 'ico:scroll:#fde68a', blurb: 'A pre-Shattering star tablet, saved from the smelter', keep: true },
+    ballista: { name: 'Spring-Ballista', icon: 'ico:swords:#d6b37a', blurb: 'Set it down in the Sanctuary: it shoots the nearest foe', placeable: true, keep: true },
+    flame_turret: { name: 'Hydraulic Flame Turret', icon: 'ico:flame:#f97316', blurb: 'Set it down: it scorches everything close around it', placeable: true, keep: true },
+    catapult: { name: 'Hydraulic Catapult', icon: 'ico:rock:#c4b5a0', blurb: 'Set it down: it hurls stone into the thick of a siege', placeable: true, keep: true },
+    lichen: { name: 'Luminescent Lichen', icon: 'ico:leaf:#a3e635', blurb: 'Glows on the rocks of Pyraxis. Fifteen make a Filter Draught' },
+    copper_ore: { name: 'Conductive Copper Ore', icon: 'ico:rock:#e08a4a', blurb: 'Mined in the high stone of Zephyria' },
+    storm_quartz: { name: 'Storm-Quartz', icon: 'ico:crystal:#a78bfa', blurb: 'Crackling quartz from the rocks of Zephyria' },
+    gale_silk: { name: 'Insulated Gale-Silk', icon: 'ico:feather:#e0f2fe', blurb: 'Spider-silk that will not carry a spark', keep: true },
+    thunder_thistle: { name: 'Thunder-Thistle', icon: 'ico:thorn:#7dd3fc', blurb: 'Grows where lightning falls (and among Zephyria’s herbs)' },
+    grounding_draught: { name: 'Grounding Draught', icon: 'ico:flask:#7dd3fc', blurb: 'Clears the storm-Mist from a mind. Give it to Lyra', keep: true },
+    beryl_spring: { name: 'Beryllium Gear-Spring', icon: 'ico:ring:#d4b06a', blurb: 'A clockwork spring, still wound after three hundred years', keep: true },
+    shark_tooth: { name: 'Serrated Shark-Tooth', icon: 'ico:fang:#e7e5e4', blurb: 'Chipped out of the ice-entombed rocks of Aquatica' },
+    kelp_fiber: { name: 'Thermal Kelp Fiber', icon: 'ico:leaf:#2dd4bf', blurb: 'Warm kelp from the open water of Aquatica' },
+    thermal_salts: { name: 'Abyssal Thermal Salts', icon: 'ico:gem:#fb923c', blurb: 'Brewed as tea, they keep the cold Mist out of a mind. For Lyra', keep: true },
+    lure_lantern: { name: 'Phosphor Lure-Lantern', icon: 'ico:sun:#5eead4', blurb: 'An Angler-Beast’s lure: it drives back the shadow-eels', keep: true },
+    crampons: { name: 'Ice-Treader Crampons', icon: 'ico:fang:#bae6fd', blurb: 'Kept in your bag, the ice cannot steal your footing (no frostbite slip)', keep: true },
+    iron_boots: { name: 'Weighted Iron-Sole Boots', icon: 'ico:anvil:#9ca3af', blurb: 'Kept in your bag, the gale cannot shove you', keep: true },
+    resonant_wedge: { name: 'Resonant Wedge', icon: 'ico:sword:#fde68a', blurb: 'Plant up to 3, then press E with nothing in front of you: they detonate together, breaking load-bearing faults', placeable: true, keep: true },
+    ley_conduit: { name: 'Ley-Conduit', icon: 'ico:bolt:#c4b5fd', blurb: 'Set it down in the Sanctuary: it carries the Spire’s power to turrets near it', placeable: true, keep: true },
+    copper_rod: { name: 'Copper Lightning-Rod', icon: 'ico:bolt:#e08a4a', blurb: 'Set it down: sky-lightning will not strike near it, and it shocks foes', placeable: true, keep: true },
+    harpoon_launcher: { name: 'Harpoon Net-Launcher', icon: 'ico:swords:#93c5fd', blurb: 'Set it down in the Sanctuary: it nets and stuns the nearest foe', placeable: true, keep: true },
+    tesla_coil: { name: 'Tesla Coil', icon: 'ico:storm:#a78bfa', blurb: 'Set it down in the Sanctuary: it arcs lightning through three foes', placeable: true, keep: true },
+    brazier_beacon: { name: 'Steam-Brazier Beacon', icon: 'ico:campfire:#fb923c', blurb: 'Set it down: its warmth keeps frostbite away', placeable: true, keep: true },
+    steam_mortar: { name: 'Geothermal Steam-Mortar', icon: 'ico:drop:#bae6fd', blurb: 'Set it down in the Sanctuary: it lobs scalding steam into a siege', placeable: true, keep: true },
 };
 /** Item kinds that are tools, and which tool the character holds for each. */
 export const TOOL_ITEMS = (Object.keys(ITEMS) as ItemId[]).filter((k) => ITEMS[k].tool);
@@ -184,8 +218,24 @@ export const RECIPES: Recipe[] = [
     { out: 'potion_night', n: 1, cost: { glowing_moss: 2, stalker_eye: 1 }, alchemy: 2, at: 'alchemy' },
     { out: 'oil_fire', n: 1, cost: { crystal_dust: 2, gland: 1, ess_fire: 1 }, alchemy: 2, at: 'alchemy' },
     { out: 'oil_ice', n: 1, cost: { crystal_dust: 2, gland: 1, ess_water: 1 }, alchemy: 2, at: 'alchemy' },
-    { out: 'trap_spike', n: 1, cost: { wood: 4, iron: 1, resin: 1 }, alchemy: 0, at: 'bench' },
-    { out: 'barricade', n: 1, cost: { wood: 6, stone: 3, resin: 1 }, alchemy: 0, at: 'bench' },
+    { out: 'trap_spike', n: 1, cost: { wood: 3, stone: 2, resin: 1 }, alchemy: 0, at: 'bench' },
+    { out: 'barricade', n: 1, cost: { wood: 4, stone: 2 }, alchemy: 0, at: 'bench' },
+    { out: 'rune_torch', n: 2, cost: { wood: 1, resin: 1 }, alchemy: 0, at: 'bench' },
+    { out: 'ballista', n: 1, cost: { wood: 6, stone: 4, resin: 2 }, alchemy: 0, at: 'bench' },
+    { out: 'flame_turret', n: 1, cost: { stone: 6, resin: 3, iron: 2 }, alchemy: 0, at: 'bench' },
+    { out: 'catapult', n: 1, cost: { wood: 8, stone: 8, iron: 2 }, alchemy: 0, at: 'bench' },
+    { out: 'stasis_draught', n: 1, cost: { cinder_lotus: 4 }, alchemy: 1, at: 'alchemy' },
+    { out: 'filter_draught', n: 1, cost: { lichen: 15 }, alchemy: 1, at: 'alchemy' },
+    { out: 'grounding_draught', n: 1, cost: { thunder_thistle: 3, herb: 1 }, alchemy: 1, at: 'alchemy' },
+    { out: 'resonant_wedge', n: 3, cost: { stone: 3, iron: 1 }, alchemy: 0, at: 'bench' },
+    { out: 'ley_conduit', n: 2, cost: { stone: 2, resin: 1 }, alchemy: 0, at: 'bench' },
+    { out: 'copper_rod', n: 1, cost: { copper_ore: 2, wood: 2 }, alchemy: 0, at: 'bench' },
+    { out: 'harpoon_launcher', n: 1, cost: { wood: 6, iron: 3, gale_silk: 1 }, alchemy: 0, at: 'bench' },
+    { out: 'tesla_coil', n: 1, cost: { copper_ore: 6, storm_quartz: 3, iron: 2 }, alchemy: 0, at: 'bench' },
+    { out: 'iron_boots', n: 1, cost: { iron: 6, leather: 2 }, alchemy: 0, at: 'bench' },
+    { out: 'brazier_beacon', n: 1, cost: { stone: 3, resin: 2 }, alchemy: 0, at: 'bench' },
+    { out: 'crampons', n: 1, cost: { shark_tooth: 10, kelp_fiber: 8 }, alchemy: 0, at: 'bench' },
+    { out: 'steam_mortar', n: 1, cost: { iron: 4, stone: 6, kelp_fiber: 2 }, alchemy: 0, at: 'bench' },
     { out: 'potion_blue', n: 1, cost: { herb: 3, horn: 1, iron: 1 }, alchemy: 3, at: 'alchemy' },
     { out: 'potion_purple', n: 1, cost: { herb: 4, crystal: 1, horn: 2 }, alchemy: 4, at: 'alchemy' },
     { out: 'tool_shovel', n: 1, cost: { wood: 4, iron: 1 }, alchemy: 0, at: 'bench' },
@@ -210,7 +260,7 @@ export const ARMORS = [
     { name: 'Mythic Plate', guard: 0.45 },
 ];
 export const GEAR_TOP = 3;
-/** Forge level each gear tier needs, and its blueprint (tier 1's comes from Varis). */
+/** Forge level each gear tier needs, and its blueprint (tier 1's comes from Bram). */
 export const GEAR_FORGE = [0, 0, 2, 4];
 export function gearCost(kind: 'weapon' | 'armor', tier: number): Partial<Bag> {
     if (kind === 'weapon') return [{}, { wood: 8, stone: 3, leather: 1 }, { iron: 8, wood: 4, leather: 2 }, { iron: 12, gold: 4, crystal: 6 }][tier] ?? {};
@@ -415,7 +465,7 @@ export interface Chapter {
     /** What the objective line says. */
     task: string;
     goal: Goal;
-    /** Told by Elder Theron when the chapter starts. */
+    /** Told by Master Orin when the chapter starts. */
     say: string[];
     reward: { xp: number; items?: Partial<Bag>; card?: boolean };
 }
@@ -426,20 +476,20 @@ export interface Chapter {
  */
 const CHAPTER_TEXT: Chapter[] = [
     { title: 'Awakening', task: 'Defeat 5 monsters', goal: { kind: 'stat', stat: 'kills', n: 5 }, say: ['The hordes come in waves, one after another, and they never stop out there. Show me you can hold even that rusty dagger. The camp is safe ground: come back here to breathe.'], reward: { xp: 30, items: { potion_red: 1 } } },
-    { title: 'The Smith', task: 'Talk to Varis, the smith', goal: { kind: 'talk', npc: 'varis' }, say: ['Varis keeps the forge. He has a blueprint for you, if you can stand his grumbling.'], reward: { xp: 20 } },
+    { title: 'The Smith', task: 'Talk to Bram, the smith', goal: { kind: 'talk', npc: 'varis' }, say: ['Bram keeps the forge. He has a blueprint for you, if his hands are steady today.'], reward: { xp: 20 } },
     { title: 'Timber', task: 'Chop 6 timber from trees', goal: { kind: 'stat', stat: 'wood', n: 6 }, say: ['Trees give timber. Take the axe to them. Press E beside one and the axe comes to hand.'], reward: { xp: 30 } },
     { title: 'Stone Shards', task: 'Mine 6 stone from rocks', goal: { kind: 'stat', stat: 'stone', n: 6 }, say: ['Rocks give stone, and sometimes iron, gold or crystal.'], reward: { xp: 30 } },
-    { title: 'Steel Remembers', task: 'Forge the Bone Club at the Forge in camp', goal: { kind: 'gear', n: 1 }, say: ["Varis's blueprint, your materials. A real weapon at last."], reward: { xp: 50, items: { leather: 2 } } },
+    { title: 'Steel Remembers', task: 'Forge the Bone Club at the Forge in camp', goal: { kind: 'gear', n: 1 }, say: ["Bram's blueprint, your materials. A real weapon at last."], reward: { xp: 50, items: { leather: 2 } } },
     { title: 'Shelter', task: "Build the Healer's tent in camp", goal: { kind: 'build', building: 'healer', level: 1 }, say: ['A healer\'s tent. Rest there, and your wounds close by themselves.'], reward: { xp: 40, items: { berries: 3 } } },
     { title: 'A Full Belly', task: 'Cook meat at the camp fire and eat it', goal: { kind: 'stat', stat: 'cooked', n: 1 }, say: ['Hunger and thirst will kill you as surely as any beast. Wolves and goblins carry meat. Cook it at the fire (Bag › Craft) before you eat it.'], reward: { xp: 30, items: { water: 2 } } },
-    { title: 'The Herbalist', task: 'Talk to Lyra in camp', goal: { kind: 'talk', npc: 'lyra' }, say: ['Lyra knows every leaf in the four kingdoms. Listen to her.'], reward: { xp: 20 } },
+    { title: 'The Herbalist', task: 'Sit with Lyra in camp', goal: { kind: 'talk', npc: 'lyra' }, say: ['Lyra lies on her altar by the Spire. Sit with her a while.'], reward: { xp: 20 } },
     { title: 'Brew', task: 'Brew a Healing draught at the Alchemy tent in camp', goal: { kind: 'stat', stat: 'potions', n: 1 }, say: ['Draughts are brewed at the Alchemy tent, here in camp, nowhere else. Build it (stand by its plot and press E), bring red herbs and water, then brew.'], reward: { xp: 50, card: true } },
     { title: 'Eyes on the Horizon', task: 'Climb a watchtower', goal: { kind: 'towers', n: 1 }, say: ["Malakor's fog hides the land. Climb an old watchtower and you will see what lies around it on your map."], reward: { xp: 50 } },
     { title: 'The Guardians', task: 'Defeat the three guardians of {K1}', goal: { kind: 'guards', n: 3 }, say: ['Three corrupted guardians watch over {K1}. They were our neighbours once. Free them.'], reward: { xp: 120, card: true } },
     { title: 'The First Seal', task: 'Defeat {W1} at the arena of {K1}', goal: { kind: 'wardens', n: 1 }, say: ['{W1} holds the seal to {K2}. Go to the arena at the far edge of {K1} and press E at the seal.'], reward: { xp: 200, items: { potion_red: 2 } } },
     { title: 'Across the Border', task: 'Defeat the three guardians of {K2}', goal: { kind: 'guards', n: 6 }, say: ['The barrier to {K2} is broken. Its people have been taught to hate us. Show them otherwise.'], reward: { xp: 180, card: true } },
     { title: 'The Second Seal', task: 'Defeat {W2}', goal: { kind: 'wardens', n: 2 }, say: ['{W2} rules {K2} now. Break the seal and {K3} opens.'], reward: { xp: 260 } },
-    { title: 'Iron Age', task: 'Forge the Iron Blade (needs Forge level 2)', goal: { kind: 'gear', n: 2 }, say: ['Brittle steel will not carry you further. Varis can make an Iron Blade with the blueprint you won.'], reward: { xp: 150, items: { gold: 2 } } },
+    { title: 'Iron Age', task: 'Forge the Iron Blade (needs Forge level 2)', goal: { kind: 'gear', n: 2 }, say: ['Brittle steel will not carry you further. Bram can make an Iron Blade with the blueprint you won.'], reward: { xp: 150, items: { gold: 2 } } },
     { title: 'The Third Land', task: 'Defeat the three guardians of {K3}', goal: { kind: 'guards', n: 9 }, say: ['{K3} lies open. Its guardians are the strongest yet.'], reward: { xp: 240, card: true } },
     { title: 'The Third Seal', task: 'Defeat {W3}', goal: { kind: 'wardens', n: 3 }, say: ['{W3} holds the seal to {K4}, the last of the kingdoms.'], reward: { xp: 320, items: { potion_purple: 1 } } },
     { title: 'The Last Land', task: 'Defeat the three guardians of {K4}', goal: { kind: 'guards', n: 12 }, say: ['One kingdom left. Then only the Citadel stands between us and peace.'], reward: { xp: 300, card: true } },

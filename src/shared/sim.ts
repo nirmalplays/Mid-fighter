@@ -47,12 +47,27 @@ export const KINDS: Record<string, KindDef> = {
     brute: { hp: 26, speed: 1.35, reach: 1.45, attackMs: 950, hitAt: 0.6, recoverMs: 1800, weight: 1, dmgMul: 2, knock: 0.25 },
     wraith: { hp: 4, speed: 3.9, reach: 1.0, attackMs: 420, hitAt: 0.5, recoverMs: 1000, weight: 2 },
     bomber: { hp: 3, speed: 3.1, reach: 1.15, attackMs: 750, hitAt: 1, recoverMs: 0, weight: 2, explode: { r: 1.9, damage: 3 } },
+    // Pyraxis's Mist-maddened quarriers (the story's: knocked out with a blunt tool, they are rescued).
+    hollowed: { hp: 6, speed: 1.8, reach: 1.05, attackMs: 640, hitAt: 0.55, recoverMs: 1500, weight: 0 },
 };
+/**
+ * The story's bosses and demons, each with its own art (tools/build-demons.py). They fight like the
+ * kind they are built on (the boss table sets their health, speed and blows) and never come in waves.
+ */
+const DEMON_BASE: Record<string, string> = {
+    d_cindergore: 'brute', d_tarek: 'brute', d_pyra: 'wizard', d_ignis: 'wolf',
+    d_zephyrclaw: 'wolf', d_baruch: 'slime', d_skyshredder: 'skeleton', d_vael: 'wizard',
+    d_frostbite: 'brute', d_queen: 'wizard', d_paladin: 'skeleton', d_hydros: 'scorpion',
+    d_voidknight: 'skeleton', d_amalgam: 'wolf', d_echo: 'wizard', d_reliquary: 'skeleton', d_malakor: 'skeleton',
+};
+for (const [d, base] of Object.entries(DEMON_BASE)) KINDS[d] = { ...KINDS[base], weight: 0 };
 /** What enemies shoot. */
 export const SHOT_KINDS = ['bolt', 'arrow'] as const;
 export type ShotKind = (typeof SHOT_KINDS)[number];
 /** Index order used on the wire. */
-export const KIND_NAMES = ['goblin', 'slime', 'wolf', 'skeleton', 'kobolt', 'scorpion', 'wizard', 'archer', 'brute', 'wraith', 'bomber'] as const;
+export const KIND_NAMES = ['goblin', 'slime', 'wolf', 'skeleton', 'kobolt', 'scorpion', 'wizard', 'archer', 'brute', 'wraith', 'bomber', 'hollowed',
+    'd_cindergore', 'd_tarek', 'd_pyra', 'd_ignis', 'd_zephyrclaw', 'd_baruch', 'd_skyshredder', 'd_vael',
+    'd_frostbite', 'd_queen', 'd_paladin', 'd_hydros', 'd_voidknight', 'd_amalgam', 'd_echo', 'd_reliquary', 'd_malakor'] as const;
 export const SKILLS = ['attack', 'defence', 'speed', 'vitality'] as const;
 export type Skill = (typeof SKILLS)[number];
 /** Potions: a drink that gives a short boost (red heals, blue Attack, yellow Speed, purple a shield, black Rage). */
@@ -69,7 +84,7 @@ export const POTION_CHANCE = 0.12;
 /** How many swords exist (src/assets/File.png is 6 x 5). */
 export const SWORD_COUNT = 30;
 /** Chance a kill also drops a random sword, by monster kind (before the wave bonus). */
-export const SWORD_CHANCE: Record<string, number> = { goblin: 0.025, slime: 0.025, wolf: 0.035, skeleton: 0.05, kobolt: 0.03, scorpion: 0.05, wizard: 0.07, archer: 0.04, brute: 0.09, wraith: 0.04, bomber: 0.02 };
+export const SWORD_CHANCE: Record<string, number> = { hollowed: 0, goblin: 0.025, slime: 0.025, wolf: 0.035, skeleton: 0.05, kobolt: 0.03, scorpion: 0.05, wizard: 0.07, archer: 0.04, brute: 0.09, wraith: 0.04, bomber: 0.02 };
 /** What each monster kind drops, and the chance. */
 export const DROP_TABLE: Record<string, { skill: Skill; chance: number }> = {
     goblin: { skill: 'attack', chance: 0.8 },
@@ -96,14 +111,30 @@ export function bossSpec(code: number, tier: number) {
     // Health is set directly (whatever the kind's own health), so every kingdom's bosses are as tough.
     const hp = (kind: string, target: number) => target / KINDS[kind].hp;
     if (code === 98) return { kind: 'slime', hpMul: hp('slime', 30 * Math.pow(1.5, t)), speedMul: 1.4, damage: 2 + Math.ceil(t / 2), reachMul: 1.3, slamMs: 0 };
-    if (code === 99) return { kind: 'skeleton', hpMul: hp('skeleton', 500 * Math.pow(1.35, t)), speedMul: 1.15, damage: 4 + Math.min(4, t), reachMul: 2.2, slamMs: 4200 };
+    if (code === 99) return { kind: 'd_malakor', hpMul: hp('d_malakor', 500 * Math.pow(1.35, t)), speedMul: 1.15, damage: 4 + Math.min(4, t), reachMul: 2.2, slamMs: 4200, volley: { every: 3200, n: 6 } };
     const e = Math.floor(code / 10) - 1;
     const n = code % 10;
     if (e < 0 || e > 3) return null;
+    // The story's lands: each land's three sub-bosses and its demon (Pyraxis, Zephyria, Aquatica, the Void Wastes).
+    const lift = Math.pow(1.3, t);
+    const story = STORY_BOSSES[e][n];
+    if (story) {
+        const [kind, target, speedMul, damage, reachMul, slamMs, volley] = story;
+        return { kind, hpMul: hp(kind, target * lift), speedMul, damage: damage + Math.floor(t / 2), reachMul, slamMs, ...(volley ? { volley: { every: volley[0], n: volley[1] } } : {}) };
+    }
     if (n === 9) return { kind: kinds[e], hpMul: hp(kinds[e], 90 * Math.pow(1.6, t)), speedMul: 1.1, damage: 2 + t, reachMul: 1.9, slamMs: 5200 };
     if (n >= 1 && n <= 3) return { kind: guardKinds[e], hpMul: hp(guardKinds[e], 24 * Math.pow(1.55, t)), speedMul: 1.05, damage: 1 + Math.ceil(t / 2), reachMul: 1.4, slamMs: 0 };
     return null;
 }
+
+/** Each land's bosses by sub-boss number (9 = its demon): kind, health, speed, damage, reach, slam ms, and a fan of shots [every ms, how many]. */
+type StoryBoss = [string, number, number, number, number, number, [number, number]?];
+const STORY_BOSSES: Record<number, Record<number, StoryBoss>> = {
+    0: { 1: ['d_cindergore', 110, 1.05, 2, 1.25, 0], 2: ['d_tarek', 170, 0.85, 2, 1.5, 4600], 3: ['d_pyra', 150, 1, 2, 1.2, 0, [2600, 3]], 9: ['d_ignis', 420, 0.95, 3, 1.9, 5200, [3600, 5]] },
+    1: { 1: ['d_zephyrclaw', 120, 1.25, 2, 1.3, 0], 2: ['d_baruch', 180, 1.1, 2, 1.5, 4400], 3: ['d_skyshredder', 170, 1, 2, 1.4, 0, [3000, 4]], 9: ['d_vael', 440, 1.1, 3, 1.6, 5000, [2400, 5]] },
+    2: { 1: ['d_frostbite', 140, 0.9, 3, 1.4, 4800], 2: ['d_queen', 160, 1, 2, 1.2, 0, [2800, 3]], 3: ['d_paladin', 190, 0.95, 3, 1.5, 0], 9: ['d_hydros', 480, 0.9, 3, 2, 5000, [3400, 5]] },
+    3: { 1: ['d_voidknight', 170, 1.15, 3, 1.5, 0], 2: ['d_amalgam', 220, 1, 3, 1.7, 4600, [3200, 3]], 3: ['d_echo', 180, 1, 3, 1.2, 0, [2600, 4]], 9: ['d_reliquary', 260, 1, 3, 1.5, 4800] },
+};
 
 export const STATES = ['chase', 'attack', 'recover', 'dying'] as const;
 export type State = (typeof STATES)[number];
@@ -136,11 +167,12 @@ export function tierOf(n: number): number {
 
 /** The gap (ms) after a wave has finished coming in before the next: short in the first onslaught, a little longer later. */
 export function waveGap(n: number, rand: () => number): number {
-    return n <= 5 ? 2000 + rand() * 3000 : 4000 + rand() * 4000;
+    return n <= 5 ? 2000 + rand() * 3000 : 3000 + rand() * 3000;
 }
-/** How many waves an onslaught has before the long breather: the first 5, then 5-10. */
-export function onslaughtSize(first: boolean, rand: () => number): number {
-    return first ? 5 : 5 + Math.floor(rand() * 6);
+/** How many waves an onslaught has before the respite: always five. */
+export const ONSLAUGHT = 5;
+export function onslaughtSize(_first: boolean, _rand: () => number): number {
+    return ONSLAUGHT;
 }
 
 /** Monster count, toughness and kinds for wave n and a number of players. Every wave is bigger than the last. */
@@ -174,6 +206,8 @@ export interface SimEnv {
     canMove(fromU: number, fromV: number, toU: number, toV: number): boolean;
     /** Is this a good place to stand (spawn spots)? */
     canStand(u: number, v: number): boolean;
+    /** May a wave's monsters come in here (open ground, not inside a cave or a ruin)? */
+    wild?(u: number, v: number): boolean;
     rand(): number;
     /** How dark it is, 0 (day) .. 1 (night): night hordes are bigger and come in closer. */
     night?(): number;
@@ -184,6 +218,8 @@ export interface SimEnv {
 /** A shot in flight (a wizard's bolt, an archer's arrow): tiles, tiles per second, ms left. */
 export interface SimShot {
     id: number;
+    /** Struck back by a player (it now hits monsters, and counts as theirs). */
+    by?: string;
     kind: ShotKind;
     u: number;
     v: number;
@@ -219,6 +255,12 @@ export interface SimMonster {
     called: boolean;
     /** Ms until a shooter may shoot again. */
     shotT: number;
+    /** Share of each blow that gets through (a boss's ward: 1 = none). */
+    ward: number;
+    /** A boss's spread of shots: how often, how many, ms until the next. */
+    volleyMs: number;
+    volleyN: number;
+    volleyT: number;
 }
 
 export interface SimDrop {
@@ -388,6 +430,16 @@ export class GameSim {
             }
             sh.u = nu;
             sh.v = nv;
+            if (sh.by) {
+                // Struck back: it bursts on the first monster it reaches.
+                for (const m of this.monsters.values()) {
+                    if (m.state === 'dying' || Math.hypot(m.u - sh.u, m.v - sh.v) > (m.boss ? 1.4 : 0.8)) continue;
+                    this.shots.delete(sh.id);
+                    events.push(...this.strike(sh.by, m.u, m.v, 0, sh.damage, 0.6));
+                    break;
+                }
+                continue;
+            }
             const hit = players.find((p) => Math.hypot(p.u - sh.u, p.v - sh.v) < 0.55);
             if (hit) {
                 events.push({ type: 'bite', playerId: hit.id, damage: sh.damage });
@@ -399,6 +451,17 @@ export class GameSim {
     strike(playerId: string, pu: number, pv: number, facing: number, damage: number, radius = 0, stunMs = 0): SimEvent[] {
         const events: SimEvent[] = [];
         const aim = (facing * Math.PI) / 4;
+        // A swing knocks shots out of the air and back the way they came (they now hit monsters).
+        if (!radius) {
+            for (const sh of this.shots.values()) {
+                if (sh.by || Math.hypot(sh.u - pu, sh.v - pv) > REACH + 0.4) continue;
+                sh.by = playerId;
+                sh.du *= -1.35;
+                sh.dv *= -1.35;
+                sh.life = 2400;
+                sh.damage = Math.max(6, damage * 2);
+            }
+        }
         for (const m of this.monsters.values()) {
             if (m.state === 'dying') continue;
             const du = m.u - pu;
@@ -411,7 +474,7 @@ export class GameSim {
             let diff = Math.abs(Math.atan2(sy, sx) - aim);
             if (diff > Math.PI) diff = Math.PI * 2 - diff;
             if (!radius && dist > 0.9 && diff > ARC) continue;
-            m.hp -= damage;
+            m.hp -= Math.max(1, Math.round(damage * m.ward));
             const kd = dist || 1;
             const kb = KINDS[m.kind]?.knock ?? 1;
             m.ku = (du / kd) * (radius ? 10 : 7) * kb;
@@ -461,7 +524,44 @@ export class GameSim {
         m.slamMs = spec.slamMs;
         m.slamT = spec.slamMs * 0.6;
         m.tier = 2;
+        if ('volley' in spec && spec.volley) {
+            m.volleyMs = spec.volley.every;
+            m.volleyN = spec.volley.n;
+            m.volleyT = spec.volley.every;
+        }
         return m;
+    }
+
+    /** The story's foes, set around a place (3-7 tiles from it), as strong as wave `level`'s. */
+    encounter(kinds: string[], u: number, v: number, level: number): void {
+        const spec = waveSpec(Math.max(1, level));
+        for (const kind of kinds.slice(0, 12)) {
+            if (!KINDS[kind] || this.aliveCount() >= MAX_ALIVE) continue;
+            for (let n = 0; n < 20; n++) {
+                const a = this.env.rand() * Math.PI * 2;
+                const d = 3 + this.env.rand() * 4;
+                const su = u + Math.cos(a) * d, sv = v + Math.sin(a) * d;
+                if (!this.env.canStand(su, sv)) continue;
+                this.spawn(kind, su, sv, { hpMul: spec.hpMul, speedMul: spec.speedMul, damage: spec.damage });
+                break;
+            }
+        }
+    }
+
+    /** A structural fracture on a boss: slower, weaker, no slam or shots, or staggered (stands helpless for a while). */
+    cripple(code: number, what: 'slow' | 'weak' | 'calm' | 'stagger'): void {
+        for (const m of this.monsters.values()) {
+            if (m.boss !== code || m.state === 'dying') continue;
+            if (what === 'slow') m.speedMul *= 0.75;
+            else if (what === 'weak') m.damage = Math.max(1, m.damage - 1);
+            else if (what === 'calm') { m.slamMs = 0; m.volleyMs = 0; }
+            else { m.state = 'recover'; m.t = -6000; }
+        }
+    }
+
+    /** Set a boss's ward (the share of each blow that gets through: 1 = none, 0.15 = armoured). */
+    ward(code: number, share: number): void {
+        for (const m of this.monsters.values()) if (m.boss === code) m.ward = Math.min(1, Math.max(0.05, share));
     }
 
     spawn(kind: string, u: number, v: number, mods: { hpMul: number; speedMul: number; damage: number }): SimMonster {
@@ -471,7 +571,7 @@ export class GameSim {
             id: this.nextId++, kind, u, v, hp, max: hp, state: 'chase', t: 0,
             speedMul: mods.speedMul, damage: Math.round(mods.damage * (def.dmgMul ?? 1)), ku: 0, kv: 0, hit: false,
             side: this.env.rand() < 0.5 ? 1 : -1, tier: tierOf(this.wave),
-            boss: 0, reachMul: 1, slamMs: 0, slamT: 0, called: false, shotT: def.ranged ? def.ranged.every * (0.4 + this.env.rand() * 0.6) : 0,
+            boss: 0, reachMul: 1, slamMs: 0, slamT: 0, called: false, ward: 1, volleyMs: 0, volleyN: 0, volleyT: 0, shotT: def.ranged ? def.ranged.every * (0.4 + this.env.rand() * 0.6) : 0,
         };
         this.monsters.set(m.id, m);
         return m;
@@ -560,7 +660,7 @@ export class GameSim {
             const d = near + this.env.rand() * (DIST_MAX - near);
             const u = anchor.u + Math.cos(ang) * d;
             const v = anchor.v + Math.sin(ang) * d;
-            if (!this.env.canStand(u, v)) continue;
+            if (!this.env.canStand(u, v) || (this.env.wild && !this.env.wild(u, v))) continue;
             // Never right next to anyone: at least 9 tiles from every player.
             if (players.some((p) => Math.hypot(p.u - u, p.v - v) < near - 1)) continue;
             return { u, v };
@@ -612,6 +712,19 @@ export class GameSim {
                 const r = 2.6 * (m.boss === 99 ? 1.2 : 1);
                 events.push({ type: 'slam', u: m.u, v: m.v, r });
                 for (const p of players) if (Math.hypot(p.u - m.u, p.v - m.v) < r) events.push({ type: 'bite', playerId: p.id, damage: m.damage + 1 });
+            }
+        }
+        // Some bosses throw a fan of shots at their target now and then.
+        if (m.volleyMs > 0 && best < 12) {
+            m.volleyT -= dtMs;
+            if (m.volleyT <= 0) {
+                m.volleyT = m.volleyMs;
+                const base = Math.atan2(target.v - m.v, target.u - m.u);
+                for (let n = 0; n < m.volleyN; n++) {
+                    const a = base + (n - (m.volleyN - 1) / 2) * 0.28;
+                    this.shots.set(this.nextId, { id: this.nextId, kind: 'bolt', u: m.u + Math.cos(a) * 0.8, v: m.v + Math.sin(a) * 0.8, du: Math.cos(a) * 4.2, dv: Math.sin(a) * 4.2, life: 3600, damage: m.damage });
+                    this.nextId++;
+                }
             }
         }
         if (m.boss === 99 && !m.called && m.hp < m.max / 2) {

@@ -17,13 +17,52 @@ import type { Element, NpcId, Region } from '../game/eidolon.ts';
 export type ActKind = 'talk' | 'build' | 'chop' | 'mine' | 'pick' | 'open' | 'search' | 'bench' | 'travel' | 'climb' | 'challenge' | 'fish' | 'drink' | 'wait';
 
 export interface StoryPopup {
-    /** Who tells it (Elder Theron by default). */
+    /** Who tells it (Master Orin by default). */
     speaker?: string;
     title: string;
     lines: string[];
     /** Shown with the chapter's reward line, if any. */
     reward?: string;
+    /** How it is framed: a cinematic beat, a golden-hour flashback, a corrupted relic vision, a recovered scroll. */
+    style?: 'cinematic' | 'flashback' | 'vision' | 'scroll';
 }
+
+/** The story's live state for the HUD (Land 1: see game/story/quest.ts). */
+export interface SagaHud {
+    /** Lyra's soul stability and crystallization pressure, 0-100 (null while she is not in your care). */
+    lyra: number | null;
+    pressure: number | null;
+    /** Frostbite (Aquatica), 0..1. */
+    frost: number;
+    /** A Flashback Surge running: the memory shown (it fades by itself). */
+    surge: { line: string; id: number } | null;
+    /** A boss phase on screen: the arena gone dark, your senses inverted, Lyra's mark on an unseen foe. */
+    dark: boolean;
+    invert: boolean;
+    /** The boss nearby: how many of its four structural zones are broken, and whether it is staggered (F to mount). */
+    zones: { broken: number; mount: boolean } | null;
+    /** Lyra beside you (Land 4): seconds until her next synergy. */
+    companion: number | null;
+    /** Chisel-wedges planted (up to 3). */
+    wedges: number;
+    /** The next periodic siege: seconds until it comes (null when not counting). */
+    nightIn: number | null;
+    /** A timed task running: what it is and whole seconds left. */
+    timer: { label: string; left: number; total: number } | null;
+    /** The Memory Spire's health during a siege. */
+    spire: { hp: number; max: number } | null;
+    /** How deep in the Amnesia Mist you are (0 clear .. 1 lost), and the sulfur fog with no filter. */
+    mist: number;
+    sulfur: boolean;
+    /** The finishing blow: beats struck of the song, and the next beat's window (0..1 through it). */
+    qte: { hit: number; need: number; phase: number; label?: string } | null;
+    /** Abilities the story has given: Vein-Striker, the Echo Dash, the Resonant Hymn (ms of cooldown left). */
+    hymn: number | null;
+    /** Carrying Lyra. */
+    carrying: boolean;
+}
+
+export type PuzzleId = string;
 
 export interface GameOverInfo {
     score: number;
@@ -81,6 +120,12 @@ export interface AppState {
     nextWaveIn: number;
     /** Safe in camp with the waves held off (playing alone) */
     wavesCalm: boolean;
+    /** The story holds the waves back (before its first Sanctuary stands). */
+    wavesHeld: boolean;
+    /** The cave, dungeon or ruin the player is inside (its name), or null out in the open. */
+    indoors: string | null;
+    /** A cinematic playing: the line on screen, a title card, the fade to black (0-1), and whether it may be skipped. */
+    cine: { line: { speaker: string; text: string; who?: string } | null; title: { top: string; main: string } | null; fade: number; flash: number } | null;
     /** The fight is on (an onslaught, or its last monsters); waves still to come in this onslaught */
     fighting: boolean;
     onslaughtLeft: number;
@@ -112,9 +157,20 @@ export interface AppState {
     level: number;
     xp: number;
     /** The current story objective and how far along it is. */
-    objective: { title: string; task: string; have: number; need: number; step: number } | null;
+    objective: { title: string; task: string; have: number; need: number; step: number; how?: string; act?: number; land?: string; sides?: { title: string; task: string }[] } | null;
     /** A story dialog waiting to be read (the world keeps going behind it, but bites are held off). */
     storyPopup: StoryPopup | null;
+    /** Story pages waiting their turn behind the one open. */
+    storyQueue: StoryPopup[];
+    /** A story puzzle open (it holds the waves like a dialog). */
+    puzzle: { id: string; prop: string } | null;
+    /** Bumped when the save slots' list changes (menus re-read it). */
+    slotsVersion: number;
+    /** The Strata-Loom (relic reconstruction) open. */
+    loom: boolean;
+    /** The debate with Malakor open. */
+    debate: boolean;
+    saga: SagaHud;
     /** The bag panel, and which tab. */
     bagTab: 'items' | 'craft' | 'gear' | 'cards' | 'camp' | 'map' | 'story' | null;
     /** Standing in camp (building works, healing is faster). */
@@ -203,6 +259,9 @@ let state: AppState = {
     wave: 0,
     nextWaveIn: 0,
     wavesCalm: false,
+    wavesHeld: false,
+    indoors: null,
+    cine: null,
     fighting: false,
     onslaughtLeft: 0,
     waveLeft: null,
@@ -224,6 +283,12 @@ let state: AppState = {
     xp: 0,
     objective: null,
     storyPopup: null,
+    storyQueue: [],
+    puzzle: null,
+    saga: { lyra: null, pressure: null, frost: 0, surge: null, dark: false, invert: false, zones: null, companion: null, wedges: 0, nightIn: null, timer: null, spire: null, mist: 0, sulfur: false, qte: null, hymn: null, carrying: false },
+    loom: false,
+    debate: false,
+    slotsVersion: 0,
     bagTab: null,
     inCamp: false,
     target: null,
@@ -266,6 +331,21 @@ let state: AppState = {
 export const store = {
     /** Read the current state (from game code; in React use useStore). */
     get: (): AppState => state,
+    /** Show story pages: at once if nothing is open, else after what is. */
+    tell(...pages: StoryPopup[]): void {
+        if (pages.length === 0) return;
+        if (state.storyPopup) store.patch({ storyQueue: [...state.storyQueue, ...pages] });
+        else store.patch({ storyPopup: pages[0], storyQueue: [...state.storyQueue, ...pages.slice(1)] });
+    },
+    /** Close the open page; the next one waiting takes its place. */
+    nextPage(): void {
+        const [next, ...rest] = state.storyQueue;
+        store.patch({ storyPopup: next ?? null, storyQueue: rest });
+    },
+    /** Patch the saga HUD (a shallow merge). */
+    saga(partial: Partial<SagaHud>): void {
+        store.patch({ saga: { ...state.saga, ...partial } });
+    },
     /** Shallow-merge a partial update and notify React subscribers. */
     patch(partial: Partial<AppState>): void {
         state = { ...state, ...partial };

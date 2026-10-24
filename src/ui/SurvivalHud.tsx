@@ -9,21 +9,23 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { commands } from '../game/commands.ts';
 import { FOG_CELL, FOG_N, levelFromCopies, progress } from '../game/progress.ts';
+import { quest } from '../game/story/quest.ts';
 import {
     ARMORS, BUILDING_IDS, BUILDINGS, buildCost, CARD_IDS, cardLevelCost, cardSlots, CARDS, chapterAt, CHAPTER_COUNT,
     essenceOf, FOOD, FUSE_N, GEAR_FORGE, GEAR_TOP, gearCost, GEM_SKILL_LIST, gem2Of, gem3Of, infuseCost, INFUSION,
     ITEM_IDS, ITEMS, RARITY_COLOR, RECIPES, STATION_NAME, relicMul, RELICS, socketsFor, WEAPONS, xpToNext, type Bag, type ItemId,
-    BACKPACK_TOP, backpackCost, backpackSlots, HOTBAR_SLOTS, maxDurability, repairCost, slotsUsed, stackOf, TOOL_ITEMS,
-} from '../game/survival.ts';
+    BACKPACK_TOP, backpackCost, backpackSlots, HOTBAR_SLOTS, slotsUsed, stackOf, } from '../game/survival.ts';
 import {
     ELEMENTS, homeOf, KINGDOMS, LANDMARKS, MALAKOR, NPCS, PROLOGUE, type Element,
 } from '../game/eidolon.ts';
 import { mapRef, radar } from '../game/world/mapRef.ts';
 import { useSettings } from '../game/settings.ts';
-import { KingdomOrbit } from './KingdomSelect.tsx';
-import { Bar, BROWN, BROWN_DARK, Btn, Cost, Icon, INK, OUTLINE, PANEL, Panel, press, ROW, TAN, TAN_LIGHT, Wear } from './hudKit.tsx';
+import { beginStory } from '../game/story/begin.ts';
+import { Bar, BROWN, BROWN_DARK, Btn, Cost, Icon, INK, OUTLINE, PANEL, Panel, press, ROW, TAN, TAN_LIGHT } from './hudKit.tsx';
 import { InventoryGrid, RepairList, useInventoryKey } from './InventoryModal.tsx';
 import { MAP_TILES } from '../game/world/constants.ts';
+import { STYLES } from '../game/world/biomes.ts';
+import { MAX_HEIGHT, VOID } from '../game/world/mapGen.ts';
 import { store, useStore, type AppState } from '../state/store.ts';
 import { drawIcon, ELEMENT_ICON, Ico, Sigil, type IconName } from './icons.tsx';
 import { useCompact } from './HudTop.tsx';
@@ -159,7 +161,7 @@ function GearTab() {
         const now = gear[kind];
         const next = now + 1;
         const top = next > GEAR_TOP;
-        const blocker = top ? null : gear.bp < next ? `Needs the ${list[next].name} blueprint${next === 1 ? ' (talk to Varis)' : next === 2 ? ' (from your first warden)' : ' (from the third warden)'}` : forge < GEAR_FORGE[next] ? `Needs Forge level ${GEAR_FORGE[next]}` : !inCamp ? 'Forge it in camp' : null;
+        const blocker = top ? null : gear.bp < next ? `Needs the ${list[next].name} blueprint${next === 1 ? ' (talk to Bram)' : next === 2 ? ' (from your first warden)' : ' (from the third warden)'}` : forge < GEAR_FORGE[next] ? `Needs Forge level ${GEAR_FORGE[next]}` : !inCamp ? 'Forge it in camp' : null;
         const cost = top ? {} : gearCost(kind, next);
         return (
             <div className="flex items-center gap-2 rounded-xl px-2 py-1" style={ROW}>
@@ -340,10 +342,13 @@ function mapBase(): ImageData | null {
     const data = new ImageData(N, N);
     for (let k = 0; k < N * N; k++) {
         const t = m.terrain[k];
-        let [r, g, b] = TERRAIN_RGB[t] ?? [0, 0, 0];
-        if (t === 4 && m.region[k] === 1) [r, g, b] = [230, 100, 40];
-        const tint = m.region[k] === 0 ? 0xc0b0d0 : KINGDOMS[ELEMENTS[m.region[k] - 1]].ground;
-        const lift = 0.8 + 0.04 * m.height[k];
+        // The void between the interiors stays clear (the panel's dark shows through).
+        if (t === VOID) continue;
+        const style = STYLES[m.style[k]];
+        let [r, g, b] = style ? style.map : TERRAIN_RGB[t] ?? [0, 0, 0];
+        if (t === 4) [r, g, b] = m.region[k] === 1 ? [230, 100, 40] : TERRAIN_RGB[4];
+        const tint = style || m.region[k] > 4 ? 0xffffff : m.region[k] === 0 ? 0xc0b0d0 : KINGDOMS[ELEMENTS[m.region[k] - 1]].ground;
+        const lift = 0.8 + 0.04 * Math.min(MAX_HEIGHT, m.height[k]);
         data.data[k * 4] = Math.min(255, r * lift * (((tint >> 16) & 255) / 255));
         data.data[k * 4 + 1] = Math.min(255, g * lift * (((tint >> 8) & 255) / 255));
         data.data[k * 4 + 2] = Math.min(255, b * lift * ((tint & 255) / 255));
@@ -452,7 +457,7 @@ function StoryTab() {
                 ))}
                 {step === 0 && <div className="text-[12px] font-bold" style={{ color: BROWN_DARK }}>Nothing yet. Your story starts now.</div>}
             </div>
-            <Btn color="#fff" onPress={() => store.patch({ bagTab: null, storyPopup: { speaker: 'Elder Theron', title: 'The Fracture of Eidolon', lines: PROLOGUE.map((p) => p.text) } })}>Hear the prologue again</Btn>
+            <Btn color="#fff" onPress={() => store.patch({ bagTab: null, storyPopup: { speaker: 'Master Orin', title: 'The Shattering', lines: PROLOGUE.map((p) => p.text) } })}>Hear the prologue again</Btn>
         </div>
     );
 }
@@ -552,14 +557,17 @@ export function NpcPanel() {
     if (!id) return null;
     const npc = NPCS[id];
     const close = () => store.patch({ npc: null });
-    const action = id === 'varis' ? { label: 'Open the forge', tab: 'gear' as const } : id === 'lyra' ? { label: 'Show me remedies', tab: 'craft' as const } : { label: 'The story so far', tab: 'story' as const };
+    const story = quest.active();
+    // In the story Lyra cannot talk: you sit with her, and how she is shows how far you have come.
+    const greet = story && id === 'lyra' ? quest.bedside() : npc.greet;
+    const action = id === 'varis' ? { label: 'Open the forge', tab: 'gear' as const } : id === 'lyra' ? (story ? null : { label: 'Show me remedies', tab: 'craft' as const }) : id === 'kael' ? { label: 'Craft turrets', tab: 'craft' as const } : { label: 'The story so far', tab: 'story' as const };
     return (
         <Panel z={25} width={520} onClose={close}>
             <div className="flex items-start gap-3">
                 <Portrait tint={hex(npc.tint)} />
                 <div className="flex flex-1 flex-col gap-1">
                     <div className="text-[11px] font-black uppercase tracking-wide" style={{ color: BROWN_DARK }}>{npc.name} · {npc.role}</div>
-                    <p className="text-[14px] font-bold leading-snug">{answer === null ? `"${npc.greet}"` : `"${npc.talk[answer].a}"`}</p>
+                    <p className="text-[14px] font-bold leading-snug">{answer === null ? (story && id === 'lyra' ? greet : `"${greet}"`) : story && id === 'lyra' ? npc.talk[answer].a : `"${npc.talk[answer].a}"`}</p>
                     {gift && <p className="text-[12px] font-black" style={{ color: '#15803d' }}>{gift}</p>}
                 </div>
             </div>
@@ -571,8 +579,8 @@ export function NpcPanel() {
                 ))}
             </div>
             <div className="flex justify-end gap-2">
-                <Btn color="#fde68a" onPress={() => store.patch({ npc: null, bagTab: action.tab })}>{action.label}</Btn>
-                <Btn color="#fff" onPress={close}>Goodbye</Btn>
+                {action && <Btn color="#fde68a" onPress={() => store.patch({ npc: null, bagTab: action.tab })}>{action.label}</Btn>}
+                <Btn color="#fff" onPress={close}>{story && id === 'lyra' ? 'Let her rest' : 'Goodbye'}</Btn>
             </div>
         </Panel>
     );
@@ -629,29 +637,59 @@ export function KingdomChooser() {
     const kingdom = useStore((s) => s.kingdom);
     const popup = useStore((s) => s.storyPopup);
     const phase = useStore((s) => s.phase);
-    if (kingdom || popup || phase !== 'playing') return null;
-    return (
-        <div className="pointer-events-auto absolute inset-0 z-40">
-            <KingdomOrbit mode="pledge" />
-        </div>
-    );
+    // A save without a land yet: the story begins in Pyraxis (there is nothing to choose).
+    useEffect(() => {
+        if (!kingdom && !popup && phase === 'playing') beginStory();
+    }, [kingdom, popup, phase]);
+    return null;
 }
 
-/** A story dialog: the prologue, a new chapter, a warden's words. */
+/** How each kind of story page is framed. */
+const PAGE_LOOK = {
+    cinematic: { back: 'rgba(3,4,8,.86)', card: { background: 'transparent', border: 'none', boxShadow: 'none', color: '#f5ead2' }, head: '#e0a948', font: 'var(--font-pixel)' },
+    flashback: { back: 'radial-gradient(ellipse at center, rgba(120,72,20,.35), rgba(30,16,4,.9))', card: { background: 'linear-gradient(#f6e3b4, #e9c98a)', border: '3px solid #8a5a1a', color: '#3a2008', boxShadow: '0 0 40px rgba(255,190,90,.45)' }, head: '#8a4a0a', font: 'var(--font-pixel)' },
+    vision: { back: 'radial-gradient(ellipse at center, rgba(60,20,90,.45), rgba(6,2,14,.92))', card: { background: 'rgba(18,8,32,.92)', border: '3px solid #9d6bff', color: '#e9ddff', boxShadow: '0 0 30px rgba(157,107,255,.55), inset 0 0 18px rgba(64,224,208,.25)' }, head: '#5eead4', font: 'var(--font-pixel)' },
+    scroll: { back: 'rgba(10,6,16,.6)', card: { background: '#efe0bb', border: '4px double #6b4a1a', color: '#2e1d08', boxShadow: '0 6px 20px rgba(0,0,0,.5)' }, head: '#6b4a1a', font: 'var(--font-pixel)' },
+} as const;
+
+/** A story dialog: the prologue, a chapter, a cinematic beat, a flashback, a relic vision, a recovered scroll. Pages wait their turn. */
 export function StoryDialog() {
     const popup = useStore((s) => s.storyPopup);
+    const queued = useStore((s) => s.storyQueue.length);
     const [page, setPage] = useState(0);
-    const speaker = popup?.speaker ?? 'Elder Theron';
+    const speaker = popup?.speaker ?? 'Master Orin';
     const tint = useMemo(() => hex(NPCS.theron.tint), []);
+    useEffect(() => setPage(0), [popup]);
     if (!popup) return null;
     const pages = popup.lines;
     const last = page >= pages.length - 1;
     const close = () => {
         setPage(0);
-        store.patch({ storyPopup: null });
+        store.nextPage();
         progress.markIntroSeen();
         progress.publishObjective();
     };
+    const next = () => (last ? close() : setPage((p) => p + 1));
+    const look = popup.style ? PAGE_LOOK[popup.style] : null;
+    if (look) {
+        const cine = popup.style === 'cinematic';
+        return (
+            <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center" style={{ background: look.back }} onPointerDown={press(next)}>
+                {cine && <div className="absolute inset-x-0 top-0 h-[11vh] bg-black" />}
+                {cine && <div className="absolute inset-x-0 bottom-0 h-[11vh] bg-black" />}
+                <div className={`relative flex w-[min(640px,92vw)] flex-col gap-2 p-4 ${popup.style === 'vision' ? 'story-vision' : ''}`} style={{ ...look.card, borderRadius: 6, imageRendering: 'pixelated' }}>
+                    <div className="text-[12px] uppercase tracking-[0.2em]" style={{ color: look.head }}>{speaker}</div>
+                    <div className="text-[26px] leading-none" style={{ fontFamily: 'var(--font-relic)', color: look.head }}>{popup.title}</div>
+                    <p key={page} className="story-line text-[17px] leading-snug" style={{ fontFamily: look.font, fontStyle: popup.style === 'flashback' ? 'italic' : 'normal', fontSize: cine ? 20 : 17 }}>{pages[page]}</p>
+                    {last && popup.reward && <p className="text-[13px]" style={{ color: popup.style === 'flashback' || popup.style === 'scroll' ? '#166534' : '#86efac' }}>{popup.reward}</p>}
+                    <div className="flex items-center justify-between text-[12px]" style={{ color: look.head }}>
+                        <span>{page + 1}/{pages.length}{queued > 0 ? ` · ${queued} more` : ''}</span>
+                        <span className="story-blink">{last ? 'Tap to continue' : 'Tap ›'}</span>
+                    </div>
+                </div>
+            </div>
+        );
+    }
     return (
         <div className="pointer-events-auto absolute inset-0 z-50 flex items-end justify-center pb-6" style={{ background: 'rgba(10,6,16,.55)' }}>
             <div className="flex w-[min(580px,94vw)] items-start gap-3 rounded-2xl p-3" style={PANEL}>
@@ -662,7 +700,7 @@ export function StoryDialog() {
                     {last && popup.reward && <p className="text-[12px] font-black" style={{ color: '#15803d' }}>{popup.reward}</p>}
                     <div className="flex items-center justify-between">
                         <span className="text-[11px] font-black" style={{ color: BROWN_DARK }}>{page + 1}/{pages.length}</span>
-                        <Btn onPress={() => (last ? close() : setPage((p) => p + 1))}>{last ? "Let's go" : 'Next ›'}</Btn>
+                        <Btn onPress={next}>{last ? (queued > 0 ? 'Next ›' : "Let's go") : 'Next ›'}</Btn>
                     </div>
                 </div>
             </div>
@@ -673,7 +711,7 @@ export function StoryDialog() {
 /** The prologue, the first time a player starts (then they choose a kingdom). */
 export function maybeShowIntro(): void {
     if (store.get().storyPopup || progress.introSeen()) return;
-    store.patch({ storyPopup: { speaker: 'Elder Theron', title: 'The Fracture of Eidolon', lines: PROLOGUE.map((p) => p.text) } });
+    store.patch({ storyPopup: { speaker: 'Master Orin', title: 'The Shattering', lines: PROLOGUE.map((p) => p.text) } });
 }
 
 // ------------------------------------------------------------------ hotbar, skill, sprint, sky, radar, downed
@@ -715,7 +753,6 @@ export function Hotbar4() {
                         >
                             {id ? <Icon id={id} size={32} /> : <span className="text-[10px] text-[#2f2a35]/70">hands</span>}
                             {id && !ITEMS[id].tool && <span className="absolute -right-[4px] -top-[5px] text-[11px] text-white" style={{ textShadow: '0 2px 0 #000, 0 0 2px #000' }}>{bag[id]}</span>}
-                            {id && <Wear id={id} />}
                             <span className="absolute -bottom-[7px] -left-[4px] text-[10px] leading-none text-white" style={{ textShadow: '0 2px 0 #000, 0 0 2px #000' }}>{n + 1}</span>
                             {sel && <span className="pointer-events-none absolute -inset-[15px]" style={{ backgroundImage: 'url(images/ui/corners-white.png)', backgroundSize: '240px 80px', imageRendering: 'pixelated', animation: 'corners 0.9s steps(1) infinite' }} />}
                         </button>

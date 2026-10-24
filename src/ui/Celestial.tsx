@@ -8,6 +8,7 @@ import { progress } from '../game/progress.ts';
 import { settings, useSettings } from '../game/settings.ts';
 import { ELEMENTS, KINGDOMS, MALAKOR, nextKingdom, type Element } from '../game/eidolon.ts';
 import { useStore } from '../state/store.ts';
+import { slots } from '../game/slots.ts';
 
 const RUNES = 'ᚠᚢᚦᚨᚱᚲᚷᚹᚺᚾᛁᛃᛇᛈᛉᛊᛏᛒᛖᛗᛚᛜᛞᛟ';
 /** A rune-carved stone slab button. */
@@ -39,6 +40,17 @@ export function StoneSlab({ children, sub, onClick, accent = '#a78bfa', size = '
 export function SettingsPanel({ onBack }: { onBack: () => void }) {
     const s = useSettings();
     const [confirm, setConfirm] = useState(false);
+    useStore((st) => st.slotsVersion);
+    const cur = slots.current();
+    const [copyName, setCopyName] = useState('');
+    const [saved, setSaved] = useState<string | null>(null);
+    const saveCopy = async () => {
+        const n = copyName.trim() || `${cur?.name ?? 'Journey'} (copy)`;
+        const s = await slots.saveAs(n.slice(0, 32));
+        setSaved(s ? `Saved as “${s.name}”` : 'Could not save');
+        setCopyName('');
+        window.setTimeout(() => setSaved(null), 3000);
+    };
     const row = 'flex items-center justify-between gap-3 px-2 py-1.5 text-[15px] text-[#2f2a35]';
     const Toggle = ({ label, on, set }: { label: string; on: boolean; set: (v: boolean) => void }) => (
         <button type="button" onClick={() => set(!on)} className={row} style={{ borderBottom: '2px solid rgba(47,42,53,.15)' }}>
@@ -65,9 +77,19 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
                     ))}
                 </span>
             </div>
+            {cur && (
+                <div className="mt-1 flex flex-col gap-1 px-2 py-1.5" style={{ borderBottom: '2px solid rgba(47,42,53,.15)' }}>
+                    <span className="text-[15px]">Journey: <b>{cur.name}</b> <span className="text-[12px] text-[#4a4450]">(saves itself as you play)</span></span>
+                    <span className="flex gap-1.5">
+                        <input value={copyName} onChange={(e) => setCopyName(e.target.value.slice(0, 32))} placeholder="Name a save state…" maxLength={32} className="min-w-0 flex-1 px-2 text-[14px] outline-none" style={{ ...slice('btn2-pressed', 2), color: '#2f2a35' }} />
+                        <button type="button" onClick={() => void saveCopy()} className="px-2 text-[13px]" style={{ ...slice('btn3-normal', 2), color: '#fff3d6' }}>Save as</button>
+                    </span>
+                    {saved && <span className="text-[12px] text-[#3f6e4a]">{saved}</span>}
+                </div>
+            )}
             <div className="mt-1 text-[10px] leading-snug text-[#4a4450]">Art: Super Pixel Effects Gigapack (Will Tice / unTied Games) · UI Asset Pack (Beowulf) · slash and frog art (Frostwindz) · buildings, items and portal (CraftPix). Fonts: Cinzel Decorative, Jacquard 12, Pixelify Sans, Silkscreen (OFL). Sounds: Mixkit, Pixabay creators, and the game's BGM and effect packs.</div>
             <div className="mt-2 flex justify-center gap-2">
-                <PxButton variant="stone" onClick={() => { if (!confirm) { setConfirm(true); window.setTimeout(() => setConfirm(false), 4000); return; } progress.reset(); setConfirm(false); }}>{confirm ? 'Tap again to erase' : 'Erase progress'}</PxButton>
+                <PxButton variant="stone" onClick={() => { if (!confirm) { setConfirm(true); window.setTimeout(() => setConfirm(false), 4000); return; } progress.reset(); setConfirm(false); }}>{confirm ? 'Tap again to erase this journey' : 'Restart this journey'}</PxButton>
                 <PxButton variant="wood" onClick={onBack}>Back</PxButton>
             </div>
         </div>

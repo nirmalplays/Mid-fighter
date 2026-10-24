@@ -278,6 +278,33 @@ function sendSummon(code: number, tier: number, u: number, v: number): void {
     }
 }
 
+/** The story sets foes around a place (the server checks it is near us). */
+function sendEncounter(kinds: string[], u: number, v: number, level: number): void {
+    try {
+        room?.send({ type: 'encounter', kinds, u, v, level });
+    } catch (err) {
+        console.warn('[multiplayer] send failed', err);
+    }
+}
+
+/** A structural fracture on a boss (slower, weaker, calmer, or staggered). */
+function sendCripple(code: number, what: string): void {
+    try {
+        room?.send({ type: 'cripple', code, what });
+    } catch (err) {
+        console.warn('[multiplayer] send failed', err);
+    }
+}
+
+/** A boss's ward goes up or down (armour on, armour cracked). */
+function sendWard(code: number, share: number): void {
+    try {
+        room?.send({ type: 'ward', code, share });
+    } catch (err) {
+        console.warn('[multiplayer] send failed', err);
+    }
+}
+
 /** Set items on the ground for everyone (a chest's loot, gathering in co-op). */
 function sendLoot(u: number, v: number, items: [string, number][]): void {
     try {
@@ -288,9 +315,9 @@ function sendLoot(u: number, v: number, items: [string, number][]): void {
 }
 
 /** Tell the server whether we are reading or talking (waves hold while everyone is) and whether we are safe in a camp (monsters lose us). */
-function sendCalm(on: boolean, safe: boolean): void {
+function sendCalm(on: boolean, safe: boolean, siege = false): void {
     try {
-        room?.send({ type: 'calm', on, safe });
+        room?.send({ type: 'calm', on, safe, siege });
     } catch (err) {
         console.warn('[multiplayer] send failed', err);
     }
@@ -316,7 +343,7 @@ function sendAway(): void {
 }
 
 export const net = {
-    remotes, connect, leave, sendPose, sendAct, sendAway, sendHit, sendPickup, sendSummon, sendLoot, sendRevive, sendCalm,
+    remotes, connect, leave, sendPose, sendAct, sendAway, sendHit, sendPickup, sendSummon, sendEncounter, sendWard, sendCripple, sendLoot, sendRevive, sendCalm,
     /**
      * True while the server is running the monsters: the room is connected and its combat
      * snapshots are arriving (it sends at least one a second). A room that connects but never

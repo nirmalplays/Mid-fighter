@@ -7,6 +7,7 @@
 import { Assets, Container, Graphics, Rectangle, Sprite, Texture } from 'pixi.js';
 import type { GameCommand } from '../commands.ts';
 import { CHAR_CELL, CHAR_FEET_X, CHAR_FEET_Y, CHAR_SHEETS } from './characterAtlas.ts';
+import { dressTexture } from './heroLook.ts';
 import { SWORD_COUNT } from '../../shared/sim.ts';
 import { SWORD_NATIVE } from './swordNative.ts';
 import { SWORD_POSE } from './swordPose.ts';
@@ -103,7 +104,9 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
         if (!p) {
             const cols = CHAR_SHEETS[key];
             p = Assets.load<Texture>({ alias: `char:${key}`, src: `images/world/char/${key.replace(':', '-')}.png` })
-                .then((sheet) => {
+                .then((raw) => {
+                    // Dressed in the look chosen in the character creator (world/heroLook.ts).
+                    const sheet = dressTexture(key.replace(':', '-'), raw);
                     frames.set(key, Array.from({ length: 5 }, (_, row) =>
                         Array.from({ length: cols }, (__, col) =>
                             new Texture({ source: sheet.source, frame: new Rectangle(col * CHAR_CELL, row * CHAR_CELL, CHAR_CELL, CHAR_CELL) }))));

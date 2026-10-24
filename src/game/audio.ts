@@ -102,15 +102,17 @@ export function loadSounds(): void {
 //   explore   roaming between waves (Exploration 1-3)
 //   combat    every wave, from its first monster to its last (Mini battle 1-3)
 //   boss      a guardian, warden or Malakor (Battle 1)
+//   underground  caves, dungeons and ruins (a slow drone with far-off bells)
 // A change of mood fades the old track out completely, lets a moment of silence pass, and only
 // then brings the new one in, so two songs never play over each other.
-export type Mood = 'title' | 'cutscene' | 'explore' | 'combat' | 'boss' | 'none';
+export type Mood = 'title' | 'cutscene' | 'explore' | 'combat' | 'boss' | 'underground' | 'none';
 const PLAYLIST: Record<Exclude<Mood, 'none'>, string[]> = {
     title: ['intro.mp3'],
     cutscene: ['cutscene.mp3'],
     explore: ['explore1.mp3', 'explore2.mp3', 'explore3.mp3'],
     combat: ['skirmish1.mp3', 'skirmish2.mp3', 'skirmish3.mp3'],
     boss: ['boss.mp3'],
+    underground: ['underground.mp3'],
 };
 const fight = (m: Mood) => m === 'combat' || m === 'boss';
 /** How a change of mood goes (ms): the old track fading out, the silence between, the new fading in. */
@@ -121,7 +123,7 @@ function transition(from: Mood, to: Mood): { out: number; gap: number; in: numbe
     return { out: 1500, gap: 1200, in: 1600 };
 }
 /** Moods whose track waits, paused where it was, to pick up again when the mood comes back. */
-const RESUMES: Mood[] = ['title', 'explore', 'combat'];
+const RESUMES: Mood[] = ['title', 'explore', 'combat', 'underground'];
 
 /** The browser refused to start the music until the player touches the page (the home page asks for a tap). */
 let musicBlocked = false;

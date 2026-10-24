@@ -176,6 +176,17 @@ button, input, textarea, select { font-family: inherit; }
 @keyframes cs-debris { from { transform: translate(0, 0) rotate(0); opacity: 1; } to { transform: translate(0, 420px) rotate(320deg); opacity: 0; } }
 @keyframes cs-bolt { 0% { opacity: 0; } 15% { opacity: 1; } 30% { opacity: 0.2; } 45% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes cs-dawn { from { opacity: 0; } to { opacity: 1; } }
+/* The prologue's newer moments: demons climbing out of the cracks and driven back down, a fist on the
+   council table, glows that pulse, the Mist drifting, memories fading away as words. */
+@keyframes cs-climb { from { transform: translateY(150px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes cs-sink { from { transform: translateY(0); opacity: 1; } to { transform: translateY(240px); opacity: 0; } }
+@keyframes cs-slam { 0%, 100% { transform: translate(0, 0); } 15% { transform: translate(0, 10px); } 30% { transform: translate(-6px, -4px); } 45% { transform: translate(5px, 3px); } 60% { transform: translate(-3px, 0); } }
+@keyframes cs-pulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+@keyframes cs-mist { from { transform: translateX(-6%); opacity: 0; } 20% { opacity: 0.85; } to { transform: translateX(6%); opacity: 0.7; } }
+@keyframes cs-forget { 0% { opacity: 0; filter: blur(6px); } 20% { opacity: 0.95; filter: blur(0); } 70% { opacity: 0.7; filter: blur(1px); } 100% { opacity: 0; filter: blur(10px); transform: translateY(-40px); } }
+@keyframes cs-grow { from { transform: scale(0.2); opacity: 0.2; } to { transform: scale(1); opacity: 1; } }
+@keyframes cs-light { from { opacity: 0.15; } to { opacity: 1; } }
+@keyframes cs-reveal { from { opacity: 0; } to { opacity: 1; } }
 @keyframes cs-word { from { opacity: 0; filter: blur(4px); transform: translateY(4px); } to { opacity: 1; filter: blur(0); transform: translateY(0); } }
 @keyframes cs-grain { 0% { transform: translate(0, 0); } 25% { transform: translate(-3%, 2%); } 50% { transform: translate(2%, -3%); } 75% { transform: translate(-2%, -1%); } 100% { transform: translate(0, 0); } }
 @keyframes cs-letterbox-top { from { transform: translateY(-100%); } to { transform: translateY(0); } }
@@ -214,3 +225,16 @@ button, input, textarea, select { font-family: inherit; }
 @keyframes blink { 0% { opacity: 1; } 100% { opacity: 0; } }
 /* the pack's corner selector: three frames, the brackets breathing in and out */
 @keyframes corners { 0% { background-position: 0 0; } 33% { background-position: -80px 0; } 66% { background-position: -160px 0; } }
+
+/* Story pages: each line eases in; relic visions flicker like a corrupted memory. */
+@keyframes story-line { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.story-line { animation: story-line 0.45s ease-out both; }
+@keyframes story-flicker { 0%, 100% { opacity: 1; filter: none; } 92% { opacity: 1; } 93% { opacity: 0.55; filter: hue-rotate(60deg); } 95% { opacity: 1; } 97% { opacity: 0.7; transform: translateX(2px); } }
+.story-vision { animation: story-flicker 3.2s steps(1) infinite; }
+@keyframes story-blink { 50% { opacity: 0.35; } }
+.story-blink { animation: story-blink 1.2s steps(2) infinite; }
+@keyframes mist-breathe { 50% { opacity: 0.85; } }
+
+@keyframes surge-fade { 0% { opacity: 0; } 8% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+
+@keyframes objective-card { 0% { opacity: 0; transform: translate(-50%, -10px); } 10% { opacity: 1; transform: translate(-50%, 0); } 85% { opacity: 1; } 100% { opacity: 0; } }

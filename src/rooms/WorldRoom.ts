@@ -15,6 +15,11 @@ import { generateWorld, WATER, type WorldMap } from '../game/world/mapGen.ts';
 import { MAP_TILES } from '../game/world/constants.ts';
 import { DROP_KINDS, GameSim, LOOT_MAX, type SimEvent } from '../shared/sim.ts';
 import { nowSky } from '../shared/daynight.ts';
+import { LANDMARKS } from '../game/eidolon.ts';
+import { CAMP_RADIUS } from '../game/survival.ts';
+
+/** Every camp's centre (their sanctuary rings keep monsters out). */
+const CAMPS = LANDMARKS.filter((l) => l.kind === 'camp').map((l) => ({ u: l.i + 0.5, v: l.j + 0.5 }));
 
 type Scene = 'world' | 'base';
 
@@ -46,11 +51,15 @@ interface LootMsg { type: 'loot'; u: number; v: number; items: [string, number][
 /** Help a fallen teammate up. */
 interface ReviveMsg { type: 'revive'; target: string }
 /** The client is reading or talking (on), and whether it stands safe in a camp (monsters cannot reach it there). */
-interface CalmMsg { type: 'calm'; on: boolean; safe?: boolean }
+interface CalmMsg { type: 'calm'; on: boolean; safe?: boolean; siege?: boolean }
 interface RevivedOut { type: 'revived'; by: string }
 interface PickupMsg { type: 'pickup'; id: number }
 /** Bring a boss in near the player (guardian spot, warden's arena or the citadel); the server sets its stats. */
 interface SummonMsg { type: 'summon'; code: number; tier: number; u: number; v: number }
+/** The story sets foes around a place near the player (an ambush, a siege wave), or wards a boss. */
+interface EncounterMsg { type: 'encounter'; kinds: string[]; u: number; v: number; level: number }
+interface WardMsg { type: 'ward'; code: number; share: number }
+interface CrippleMsg { type: 'cripple'; code: number; what: string }
 // Server → client.
 interface SnapshotMsg { type: 'snapshot'; players: Record<string, { name: string; pose: Pose | null }> }
 interface PoseOut extends Pose { type: 'pose'; id: string }
@@ -63,7 +72,7 @@ interface SlamOut { type: 'slam'; u: number; v: number; r: number }
 interface BossOut { type: 'boss'; code: number; u: number; v: number }
 interface GainOut { type: 'gain'; skill: string; id: number; sword: number }
 interface WaveOut { type: 'wave' | 'cleared'; wave: number }
-type Protocol = PoseMsg | ActMsg | AwayMsg | HelloMsg | HitMsg | PickupMsg | SummonMsg | LootMsg | ReviveMsg | CalmMsg | RevivedOut | SlamOut | BossOut | SnapshotMsg | PoseOut | ActOut | AwayOut | SimOut | BiteOut | KillOut | GainOut | WaveOut;
+type Protocol = PoseMsg | ActMsg | AwayMsg | HelloMsg | HitMsg | PickupMsg | SummonMsg | EncounterMsg | WardMsg | CrippleMsg | LootMsg | ReviveMsg | CalmMsg | RevivedOut | SlamOut | BossOut | SnapshotMsg | PoseOut | ActOut | AwayOut | SimOut | BiteOut | KillOut | GainOut | WaveOut;
 
 const ROOM_TILES = 8;
 const BOUNDS: Record<Scene, number> = { world: MAP_TILES, base: ROOM_TILES };
@@ -92,6 +101,13 @@ export default class WorldRoom extends GameRoom<Protocol> {
     /** Players reading or talking, and players safe in a camp. */
     private calm = new Set<string>();
     private safe = new Set<string>();
+    /** Players defending a Sanctuary in a siege: the camps open to monsters meanwhile. */
+    private sieging = new Set<string>();
+    /** The camps' sanctuary rings: monsters may not step in (unless a siege is on). */
+    private noGo(u: number, v: number): boolean {
+        if (this.sieging.size > 0) return false;
+        return CAMPS.some((c) => Math.hypot(u - c.u, v - c.v) < CAMP_RADIUS);
+    }
     private map: WorldMap | null = null;
     private sim: GameSim | null = null;
     private lastTick = 0;
@@ -115,20 +131,25 @@ export default class WorldRoom extends GameRoom<Protocol> {
                 },
                 // Enemies push through plants; water, the map edge and cliffs stop them.
                 canMove: (fu, fv, tu, tv) => {
+                    if (this.noGo(tu, tv) && !this.noGo(fu, fv)) return false;
                     const ti = Math.floor(tu);
                     const tj = Math.floor(tv);
                     if (ti < 1 || tj < 1 || ti >= MAP_TILES - 1 || tj >= MAP_TILES - 1) return false;
-                    if (map.terrain[tj * MAP_TILES + ti] === WATER) return false;
+                    // (water and the void between the interiors)
+                    if (map.terrain[tj * MAP_TILES + ti] >= WATER) return false;
                     return Math.abs(heightAt(ti, tj) - heightAt(Math.floor(fu), Math.floor(fv))) <= 1;
                 },
                 canStand: (u, v) => {
+                    if (this.noGo(u, v)) return false;
                     const i = Math.floor(u);
                     const j = Math.floor(v);
                     if (i < 4 || j < 4 || i >= MAP_TILES - 4 || j >= MAP_TILES - 4) return false;
                     const k = j * MAP_TILES + i;
-                    if (map.terrain[k] === WATER || blocked[k] === 1) return false;
+                    if (map.terrain[k] >= WATER || blocked[k] === 1) return false;
                     return Math.abs(heightAt(i, j) - heightAt(i + 1, j)) <= 1 && Math.abs(heightAt(i, j) - heightAt(i, j + 1)) <= 1;
                 },
+                // Waves come over open ground, never out of a cave's walls.
+                wild: (u, v) => map.place[Math.floor(v) * MAP_TILES + Math.floor(u)] === 0,
                 rand: Math.random,
                 night: () => nowSky().dark,
                 // Waves wait only while everyone in the world is on a peaceful task.
@@ -144,7 +165,7 @@ export default class WorldRoom extends GameRoom<Protocol> {
             },
             {
                 // The breather after a wave is cleared (talk, forge, brew, set traps).
-                everyMs: (meta.waveEverySec ?? 75) * 1000,
+                everyMs: (meta.waveEverySec ?? 90) * 1000,
                 firstMs: (meta.firstWaveSec ?? 20) * 1000,
                 swordMul: meta.swordMul ?? 1,
                 potionMul: meta.potionMul ?? 1,
@@ -198,6 +219,21 @@ export default class WorldRoom extends GameRoom<Protocol> {
             case 'summon':
                 this.onSummon(sender.id, payload);
                 break;
+            case 'encounter':
+                this.onEncounter(sender.id, payload);
+                break;
+            case 'cripple': {
+                const code = typeof payload.code === 'number' ? Math.round(payload.code) : 0;
+                const what = payload.what;
+                if (code > 0 && code < 100 && (what === 'slow' || what === 'weak' || what === 'calm' || what === 'stagger')) this.sim?.cripple(code, what);
+                break;
+            }
+            case 'ward': {
+                const code = typeof payload.code === 'number' ? Math.round(payload.code) : 0;
+                const share = typeof payload.share === 'number' && Number.isFinite(payload.share) ? payload.share : 1;
+                if (code > 0 && code < 100) this.sim?.ward(code, share);
+                break;
+            }
             case 'loot':
                 this.onLoot(sender.id, payload);
                 break;
@@ -209,6 +245,8 @@ export default class WorldRoom extends GameRoom<Protocol> {
                 else this.calm.delete(sender.id);
                 if (payload.safe === true) this.safe.add(sender.id);
                 else this.safe.delete(sender.id);
+                if (payload.siege === true) this.sieging.add(sender.id);
+                else this.sieging.delete(sender.id);
                 break;
             case 'away':
                 this.poses.delete(sender.id);
@@ -292,6 +330,19 @@ export default class WorldRoom extends GameRoom<Protocol> {
         if (Math.hypot(u - pose.u, v - pose.v) > 8) return;
         this.lastSummon.set(id, now);
         sim.summon(Math.round(code), tier, u, v);
+    }
+
+    private onEncounter(id: string, m: EncounterMsg): void {
+        const sim = this.sim;
+        const pose = this.poses.get(id);
+        if (!sim || !pose || pose.scene !== 'world' || pose.dead || !Array.isArray(m.kinds)) return;
+        const now = Date.now();
+        if (now - (this.lastSummon.get(id) ?? 0) < MIN_SUMMON_GAP_MS) return;
+        const num = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x : null);
+        const u = num(m.u), v = num(m.v), level = num(m.level);
+        if (u === null || v === null || level === null || Math.hypot(u - pose.u, v - pose.v) > 30) return;
+        this.lastSummon.set(id, now);
+        sim.encounter(m.kinds.filter((k): k is string => typeof k === 'string').slice(0, 10), u, v, Math.min(20, Math.max(1, level)));
     }
 
     private onLoot(id: string, m: LootMsg): void {

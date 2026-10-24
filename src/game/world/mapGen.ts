@@ -6,15 +6,19 @@
  * guardians, a warden's arena, towers and houses, and the Void Citadel in the middle. Pure data — the
  * renderer in worldScene.ts turns it into sprites a chunk at a time.
  */
-import { MAP_TILES } from './constants.ts';
+import { MAP_TILES, WORLD_TILES } from './constants.ts';
 import { BUILDINGS, BUILDING_IDS, type BuildingId } from '../survival.ts';
 import { ELEMENTS, LANDMARKS, regionOf, type Element } from '../eidolon.ts';
+import { STYLE } from './biomes.ts';
+import { charAt, entranceCell, PLACED, THEMES } from './interiors.ts';
 
 export const GRASS = 0;
 export const DIRT = 1;
 export const SAND = 2;
 export const STONE = 3;
 export const WATER = 4;
+/** Nothing: the dark between the interiors beyond the continent (never drawn, never walked). */
+export const VOID = 5;
 
 /** Ocean band around the map, in tiles (jittered). */
 export const OCEAN = 6;
@@ -42,6 +46,8 @@ export interface WorldMap {
     variant: Uint8Array;
     /** 1 = not walkable. */
     blocked: Uint8Array;
+    /** 1 = blocked by something standing there (a tree, a rock, a chest): it stops you only near its middle. */
+    solid: Uint8Array;
     /** Terrace level per cell, 0..MAX_HEIGHT. Neighbouring cells within 1 level are walkable. */
     height: Uint8Array;
     /** 0-255 ground tone (smooth noise), used to vary the shading of the ground. */
@@ -54,8 +60,30 @@ export interface WorldMap {
     chests: { i: number; j: number }[];
     /** Every kingdom's camp tents (solid). */
     camps: { el: Element; id: BuildingId; i: number; j: number }[];
-    /** Region per cell: 0 the citadel, 1-4 a kingdom (ELEMENTS index + 1). */
+    /** Region per cell: 0 the citadel, 1-4 a kingdom (ELEMENTS index + 1). An interior's cells are its land's. */
     region: Uint8Array;
+    /** How a cell is drawn when it is not plain ground (world/biomes.ts STYLE; 0 = plain). */
+    style: Uint8Array;
+    /** Which interior a cell belongs to (its index in PLACED + 1; 0 = the overworld). */
+    place: Uint8Array;
+    /** The doors between the overworld and the interiors, and between a dig's floors. */
+    doors: Door[];
+    /** Cell -> index in doors, for the cells that take you somewhere when you step on them. */
+    doorAt: Map<number, number>;
+    /** Light sources (torches, lanterns, crystals, glowing mushrooms), in tiles. */
+    lights: { i: number; j: number; color: number; r: number }[];
+    /** Where foes wait in the interiors. */
+    spawns: { n: number; i: number; j: number }[];
+}
+
+/** Stepping on `at` takes you to (u, v) facing `face` (a 0-7 sector), into `place` (0 = the overworld). */
+export interface Door {
+    at: number;
+    u: number;
+    v: number;
+    face: number;
+    place: number;
+    name: string;
 }
 
 function rng(seed: number): () => number {
@@ -72,9 +100,11 @@ function rng(seed: number): () => number {
 export function generateWorld(seed = 1337): WorldMap {
     const rand = rng(seed);
     const N = MAP_TILES;
-    const SPAWN = N / 2;
+    /** The continent (the rest of the grid is the interiors' strip). */
+    const W = WORLD_TILES;
+    const SPAWN = W / 2;
     /** The layout was tuned on a 256 map: positions scale by S, counts by S². */
-    const S = N / 256;
+    const S = W / 256;
     const S2 = S * S;
     const at = (i: number, j: number) => j * N + i;
     const inMap = (i: number, j: number) => i >= 0 && j >= 0 && i < N && j < N;
@@ -84,6 +114,7 @@ export function generateWorld(seed = 1337): WorldMap {
     const terrain = new Uint8Array(N * N);
     const variant = new Uint8Array(N * N);
     const blocked = new Uint8Array(N * N);
+    const solidAt = new Uint8Array(N * N);
     const height = new Uint8Array(N * N);
     const tone = new Uint8Array(N * N);
     const shoreDist = new Uint8Array(N * N);
@@ -105,7 +136,7 @@ export function generateWorld(seed = 1337): WorldMap {
     const beachAmt = (i: number, j: number): number => {
         const span = beachSpan(i);
         if (span <= 0) return 0;
-        const fromEdge = N - 1 - j;
+        const fromEdge = W - 1 - j;
         const inner = OCEAN + BEACH_SEA + BEACH_DEEP + 4 * Math.sin(i * 0.09) + 3 * Math.sin(i * 0.23 + 1);
         return span * (1 - smooth(inner - 5, inner + 6, fromEdge));
     };
@@ -113,8 +144,12 @@ export function generateWorld(seed = 1337): WorldMap {
     // ---- Ocean: a jittered band of water around the edge, wider in front of the beach.
     for (let j = 0; j < N; j++) {
         for (let i = 0; i < N; i++) {
-            const edge = Math.min(i, j, N - 1 - i, N - 1 - j);
-            const sea = j > N / 2 ? BEACH_SEA * beachSpan(i) : 0;
+            if (i >= W || j >= W) {
+                terrain[at(i, j)] = VOID;
+                continue;
+            }
+            const edge = Math.min(i, j, W - 1 - i, W - 1 - j);
+            const sea = j > W / 2 ? BEACH_SEA * beachSpan(i) : 0;
             const depth = OCEAN + sea + 1.4 * Math.sin(i * 0.17 + j * 0.05) + 1.4 * Math.sin(j * 0.13 - i * 0.07);
             if (edge < depth) terrain[at(i, j)] = WATER;
         }
@@ -134,20 +169,20 @@ export function generateWorld(seed = 1337): WorldMap {
         }
     };
     const setTerrain = (t: number) => (i: number, j: number) => {
-        if (terrain[at(i, j)] !== WATER || t === WATER) terrain[at(i, j)] = t;
+        if (terrain[at(i, j)] !== VOID && (terrain[at(i, j)] !== WATER || t === WATER)) terrain[at(i, j)] = t;
     };
     const farFrom = (ci: number, cj: number, r: number) =>
-        Math.min(ci, cj, N - 1 - ci, N - 1 - cj) > OCEAN + r + 3 && !nearSpawn(ci, cj, r + 12) && beachAmt(ci, cj) < 0.02 && beachAmt(ci, cj + r + 6) < 0.02;
+        Math.min(ci, cj, W - 1 - ci, W - 1 - cj) > OCEAN + r + 3 && !nearSpawn(ci, cj, r + 12) && beachAmt(ci, cj) < 0.02 && beachAmt(ci, cj + r + 6) < 0.02;
 
     // ---- Rocky ground and dirt patches (under the lakes so water wins).
     for (let n = 0, tries = 0; n < Math.round(9 * S2) && tries < 200 * S2; tries++) {
-        const ci = intIn(20, N - 20), cj = intIn(20, N - 20), r = intIn(3, 6);
+        const ci = intIn(20, W - 20), cj = intIn(20, W - 20), r = intIn(3, 6);
         if (!farFrom(ci, cj, r)) continue;
         blob(ci, cj, r, r * (0.6 + rand() * 0.5), setTerrain(STONE));
         n++;
     }
     for (let n = 0, tries = 0; n < Math.round(14 * S2) && tries < 200 * S2; tries++) {
-        const ci = intIn(20, N - 20), cj = intIn(20, N - 20), r = intIn(3, 7);
+        const ci = intIn(20, W - 20), cj = intIn(20, W - 20), r = intIn(3, 7);
         if (!farFrom(ci, cj, r)) continue;
         blob(ci, cj, r, r * (0.6 + rand() * 0.5), setTerrain(DIRT));
         n++;
@@ -155,7 +190,7 @@ export function generateWorld(seed = 1337): WorldMap {
 
     // ---- Lakes.
     for (let n = 0, tries = 0; n < Math.round(14 * S2) && tries < 300 * S2; tries++) {
-        const ci = intIn(20, N - 20), cj = intIn(20, N - 20), r = intIn(4, 9);
+        const ci = intIn(20, W - 20), cj = intIn(20, W - 20), r = intIn(4, 9);
         if (!farFrom(ci, cj, r)) continue;
         blob(ci, cj, r, r * (0.55 + rand() * 0.5), setTerrain(WATER));
         n++;
@@ -164,13 +199,13 @@ export function generateWorld(seed = 1337): WorldMap {
     // ---- Kingdom character: Aquatica gets many more lakes, Pyraxis bare rock.
     const inKingdom = (i: number, j: number, e: Element) => regionOf(i + 0.5, j + 0.5) === e;
     for (let n = 0, tries = 0; n < Math.round(7 * S2) && tries < 600 * S2; tries++) {
-        const ci = intIn(20, N - 20), cj = intIn(20, N - 20), r = intIn(4, 10);
+        const ci = intIn(20, W - 20), cj = intIn(20, W - 20), r = intIn(4, 10);
         if (!inKingdom(ci, cj, 'water') || !farFrom(ci, cj, r)) continue;
         blob(ci, cj, r, r * (0.55 + rand() * 0.5), setTerrain(WATER));
         n++;
     }
     for (let n = 0, tries = 0; n < Math.round(6 * S2) && tries < 600 * S2; tries++) {
-        const ci = intIn(20, N - 20), cj = intIn(20, N - 20), r = intIn(4, 9);
+        const ci = intIn(20, W - 20), cj = intIn(20, W - 20), r = intIn(4, 9);
         if (!inKingdom(ci, cj, 'fire') || !farFrom(ci, cj, r)) continue;
         blob(ci, cj, r, r * (0.6 + rand() * 0.5), setTerrain(n % 3 === 0 ? DIRT : STONE));
         n++;
@@ -178,7 +213,7 @@ export function generateWorld(seed = 1337): WorldMap {
 
     // ---- Rivers: two wandering channels with grass fords every so often.
     const river = (vertical: boolean, c0: number, amp: number, phase: number, fords: number[]) => {
-        for (let t = OCEAN; t < N - OCEAN; t++) {
+        for (let t = OCEAN; t < W - OCEAN; t++) {
             if (fords.some((f) => Math.abs(t - f) <= 2)) continue;
             const c = c0 + amp * Math.sin(t * 0.06 + phase) + amp * 0.4 * Math.sin(t * 0.17);
             for (let w = -1; w <= 1; w++) {
@@ -204,7 +239,7 @@ export function generateWorld(seed = 1337): WorldMap {
     const shore: number[] = [];
     for (let j = 1; j < N - 1; j++) {
         for (let i = 1; i < N - 1; i++) {
-            if (terrain[at(i, j)] === WATER) continue;
+            if (terrain[at(i, j)] === WATER || terrain[at(i, j)] === VOID) continue;
             let w = false;
             for (let dj = -1; dj <= 1 && !w; dj++) for (let di = -1; di <= 1; di++) if (terrain[at(i + di, j + dj)] === WATER) { w = true; break; }
             if (w) shore.push(at(i, j));
@@ -246,7 +281,8 @@ export function generateWorld(seed = 1337): WorldMap {
             const e = fbm(i * 0.013, j * 0.013, 4, 10);
             const ridge = 1 - Math.abs(2 * fbm(i * 0.022 + 40, j * 0.022 + 17, 3, 30) - 1);
             const detail = fbm(i * 0.07, j * 0.07, 2, 50);
-            const edge = Math.min(i, j, N - 1 - i, N - 1 - j);
+            if (i >= W || j >= W) continue;
+            const edge = Math.min(i, j, W - 1 - i, W - 1 - j);
             const range = sstep(0, 1, (78 - edge) / 60);
             const raw = 8 * (0.9 * e + 0.32 * ridge + 0.6 * range * (0.55 + 0.9 * e)) - 3.1 + 2.2 * detail + (regionOf(i + 0.5, j + 0.5) === 'air' ? 2.4 : 0);
             // Soft-cap the peaks so ranges keep their shape instead of clipping flat at the top.
@@ -280,7 +316,8 @@ export function generateWorld(seed = 1337): WorldMap {
         for (let j = 1; j < N - 1; j++) {
             for (let i = 1; i < N - 1; i++) {
                 const k = at(i, j);
-                if (terrain[k] === WATER || lattice(i, j, 90) < 0.08) continue;
+                // (no crags left standing: a ledge you cannot climb reads as an invisible wall)
+                if (terrain[k] === WATER) continue;
                 const low = Math.min(height[k - 1], height[k + 1], height[k - N], height[k + N]);
                 if (height[k] > low + 1) height[k] = low + 1;
             }
@@ -291,14 +328,14 @@ export function generateWorld(seed = 1337): WorldMap {
         const t = terrain[k];
         if (t !== GRASS && t !== DIRT) continue;
         const i = k % N, j = (k - i) / N;
-        if (height[k] >= 6 || (height[k] >= 4 && vnoise(i * 0.25, j * 0.25, 70) > 0.5)) terrain[k] = STONE;
+        if (height[k] >= 6 || (height[k] >= 5 && vnoise(i * 0.25, j * 0.25, 70) > 0.6)) terrain[k] = STONE;
     }
 
     // The beach itself is sand (grass pokes through at its ragged inland edge).
     for (let j = 0; j < N; j++) {
         for (let i = 0; i < N; i++) {
             const k = at(i, j);
-            if (terrain[k] === WATER) continue;
+            if (terrain[k] === WATER || terrain[k] === VOID) continue;
             const amt = beachAmt(i, j);
             if (amt > 0.5 + 0.25 * (vnoise(i * 0.35, j * 0.35, 80) - 0.5)) terrain[k] = SAND;
         }
@@ -325,7 +362,61 @@ export function generateWorld(seed = 1337): WorldMap {
         }
     }
 
-    for (let k = 0; k < terrain.length; k++) if (terrain[k] === WATER) blocked[k] = 1;
+    // The doors into the caves and ruins stand on a little flat apron (on dry land).
+    const doorways = PLACED.map((p) => ({ p, at: entranceCell(p.def) })).filter((d): d is { p: (typeof PLACED)[number]; at: { i: number; j: number } } => !!d.at);
+    for (const { at: e } of doorways) {
+        const h0 = Math.min(4, height[at(e.i, e.j)]);
+        for (let j = e.j - 6; j <= e.j + 6; j++) {
+            for (let i = e.i - 6; i <= e.i + 6; i++) {
+                if (!inMap(i, j)) continue;
+                const k = at(i, j);
+                const d = Math.hypot(i - e.i, j - e.j);
+                if (d <= 3.5) {
+                    height[k] = h0;
+                    if (terrain[k] === WATER) terrain[k] = DIRT;
+                } else if (terrain[k] !== WATER) {
+                    const slack = Math.floor(d - 3);
+                    height[k] = Math.min(h0 + slack, Math.max(h0 - slack, height[k]));
+                }
+            }
+        }
+    }
+
+    // ---- The lands' own ground. Pyraxis: scorched earth, ash flats, ochre badlands, obsidian heights.
+    // Zephyria: wind-meadows under white cliffs. Aquatica: wide beaches, coral sand. The Void Wastes:
+    // salt flats and crystal-shot rock.
+    const style = new Uint8Array(N * N);
+    for (let j = 0; j < W; j++) {
+        for (let i = 0; i < W; i++) {
+            const k = at(i, j);
+            const t = terrain[k];
+            if (t === WATER || t === VOID) continue;
+            const land = regionOf(i + 0.5, j + 0.5);
+            const n = fbm(i * 0.018, j * 0.018, 3, 400);
+            const m = vnoise(i * 0.09, j * 0.09, 410);
+            if (land === 'fire') {
+                if (t === STONE) style[k] = STYLE.OBSIDIAN;
+                else if (t === SAND || n < 0.42) { style[k] = STYLE.ASH; if (t !== SAND) terrain[k] = DIRT; }
+                else if (n > 0.6) { style[k] = STYLE.BADLANDS; terrain[k] = DIRT; }
+                else { style[k] = STYLE.SCORCH; terrain[k] = DIRT; }
+            } else if (land === 'air') {
+                // Wind-meadows climb the hills; only the true heights are bare white cliff.
+                if (t === STONE && height[k] < 7) terrain[k] = GRASS;
+                style[k] = terrain[k] === STONE ? STYLE.CLIFF : terrain[k] === GRASS ? STYLE.MEADOW : 0;
+            } else if (land === 'water') {
+                // Beaches: the low ground by the water is sand.
+                if (t !== SAND && t !== STONE && dist[k] <= 3 && height[k] <= 1) terrain[k] = SAND;
+                if (terrain[k] === SAND) style[k] = m > 0.66 ? STYLE.CORAL : STYLE.BEACH;
+            } else if (land === 'earth') {
+                if (t === STONE) style[k] = STYLE.CRYSTAL;
+                else if (n < 0.45) { style[k] = STYLE.SALT; terrain[k] = DIRT; }
+            }
+        }
+    }
+    const styleAt = (i: number, j: number) => style[at(i, j)];
+    const ARID = new Set<number>([STYLE.ASH, STYLE.BADLANDS, STYLE.SCORCH, STYLE.SALT, STYLE.BEACH, STYLE.CORAL]);
+
+    for (let k = 0; k < terrain.length; k++) if (terrain[k] === WATER || terrain[k] === VOID) blocked[k] = 1;
 
     // Ground tone: broad light/dark patches plus fine speckle.
     for (let j = 0; j < N; j++) {
@@ -352,7 +443,7 @@ export function generateWorld(seed = 1337): WorldMap {
 
     // ---- Roads: winding stone paths from spawn out to a handful of waypoints.
     const road = new Set<number>();
-    const passable = (i: number, j: number) => inMap(i, j) && terrain[at(i, j)] !== WATER;
+    const passable = (i: number, j: number) => i < W && j < W && inMap(i, j) && terrain[at(i, j)] !== WATER;
     const findPath = (from: number, to: number): number[] | null => {
         const g = new Float32Array(N * N).fill(Infinity);
         const prev = new Int32Array(N * N).fill(-1);
@@ -434,14 +525,14 @@ export function generateWorld(seed = 1337): WorldMap {
         const ang = a0 + (n / WAYS) * 6.28 + (rand() - 0.5) * 0.9;
         const d = intIn(Math.round(38 * S), Math.round(108 * S));
         const k = landNear(
-            Math.min(N - OCEAN - 14, Math.max(OCEAN + 14, Math.round(SPAWN + Math.cos(ang) * d))),
-            Math.min(N - OCEAN - 14, Math.max(OCEAN + 14, Math.round(SPAWN + Math.sin(ang) * d))),
+            Math.min(W - OCEAN - 14, Math.max(OCEAN + 14, Math.round(SPAWN + Math.cos(ang) * d))),
+            Math.min(W - OCEAN - 14, Math.max(OCEAN + 14, Math.round(SPAWN + Math.sin(ang) * d))),
         );
         if (k !== null) waypoints.push(k);
     }
     // One waypoint on the beach itself, so a road leads down to it.
     for (let dj = 0; dj < 30; dj++) {
-        const bj = N - 1 - (OCEAN + BEACH_SEA + 20) - dj, bi = Math.round(130 * S);
+        const bj = W - 1 - (OCEAN + BEACH_SEA + 20) - dj, bi = Math.round(130 * S);
         if (inMap(bi, bj) && terrain[at(bi, bj)] === SAND && height[at(bi, bj)] === 0) { waypoints.push(at(bi, bj)); break; }
     }
     // A road to every landmark (to the edge of its flat ground).
@@ -530,11 +621,15 @@ export function generateWorld(seed = 1337): WorldMap {
         }
     }
     const nearLandmark = (i: number, j: number, pad: number) => LANDMARKS.some((L) => Math.hypot(i - L.i, j - L.j) <= L.r + pad);
+    for (const { at: e } of doorways) for (let j = e.j - 3; j <= e.j + 3; j++) for (let i = e.i - 3; i <= e.i + 3; i++) if (inMap(i, j)) occupied.add(at(i, j));
 
     const place = (name: string, i: number, j: number, solid: boolean) => {
         props.push({ name, i, j });
         occupied.add(at(i, j));
-        if (solid) blocked[at(i, j)] = 1;
+        if (solid) {
+            blocked[at(i, j)] = 1;
+            solidAt[at(i, j)] = 1;
+        }
     };
     const free = (i: number, j: number, gap: number): boolean => {
         if (!inMap(i, j) || terrain[at(i, j)] === WATER || nearSpawn(i, j, 6)) return false;
@@ -547,7 +642,7 @@ export function generateWorld(seed = 1337): WorldMap {
         maxH = MAX_HEIGHT, salt = 0, bias = 0.5,
     ) => {
         for (let n = 0, tries = 0; n < count && tries < count * 14; tries++) {
-            const i = intIn(3, N - 4), j = intIn(3, N - 4);
+            const i = intIn(3, W - 4), j = intIn(3, W - 4);
             if (!onTerrain.includes(terrain[at(i, j)]) || height[at(i, j)] > maxH) continue;
             if (salt && vnoise(i * 0.07, j * 0.07, salt) < bias - 0.25 * rand()) continue;
             if (!free(i, j, gap)) continue;
@@ -560,24 +655,48 @@ export function generateWorld(seed = 1337): WorldMap {
     // Treasure chests, spread out over the land (never near the camp).
     const chests: { i: number; j: number }[] = [];
     for (let tries = 0; chests.length < Math.round(22 * S2) && tries < 4000; tries++) {
-        const i = intIn(OCEAN + 6, N - OCEAN - 7), j = intIn(OCEAN + 6, N - OCEAN - 7);
+        const i = intIn(OCEAN + 6, W - OCEAN - 7), j = intIn(OCEAN + 6, W - OCEAN - 7);
         const k = at(i, j);
         if (terrain[k] === WATER || terrain[k] === SAND || nearSpawn(i, j, 16) || nearLandmark(i, j, 5) || !free(i, j, 2)) continue;
         if (chests.some((c) => Math.hypot(c.i - i, c.j - j) < 14)) continue;
         chests.push({ i, j });
         occupied.add(k);
         blocked[k] = 1;
+        solidAt[k] = 1;
     }
+    // What stands on the land follows its ground: dead trees and obsidian on the ash, cacti in the
+    // badlands, palms on the beaches, ruins and crystals on the salt; woods and meadows elsewhere.
+    const rock = () => `rock${intIn(1, 5)}`;
     scatter(1700 * S2, 2, (i, j) => {
-        if (inKingdom(i, j, 'fire') && rand() < 0.75) place(rand() < 0.6 ? `rock${intIn(1, 5)}` : 'stump', i, j, true);
+        const s = styleAt(i, j);
+        if (s === STYLE.ASH) place(rand() < 0.5 ? 'deadtree' : rand() < 0.5 ? 'obsidian' : rock(), i, j, true);
+        else if (s === STYLE.BADLANDS) place(rand() < 0.45 ? 'cactus' : rock(), i, j, true);
+        else if (s === STYLE.SCORCH) place(rand() < 0.55 ? 'deadtree' : rand() < 0.6 ? rock() : 'stump', i, j, true);
+        else if (s === STYLE.SALT) place(rand() < 0.4 ? 'deadtree' : rand() < 0.5 ? 'ruinwall' : rand() < 0.5 ? 'pillar_broken' : 'crystal1', i, j, true);
+        else if (s === STYLE.BEACH || s === STYLE.CORAL) place('palm', i, j, true);
         else place(height[at(i, j)] >= 2 && rand() < 0.7 ? 'tree_pine' : pick(broadleaf), i, j, true);
-    }, [GRASS, DIRT], 5, 300, 0.48);
-    scatter(700 * S2, 1, (i, j) => { if (inKingdom(i, j, 'earth')) place(pick(broadleaf), i, j, true); }, [GRASS, DIRT], 5);
+    }, [GRASS, DIRT, SAND], 5, 300, 0.48);
+    scatter(700 * S2, 1, (i, j) => { if (inKingdom(i, j, 'earth') && !ARID.has(styleAt(i, j))) place(rand() < 0.6 ? 'tree_fantasy' : 'deadtree', i, j, true); }, [GRASS, DIRT], 5);
     scatter(40 * S2, 3, (i, j) => place('stump', i, j, true), [GRASS], 3);
-    scatter(4200 * S2, 1, (i, j) => place(pick(bushes), i, j, true), [GRASS, DIRT], 6, 310, 0.42);
-    scatter(900 * S2, 1, (i, j) => place(`rock${intIn(1, 5)}`, i, j, true), [GRASS, STONE, DIRT]);
+    // Bushes are walked through (a bush that stops you reads as an invisible wall).
+    scatter(4200 * S2, 1, (i, j) => { if (!ARID.has(styleAt(i, j))) place(pick(bushes), i, j, false); }, [GRASS, DIRT], 6, 310, 0.42);
+    scatter(900 * S2, 1, (i, j) => place(rock(), i, j, true), [GRASS, STONE, DIRT]);
     scatter(1100 * S2, 1, (i, j) => place(pick(['dbush_blue', 'dbush_orange', 'dbush_pink']), i, j, false), [GRASS], 6, 320, 0.45);
-    scatter(9000 * S2, 0, (i, j) => place(`tallgrass${intIn(1, 4)}`, i, j, false), [GRASS, DIRT], 6, 330, 0.35);
+    scatter(9000 * S2, 0, (i, j) => { if (!ARID.has(styleAt(i, j))) place(`tallgrass${intIn(1, 4)}`, i, j, false); }, [GRASS, DIRT], 6, 330, 0.35);
+    // Each land's own landmarks of nature: obsidian spires on Pyraxis's heights, crystal outcrops in
+    // the Void Wastes, ruins standing in the salt, coral in Aquatica's shallows.
+    scatter(160 * S2, 3, (i, j) => { if (styleAt(i, j) === STYLE.OBSIDIAN) place('obsidian', i, j, true); }, [STONE], MAX_HEIGHT);
+    scatter(220 * S2, 2, (i, j) => { if (styleAt(i, j) === STYLE.CRYSTAL) place(pick(['crystal1', 'crystal1', 'crystal2']), i, j, true); }, [STONE], MAX_HEIGHT);
+    for (let n = 0, tries = 0; n < Math.round(14 * S2) && tries < 2000; tries++) {
+        const ci = intIn(30, W - 30), cj = intIn(30, W - 30);
+        if (!inKingdom(ci, cj, 'earth') || styleAt(ci, cj) !== STYLE.SALT || !free(ci, cj, 4)) continue;
+        // A fallen colonnade: a ring of pillars, some broken, a stretch of wall.
+        for (let a = 0; a < 8; a++) {
+            const i = Math.round(ci + Math.cos(a * 0.785) * 4), j = Math.round(cj + Math.sin(a * 0.785) * 4);
+            if (free(i, j, 0) && terrain[at(i, j)] !== SAND) place(rand() < 0.45 ? 'pillar' : rand() < 0.6 ? 'pillar_broken' : 'ruinwall', i, j, true);
+        }
+        n++;
+    }
     // The beach: driftwood, rocks and reeds (no trees or bushes); sand piles and pebbles on the ground.
     scatter(120 * S, 3, (i, j) => place(rand() < 0.6 ? 'driftwood1' : 'driftwood2', i, j, true), [SAND], 1, 340, 0.3);
     scatter(60 * S, 3, (i, j) => place(`rock${intIn(1, 5)}`, i, j, true), [SAND], 1);
@@ -592,9 +711,21 @@ export function generateWorld(seed = 1337): WorldMap {
         }
     }
 
-    // Reeds along the shore, and stones breaking the surface of shallow water.
+    // Tide pools on Aquatica's beaches.
+    for (let j = 0; j < W; j++) {
+        for (let i = 0; i < W; i++) {
+            const k = at(i, j);
+            if (style[k] !== STYLE.BEACH || occupied.has(k) || road.has(k) || shoreDist[k] > 3) continue;
+            if (rand() < 0.07) flats.push({ name: `puddle${intIn(1, 3)}`, i, j });
+        }
+    }
+    // Reeds along the shore, and stones (in Aquatica, coral) breaking the surface of shallow water.
     for (let k = 0; k < terrain.length; k++) {
         const i = k % N, j = (k - i) / N;
+        if (terrain[k] === WATER && shoreDist[k] >= 2 && shoreDist[k] <= 3 && !occupied.has(k) && regionOf(i + 0.5, j + 0.5) === 'water' && rand() < 0.05) {
+            place(rand() < 0.5 ? 'coral1' : 'coral2', i, j, true);
+            continue;
+        }
         if (terrain[k] === SAND && shoreDist[k] === 1 && !road.has(k) && !occupied.has(k) && rand() < 0.22) place(`tallgrass${intIn(1, 4)}`, i, j, false);
         else if (terrain[k] === WATER && shoreDist[k] >= 2 && shoreDist[k] <= 4 && !occupied.has(k) && rand() < 0.03) place(`rock${intIn(1, 5)}`, i, j, true);
     }
@@ -614,5 +745,139 @@ export function generateWorld(seed = 1337): WorldMap {
         }
     }
 
-    return { terrain, variant, blocked, height, tone, shoreDist, flats: keptFlats, props, chests, camps, region };
+    // ---- The caves, dungeons and ruins, laid in beyond the continent, and the doors between.
+    const countFlats = flats.length;
+    const placeOf = new Uint8Array(N * N);
+    const doors: Door[] = [];
+    const lights: WorldMap['lights'] = [];
+    const spawns: WorldMap['spawns'] = [];
+    const sector = (du: number, dv: number) => {
+        // The facing (0-7, as the hero's) of a step of (du, dv) in tiles.
+        const x = du - dv, y = (du + dv) * 0.5;
+        return ((Math.round(Math.atan2(y, x) / (Math.PI / 4)) % 8) + 8) % 8;
+    };
+    const FLOORISH = (ch: string) => ch !== ' ' && ch !== '#' && ch !== '~';
+    /** Per interior: its 'E', 'L' and 'H' cells and the floor cell beside each where you arrive. */
+    const ends = new Map<string, Record<string, { k: number; arrive: { u: number; v: number }; face: number }>>();
+    for (const p of PLACED) {
+        const th = THEMES[p.def.theme];
+        const reg = ELEMENTS.indexOf(p.def.land) + 1;
+        const got: Record<string, { k: number; arrive: { u: number; v: number }; face: number }> = {};
+        const isFloor = (i: number, j: number) => FLOORISH(charAt(p, i, j));
+        const isOpen = (i: number, j: number) => isFloor(i, j) || charAt(p, i, j) === '~';
+        const nearOpen = (i: number, j: number, r: number) => {
+            for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) if (isOpen(i + di, j + dj)) return true;
+            return false;
+        };
+        for (let j = p.j0; j < p.j0 + p.h; j++) {
+            for (let i = p.i0; i < p.i0 + p.w; i++) {
+                const k = at(i, j);
+                const ch = charAt(p, i, j);
+                placeOf[k] = p.n;
+                region[k] = reg;
+                variant[k] = intIn(0, 2);
+                if (isFloor(i, j)) {
+                    terrain[k] = DIRT;
+                    height[k] = ch === '^' ? 2 : 1;
+                    style[k] = th.floor;
+                    blocked[k] = 0;
+                } else if (ch === '~') {
+                    terrain[k] = WATER;
+                    height[k] = 0;
+                    shoreDist[k] = 1;
+                    blocked[k] = 1;
+                } else if (nearOpen(i, j, 1)) {
+                    // Rock or masonry: taller where it is deep in the rock, so caves look rugged.
+                    terrain[k] = STONE;
+                    height[k] = th.built ? 3 : nearOpen(i, j, 0) ? 3 : 3 + (lattice(i, j, 500) < 0.5 ? 1 : 0);
+                    style[k] = th.wall;
+                    blocked[k] = 1;
+                } else {
+                    terrain[k] = VOID;
+                    blocked[k] = 1;
+                }
+            }
+        }
+        // What is in it.
+        const stand = (name: string, i: number, j: number) => { props.push({ name, i, j }); blocked[at(i, j)] = 1; solidAt[at(i, j)] = 1; };
+        const loose = (name: string, i: number, j: number) => props.push({ name, i, j });
+        const light = (i: number, j: number, color: number, r: number) => lights.push({ i, j, color, r });
+        for (let j = p.j0; j < p.j0 + p.h; j++) {
+            for (let i = p.i0; i < p.i0 + p.w; i++) {
+                const ch = charAt(p, i, j);
+                switch (ch) {
+                    case ',': flats.push({ name: th.built ? 'rubble' : pick(['rubble', 'pebbles']), i, j }); break;
+                    case '=': flats.push({ name: charAt(p, i - 1, j) === '=' || charAt(p, i + 1, j) === '=' ? 'rail_u' : 'rail_v', i, j }); break;
+                    case 'T': stand('torch', i, j); light(i, j, th.light, 5); break;
+                    case 'l': stand('lantern', i, j); light(i, j, 0xffd27a, 4); break;
+                    case 'c': stand(th.crystal, i, j); light(i, j, th.crystal === 'crystal1' ? 0xc084fc : th.crystal === 'crystal2' ? 0x7dd3fc : th.crystal === 'crystal3' ? 0xf87171 : 0xfbbf24, 3); break;
+                    case 'm': loose(`mush_glow${intIn(1, 3)}`, i, j); light(i, j, 0xa7f3d0, 2); break;
+                    case 's': stand(rand() < 0.5 ? 'stalag1' : 'stalag2', i, j); break;
+                    case 'r': stand(`rock${intIn(1, 5)}`, i, j); break;
+                    case 'x': stand(rand() < 0.5 ? 'crate' : 'crate2', i, j); break;
+                    case 'k': stand('scaffold', i, j); break;
+                    case 'K': stand('minecart', i, j); break;
+                    case 'p': stand('pillar', i, j); break;
+                    case 'P': stand('pillar_broken', i, j); break;
+                    case 'B': stand('bookshelf', i, j); break;
+                    case 'o': stand('obsidian', i, j); break;
+                    case 'b': loose(rand() < 0.5 ? 'skull' : 'bones', i, j); break;
+                    case 'n': loose('candle', i, j); light(i, j, 0xffd890, 2); break;
+                    case 'C': chests.push({ i, j }); blocked[at(i, j)] = 1; solidAt[at(i, j)] = 1; break;
+                    case 'M': spawns.push({ n: p.n, i, j }); break;
+                    case 'E': case 'L': case 'H': {
+                        // Arrive on the open floor beside it, facing away from it.
+                        let best: [number, number] | null = null;
+                        let score = -1;
+                        for (const [di, dj] of [[1, 0], [0, 1], [-1, 0], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+                            const ni = i + di, nj = j + dj;
+                            const c2 = charAt(p, ni, nj);
+                            if (!FLOORISH(c2) || 'ELH'.includes(c2)) continue;
+                            let n = 0;
+                            for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) if (FLOORISH(charAt(p, ni + a, nj + b))) n++;
+                            if (n > score) { score = n; best = [ni, nj]; }
+                        }
+                        const [ai, aj] = best ?? [i, j];
+                        got[ch] = { k: at(i, j), arrive: { u: ai + 0.5, v: aj + 0.5 }, face: sector(ai - i, aj - j) };
+                        if (ch === 'E') loose(th.built ? 'big_exit' : 'ladder_up', i, j);
+                        else if (ch === 'L') loose('ladder_up', i, j);
+                        else loose('hole_ladder', i, j);
+                        light(i, j, ch === 'H' ? th.light : 0xfff0c0, ch === 'H' ? 2 : 4);
+                        break;
+                    }
+                }
+            }
+        }
+        ends.set(p.def.id, got);
+    }
+    // The doors: each interior's way out and its mouth on the overworld; a dig's ladders between its floors.
+    const doorAt = new Map<number, number>();
+    const door = (d: Door) => { doorAt.set(d.at, doors.length); doors.push(d); };
+    for (const p of PLACED) {
+        const got = ends.get(p.def.id)!;
+        const e = entranceCell(p.def);
+        if (e && got.E) {
+            const ek = at(e.i, e.j);
+            // The mouth: a hill of rock (or a ruined gate) with its opening toward the viewer.
+            const built = THEMES[p.def.theme].built;
+            props.push({ name: built ? 'big_gate' : 'big_cave', i: e.i, j: e.j });
+            // Only what the art covers stops you: the hill of rock behind and beside a cave mouth, the wall behind a gate.
+            const covered = built ? [[-1, 0], [0, -1], [-1, -1]] : [[-1, 0], [0, -1], [-1, -1], [-1, 1], [1, -1]];
+            for (const [di, dj] of covered) blocked[at(e.i + di, e.j + dj)] = 1;
+            blocked[ek] = 0;
+            door({ at: ek, u: got.E.arrive.u, v: got.E.arrive.v, face: got.E.face, place: p.n, name: p.def.name });
+            door({ at: got.E.k, u: e.i + 1.5, v: e.j + 1.5, face: sector(1, 1), place: 0, name: '' });
+            lights.push({ i: e.i, j: e.j, color: 0xffd27a, r: 3 });
+        }
+        if (p.def.up && got.L) {
+            const above = PLACED.find((q) => q.def.id === p.def.up);
+            const hole = above && ends.get(above.def.id)?.H;
+            if (above && hole) {
+                door({ at: got.L.k, u: hole.arrive.u, v: hole.arrive.v, face: hole.face, place: above.n, name: above.def.name });
+                door({ at: hole.k, u: got.L.arrive.u, v: got.L.arrive.v, face: got.L.face, place: p.n, name: p.def.name });
+            }
+        }
+    }
+
+    return { terrain, variant, blocked, height, tone, shoreDist, flats: keptFlats.concat(flats.slice(countFlats)), props, chests, camps, region, style, solid: solidAt, place: placeOf, doors, doorAt, lights, spawns };
 }

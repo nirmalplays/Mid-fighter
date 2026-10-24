@@ -55,6 +55,12 @@ export interface WorldSim {
     take(dropId: number): void;
     /** Bring in a boss beside the player (refused if one with that code is alive). */
     summon(code: number, tier: number, u: number, v: number): void;
+    /** The story sets foes around a place, as strong as wave `level`'s. */
+    encounter(kinds: string[], u: number, v: number, level: number): void;
+    /** A boss's ward: the share of each blow that gets through (1 = none). */
+    ward(code: number, share: number): void;
+    /** A structural fracture on a boss. */
+    cripple(code: number, what: 'slow' | 'weak' | 'calm' | 'stagger'): void;
     /** Debug (offline, ?spawn= only): put one monster of a kind at (u, v). */
     debugSpawn(kind: string, u: number, v: number): void;
     destroy(): void;
@@ -67,6 +73,8 @@ export function createWorldSim(opts: {
     calm: () => boolean;
     /** Is this player safe in a camp (monsters lose them; alone there, no wave comes)? */
     safe: () => boolean;
+    /** Ground monsters may not step onto (the camps' sanctuary rings). */
+    noGo?: (u: number, v: number) => boolean;
     everySec: number;
     firstSec: number;
     on: {
@@ -97,20 +105,23 @@ export function createWorldSim(opts: {
                 return p.alive && !opts.safe() ? [{ id: p.id, u: p.u, v: p.v }] : [];
             },
             canMove: (fu, fv, tu, tv) => {
+                if (opts.noGo && opts.noGo(tu, tv) && !opts.noGo(fu, fv)) return false;
                 const ti = Math.floor(tu);
                 const tj = Math.floor(tv);
                 if (ti < 1 || tj < 1 || ti >= MAP_TILES - 1 || tj >= MAP_TILES - 1) return false;
-                if (map.terrain[tj * MAP_TILES + ti] === 4) return false; // WATER
+                if (map.terrain[tj * MAP_TILES + ti] >= 4) return false; // water, and the void between the interiors
                 return Math.abs(heightAt(ti, tj) - heightAt(Math.floor(fu), Math.floor(fv))) <= 1;
             },
             canStand: (u, v) => {
+                if (opts.noGo?.(u, v)) return false;
                 const i = Math.floor(u);
                 const j = Math.floor(v);
                 if (i < 4 || j < 4 || i >= MAP_TILES - 4 || j >= MAP_TILES - 4) return false;
                 const k = j * MAP_TILES + i;
-                if (map.terrain[k] === 4 || map.blocked[k] === 1) return false;
+                if (map.terrain[k] >= 4 || map.blocked[k] === 1) return false;
                 return Math.abs(heightAt(i, j) - heightAt(i + 1, j)) <= 1 && Math.abs(heightAt(i, j) - heightAt(i, j + 1)) <= 1;
             },
+            wild: (u, v) => map.place[Math.floor(v) * MAP_TILES + Math.floor(u)] === 0,
             rand: Math.random,
             night: () => nowSky().dark,
             calm: () => opts.calm(),
@@ -239,6 +250,21 @@ export function createWorldSim(opts: {
         summon(code, tier, u, v) {
             if (net.online()) net.sendSummon(code, tier, u, v);
             else local.summon(code, tier, u, v);
+        },
+
+        encounter(kinds, u, v, level) {
+            if (net.online()) net.sendEncounter(kinds, u, v, level);
+            else local.encounter(kinds, u, v, level);
+        },
+
+        cripple(code, what) {
+            if (net.online()) net.sendCripple(code, what);
+            else local.cripple(code, what);
+        },
+
+        ward(code, share) {
+            if (net.online()) net.sendWard(code, share);
+            else local.ward(code, share);
         },
 
         debugSpawn(kind, u, v) {

@@ -64,6 +64,12 @@ sprites["snow"] = src("Water/TileOverlayDiscreet_Snow.png")
 for color in ("Blue", "Orange", "Pink"):
     sprites[f"dbush_{color.lower()}"] = src(f"Bushes/Bush_DecorativeBush_{color}.png")
 
+# The caves', dungeons' and new lands' pieces (tools/iso_extra.py).
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import iso_extra
+sprites.update(iso_extra.make())
+
 scaled = {n: im.resize((round(im.width * K), round(im.height * K)), Image.LANCZOS) for n, im in sprites.items()}
 
 # Shelf-pack into a 2048-wide sheet.

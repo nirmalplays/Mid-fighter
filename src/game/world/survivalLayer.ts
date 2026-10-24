@@ -24,6 +24,10 @@ import {
     type Element, type NpcId, type Region,
 } from '../eidolon.ts';
 import { CHAR_CELL } from './characterAtlas.ts';
+import { framesOf } from './npcArt.ts';
+
+/** Which dressed figure each camp person wears. */
+const NPC_ART: Record<string, string> = { theron: 'orin', varis: 'bram', lyra: 'lyra', kael: 'kael', lin: 'lin', thorne: 'thorne', nerissa: 'nerissa' };
 import { MAP_TILES, TILE_DX } from './constants.ts';
 import { STONE, WATER, type WorldMap } from './mapGen.ts';
 import { FX } from './fxAtlas.ts';
@@ -96,6 +100,18 @@ export function createSurvivalLayer(o: {
     shared: () => boolean;
     /** How dark it is (0 day .. 1 night): glowing moss shows at night. */
     dark: () => number;
+    /** The story's say: where the marker points (undefined = the chapters decide), what Use offers, who is in camp. */
+    story?: {
+        target: (u: number, v: number) => Point | null | undefined;
+        prompt: (u: number, v: number, facing: number) => { hint: string; act: AppState['act'] } | null;
+        /** Which land's camp a person stands in (null: not in the world yet), and where in it (null: their usual spot). */
+        npcCamp: (id: string) => Element | null;
+        npcAt: (id: string) => [number, number] | null;
+        /** A gathering step: what to point at (the nearest rock or tree). */
+        gather: () => 'stone' | 'wood' | null;
+        /** Pyraxis's bosses come from the story, not their old spots. */
+        active: () => boolean;
+    };
 }): SurvivalLayer {
     const { map } = o;
     const all: (Sprite | Graphics | Text)[] = [];
@@ -181,33 +197,55 @@ export function createSurvivalLayer(o: {
         flame.zIndex = o.zFor(u, v) + 0.02;
         o.layer.addChild(logs, flame);
         all.push(logs, flame);
-        const name = label(`${KINGDOMS[L.el!].name} camp`, 13, 0xffe2b0);
+        const names: Record<string, string> = { fire: 'Watchtower Sanctuary', air: 'Cloud-Watch Aerie', water: 'Rime-Shelf Outpost', earth: 'Coalition Sanctuary' };
+        const name = label(names[L.el!] ?? `${KINGDOMS[L.el!].name} camp`, 13, 0xffe2b0);
         name.position.set(at.x, at.y - 36);
         o.layer.addChild(name);
-        return { L, u, v, fire, flame };
+        // The sanctuary ring: rune-stones round the camp. Monsters stop at it; inside, the waves wait.
+        const ring = new Graphics();
+        const stones = 28;
+        for (let n = 0; n < stones; n++) {
+            const a = (n / stones) * Math.PI * 2;
+            const su = u + Math.cos(a) * CAMP_RADIUS, sv = v + Math.sin(a) * CAMP_RADIUS;
+            const p = ground(su, sv);
+            ring.poly([p.x - at.x - 5, p.y - at.y, p.x - at.x, p.y - at.y - 14, p.x - at.x + 5, p.y - at.y]).fill(0x8a8494).stroke({ width: 2, color: 0x2b0f1c });
+            ring.rect(p.x - at.x - 1.5, p.y - at.y - 10, 3, 4).fill(KINGDOMS[L.el!].color);
+        }
+        ring.position.set(at.x, at.y);
+        ring.zIndex = o.zFor(u, v) - 0.6;
+        o.layer.addChild(ring);
+        all.push(ring);
+        return { L, u, v, fire, flame, ring };
     });
 
     // ---- The people of your home camp (the character art, tinted).
     const idle = Assets.get<Texture>('char:idle');
     const npcTex = new Texture({ source: idle.source, frame: new Rectangle(0, 0, CHAR_CELL, CHAR_CELL) });
     let npcs: { id: NpcId; u: number; v: number; s: Sprite; t: Text }[] = [];
-    let npcHome: Element | null = null;
+    /** Where everyone stands (it changes as the story moves people between camps). */
+    let npcKey = '';
+    const npcPlaces = () => (Object.keys(NPCS) as NpcId[]).map((id) => {
+        const camp = o.story ? o.story.npcCamp(id) : progress.kingdom();
+        return { id, camp, at: (o.story?.npcAt(id) ?? NPCS[id].at) as [number, number] };
+    });
     const placeNpcs = () => {
         for (const n of npcs) {
             n.s.destroy();
             n.t.destroy();
         }
         npcs = [];
-        npcHome = progress.kingdom();
-        if (!npcHome) return;
-        const L = LANDMARKS.find((l) => l.kind === 'camp' && l.el === npcHome)!;
-        for (const id of Object.keys(NPCS) as NpcId[]) {
+        const places = npcPlaces();
+        npcKey = JSON.stringify(places);
+        for (const { id, camp, at: off } of places) {
+            if (!camp) continue;
+            const L = LANDMARKS.find((l) => l.kind === 'camp' && l.el === camp)!;
             const def = NPCS[id];
-            const u = L.i + 0.5 + def.at[0], v = L.j + 0.5 + def.at[1];
+            const u = L.i + 0.5 + off[0], v = L.j + 0.5 + off[1];
             const s = new Sprite(npcTex);
             s.anchor.set(90 / CHAR_CELL, 172 / CHAR_CELL);
             s.scale.set(0.5);
-            s.tint = def.tint;
+            // Dressed in their own art (tools/build-npcs.py); the plain tinted figure until it loads.
+            if (!framesOf(NPC_ART[id], 'idle')) s.tint = def.tint;
             const at = ground(u, v);
             s.position.set(at.x, at.y);
             s.zIndex = o.zFor(u, v) + 0.1;
@@ -441,6 +479,7 @@ export function createSurvivalLayer(o: {
             }
         };
         for (const n of npcs) {
+            if (!n.s.visible) continue;
             const { d, s } = score(u, v, n.u, n.v, f);
             offer({ kind: 'npc', id: n.id, d }, s - 1.2);
         }
@@ -570,6 +609,10 @@ export function createSurvivalLayer(o: {
             return;
         }
         const e = g.L.el!;
+        if (e === 'fire' && o.story?.active()) {
+            o.banner(progress.guardsLeft('fire') > 0 ? 'The caldera is sealed. Follow the story' : 'Ignis waits in the caldera');
+            return;
+        }
         const k = KINGDOMS[e];
         if (progress.wardenDone(e)) {
             o.say(`The seal of ${k.name} is broken`, k.color);
@@ -599,14 +642,10 @@ export function createSurvivalLayer(o: {
             o.say('Growing back…', 0xcccccc);
             return;
         }
-        // Pick up the right tool for the job (if you own it and it is not broken).
+        // Pick up the right tool for the job (if you own it).
         const need = t.y.tool.includes(tool) ? tool : t.y.tool[0];
         if (need !== 'none' && !progress.hasTool(need)) {
             o.say(`You need a ${TOOL_NAME[need] ?? need}`, 0xffffff);
-            return;
-        }
-        if (need !== 'none' && progress.broken(need)) {
-            o.say(`Your ${TOOL_NAME[need] ?? need} is broken. Repair it at a workbench`, 0xfca5a5);
             return;
         }
         if (need !== tool) {
@@ -614,7 +653,6 @@ export function createSurvivalLayer(o: {
             if (slot >= 0) commands.emit({ type: 'slot', index: slot });
             else commands.emit({ type: 'equip', tool: need });
         }
-        if (need !== 'none') progress.wear(need);
         if (t.y.item === 'wood') synth('chop');
         else if (t.y.item === 'stone') synth('mine');
         else sfx('pickup', 0.5);
@@ -631,7 +669,13 @@ export function createSurvivalLayer(o: {
             if (Math.random() < (high ? 0.35 : 0.22)) give('iron', 1, 0xc9b6a8);
             if (Math.random() < (high ? 0.16 : 0.06)) give('gold', 1, 0xffd84d);
             if (Math.random() < (high ? 0.18 : 0.05)) give('crystal', 1, 0xc084fc);
-            // Glowing moss shows itself in the dark (and grows thick in Terragrim).
+            // Each land's own stone: lichen in Pyraxis, copper and storm-quartz in Zephyria, shark-teeth in Aquatica.
+            const land = regionAt(p.i, p.j);
+            if (land === 'fire' && Math.random() < 0.6) give('lichen', 1 + (Math.random() < 0.5 ? 1 : 0), 0xa3e635);
+            if (land === 'air' && Math.random() < 0.6) give('copper_ore', 1, 0xe08a4a);
+            if (land === 'air' && Math.random() < 0.35) give('storm_quartz', 1, 0xa78bfa);
+            if (land === 'water' && Math.random() < 0.45) give('shark_tooth', 1, 0xe7e5e4);
+            // Glowing moss shows itself in the dark (and grows thick in the Void Wastes).
             if (Math.random() < 0.08 + 0.25 * o.dark() + (regionAt(p.i, p.j) === 'earth' ? 0.1 : 0)) give('glowing_moss', 1, 0x86efac);
         } else if (t.y.item === 'wood') {
             give('wood', 2, 0xd6a36a);
@@ -642,6 +686,7 @@ export function createSurvivalLayer(o: {
             give(t.y.item, 1 + dig + (Math.random() < 0.4 ? 1 : 0), t.y.item === 'herb' ? 0x9be36b : 0xd17bf0);
             if (t.y.item === 'berries' && Math.random() < 0.12) give('honey', 1, 0xfbbf24);
             if (t.y.item === 'herb' && Math.random() < (regionAt(p.i, p.j) === 'air' ? 0.35 : 0.12)) give('gale_blossom', 1, 0x7dd3fc);
+            if (t.y.item === 'herb' && regionAt(p.i, p.j) === 'air' && Math.random() < 0.4) give('thunder_thistle', 1, 0x7dd3fc);
         }
         essenceChance(p.i + 0.5, p.j + 0.5, 0.12);
         progress.gainXp(1);
@@ -650,21 +695,18 @@ export function createSurvivalLayer(o: {
     const water = (u: number, v: number, tool: string) => {
         lastSpot = { u, v };
         if (tool === 'fishingpole') {
-            if (progress.broken('fishingpole')) {
-                o.say('Your fishing pole is broken. Repair it at a workbench', 0xfca5a5);
-                return;
-            }
-            progress.wear('fishingpole');
             if (Math.random() < 0.55) {
                 give('fish', 1, 0x7dd3fc);
                 sfx('pickup');
             }
             else o.say('Nothing bit…', 0xcccccc);
             essenceChance(u, v, regionAt(u, v) === 'water' ? 0.25 : 0);
+            if (regionAt(u, v) === 'water' && Math.random() < 0.6) give('kelp_fiber', 1, 0x2dd4bf);
             progress.gainXp(1);
             return;
         }
         const filled = progress.drink();
+        if (regionAt(u, v) === 'water' && Math.random() < 0.5) give('kelp_fiber', 1, 0x2dd4bf);
         sfx('click', 0.6);
         o.say(filled ? 'Drank deep · +1 Water flask' : 'Drank deep', 0x7dd3fc);
     };
@@ -674,7 +716,10 @@ export function createSurvivalLayer(o: {
         const s = store.get();
         const home = s.kingdom;
         if (!home) return null;
-        const goal = progress.chapter().goal;
+        const want = o.story?.gather() ?? null;
+        const st = want ? undefined : o.story?.target(u, v);
+        if (st !== undefined) return st;
+        const goal = want ? { kind: 'stat' as const, stat: want, n: 1 } : progress.chapter().goal;
         const nearestOf = <T extends { u: number; v: number }>(list: T[], ok: (x: T) => boolean): T | null => {
             let b: T | null = null;
             let bd = Infinity;
@@ -882,6 +927,8 @@ export function createSurvivalLayer(o: {
             for (const c of campMarks) {
                 const lit = open(c.L.el!) && !raining;
                 c.fire.visible = lit;
+                c.ring.visible = open(c.L.el!);
+                c.ring.alpha = 0.75 + 0.2 * Math.sin(clock / 600);
                 c.flame.visible = lit;
                 c.fire.alpha = 0.45 + 0.15 * Math.sin(clock / 120) + 0.08 * Math.sin(clock / 47);
                 c.fire.scale.set(0.9 + 0.08 * Math.sin(clock / 90));
@@ -896,10 +943,13 @@ export function createSurvivalLayer(o: {
             }
             for (const g of guards) {
                 const done = progress.guardDone(g.L.el!, g.L.n);
-                g.ring.visible = !done;
+                // In the story, Pyraxis's champions come from the story itself (no old guardian spot).
+                const storyOwned = g.L.el === 'fire' && !!o.story?.active();
+                g.ring.visible = !done && !storyOwned;
+                g.t.visible = !storyOwned;
                 g.ring.alpha = 0.35 + 0.2 * Math.sin(clock / 400 + g.L.n);
                 // Wake the guardian when the player comes close (and its kingdom is open).
-                if (!done && open(g.L.el!) && Math.hypot(u - g.u, v - g.v) < GUARD_WAKE && clock - g.called > 20000) {
+                if (!done && open(g.L.el!) && !(g.L.el === 'fire' && o.story?.active()) && Math.hypot(u - g.u, v - g.v) < GUARD_WAKE && clock - g.called > 20000) {
                     g.called = clock;
                     o.summon(guardCode(g.L.el!, g.L.n), progress.tierOf(g.L.el), g.u, g.v);
                     o.banner(`${KINGDOMS[g.L.el!].guard.name} rises to guard ${KINGDOMS[g.L.el!].name}!`);
@@ -910,7 +960,16 @@ export function createSurvivalLayer(o: {
                 t.beacon.visible = s.towers.includes(t.L.id);
                 t.beacon.alpha = 0.6 + 0.3 * Math.sin(clock / 260);
             }
-            for (const n of npcs) n.s.y = ground(n.u, n.v).y - Math.abs(Math.sin(clock / 700 + n.u)) * 2;
+            for (const n of npcs) {
+                // Everyone breathes in their idle (Lyra too: she is herself, only her memories are gone).
+                const frames = framesOf(NPC_ART[n.id], 'idle');
+                if (frames) {
+                    const row = frames[0];
+                    n.s.texture = row[Math.floor((clock + n.u * 97) / 160) % row.length];
+                    n.s.tint = 0xffffff;
+                }
+                n.s.y = ground(n.u, n.v).y;
+            }
             // Walking into a house fades its walls and roof away.
             let inside: (typeof houses)[number] | null = null;
             for (const h of houses) {
@@ -968,7 +1027,7 @@ export function createSurvivalLayer(o: {
             hudClock -= dtMs;
             if (hudClock > 0) return;
             hudClock = 150;
-            if (s.kingdom !== npcHome) placeNpcs();
+            if (JSON.stringify(npcPlaces()) !== npcKey) placeNpcs();
             syncVeils(u, v);
             // Tent labels follow building levels and whether the camp is free.
             const tk = `${JSON.stringify(s.buildings)}|${s.wardens.join()}|${s.kingdom}`;
@@ -1013,11 +1072,16 @@ export function createSurvivalLayer(o: {
                 else if (t.kind === 'gate') hint = t.g.L.kind === 'citadel' ? 'Challenge Malakor' : `Arena of ${KINGDOMS[t.g.L.el!].name}`;
                 else if (t.kind === 'tower') hint = 'Climb the watchtower';
                 else if (t.kind === 'crate') hint = progress.houseReady(t.h.L.id) ? 'Search the crate' : 'Crate (searched)';
-                else if (t.kind === 'bench') hint = 'Workbench: repair, rest, cook';
+                else if (t.kind === 'bench') hint = 'Workbench: rest, cook';
                 else if (t.kind === 'fire') hint = open(t.el) ? 'Travel between camps' : 'Cold campfire';
                 else if (t.kind === 'tent') hint = open(t.el) ? `${BUILDINGS[t.id].name}: build` : 'Ruined tent';
                 else hint = tool === 'fishingpole' ? 'Fish' : 'Drink';
                 act = actionFor(t, hint, tool);
+            }
+            const sp = o.story?.prompt(u, v, facing);
+            if (sp) {
+                hint = sp.hint;
+                act = sp.act;
             }
             const target = objectiveTarget(u, v);
             markAt = target ? { u: target.u, v: target.v } : null;

@@ -10,6 +10,7 @@ export type GameCommand =
     | { type: 'slot'; index: number }
     /** Unleash the home kingdom's active skill (when the combat meter is full). */
     | { type: 'skill' }
+    | { type: 'hymn' }
     | { type: 'tool'; delta: number }
     | { type: 'equip'; tool: string }
     /** Cycle through the swords you own (-1 = the original iron sword). */

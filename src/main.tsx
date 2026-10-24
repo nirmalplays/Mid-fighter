@@ -7,6 +7,8 @@ import { warmAssets } from './assets/preload.ts';
 import { progress } from './game/progress.ts';
 import { hostPause } from './game/audio.ts';
 import { saveSystem } from './saveConfig.ts';
+import { onSlotLoaded, slots } from './game/slots.ts';
+import { preloadPieces, setLook } from './game/world/heroLook.ts';
 import './styles/app.css';
 
 /**
@@ -22,18 +24,29 @@ async function boot() {
 
     // 2. Load this player's save before first render (never throws), and flush it
     //    whenever the app is backgrounded.
-    const save = await saveSystem.load();
+    //    Every journey is its own save slot (game/slots.ts): open the last one played.
+    await slots.init();
+    await saveSystem.load();
     saveSystem.attachLifecycleFlush();
-    store.patch({
-        playSeconds: Math.floor(save.playSeconds),
-        kills: save.kills,
-        swordsOwned: save.swords,
-        swordIdx: save.sword,
-        skills: { ...save.skills },
-        gems: { ...save.gems },
-        spells: { unlocked: [...save.spells.unlocked], carry: [...save.spells.carry], cooldown: [...save.spells.cooldown] },
-    });
-    progress.syncSurvival();
+    const apply = () => {
+        const save = saveSystem.data!;
+        store.patch({
+            playSeconds: Math.floor(save.playSeconds),
+            kills: save.kills,
+            swordsOwned: save.swords,
+            swordIdx: save.sword,
+            skills: { ...save.skills },
+            gems: { ...save.gems },
+            spells: { unlocked: [...save.spells.unlocked], carry: [...save.spells.carry], cooldown: [...save.spells.cooldown] },
+            storyQueue: [], storyPopup: null,
+        });
+        setLook(save.hero.look);
+        progress.syncSurvival();
+    };
+    onSlotLoaded(apply);
+    apply();
+    // The hero's hair and accessory pieces (the dressing needs them before the world draws the hero).
+    await preloadPieces();
 
     // 3. Mount React. `phase` starts at 'loading', so this paints the
     //    loading screen (progress bar at 0%).
@@ -61,6 +74,20 @@ async function boot() {
 
     // 6. Loading done — hand over to the menu.
     store.patch({ phase: 'menu' });
+    // Keep the journey list current: where the story stands and the play time (throttled), and at
+    // once whenever play stops for the menu.
+    window.setInterval(() => store.get().phase === 'playing' && slots.touch(), 20000);
+    let lastPhase = store.get().phase;
+    store.subscribe(() => {
+        const ph = store.get().phase;
+        if (ph === lastPhase) return;
+        const was = lastPhase;
+        lastPhase = ph;
+        if (was === 'playing') {
+            void saveSystem.flush();
+            slots.touch(true);
+        }
+    });
 
     // 7. Host lifecycle hooks. Register AFTER boot so handlers never race
     //    half-initialized state.

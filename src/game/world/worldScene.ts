@@ -39,22 +39,33 @@ import { createDropView, POTION_COLOR, SKILL_COLOR, SKILL_NAMES, type DropKind, 
 import { createMonsterView } from './monsters.ts';
 import { createWorldSim } from './worldSim.ts';
 import { ISO_FRAMES, ISO_SCALE } from './isoAtlas.ts';
-import { generateWorld, GRASS, MAX_HEIGHT, SAND, STONE, WATER, type Flat } from './mapGen.ts';
+import { generateWorld, GRASS, MAX_HEIGHT, SAND, STONE, VOID, WATER, type Flat } from './mapGen.ts';
+import { STYLES } from './biomes.ts';
 import { createSurvivalLayer, nearestBoss } from './survivalLayer.ts';
+import { createStoryLayer, type StoryLayer } from './storyLayer.ts';
+import { createIntroCinematic, type Cinematic, type CinematicView } from './cinematic.ts';
+import { quest } from '../story/quest.ts';
 import { createShotView } from './shots.ts';
 import { createWeather } from './weather.ts';
 import { createDarkness } from './darkness.ts';
+import { createLightMap, type Light } from './lightmap.ts';
+import { placedOf, THEMES } from './interiors.ts';
+import type { Door } from './mapGen.ts';
 import { settingsDark } from '../settings.ts';
 import { ambience, music, rainLevel, sfx, synth } from '../audio.ts';
 import { CYCLE_MS, NIGHT_START, nowSky, setSkyOffset } from '../../shared/daynight.ts';
 import { mapRef, radar } from './mapRef.ts';
-import { CARDS, CRIT, DODGE_MS, FOOD, ITEMS, METER_DRAIN, METER_GAIN, METER_MAX, SPRINT_MUL, STAMINA_COST, STAMINA_MAX, TORCH_R, type ItemId } from '../survival.ts';
-import { ELEMENTS, KINGDOMS, MIMIC_CODE } from '../eidolon.ts';
+import { CAMP_RADIUS, CARDS, CRIT, DODGE_MS, FOOD, ITEMS, METER_DRAIN, METER_GAIN, METER_MAX, SPRINT_MUL, STAMINA_COST, STAMINA_MAX, TORCH_R, type ItemId } from '../survival.ts';
+import { ELEMENTS, KINGDOMS, LANDMARKS, MIMIC_CODE } from '../eidolon.ts';
 
 /** Walking speed in screen px / s (vertical movement is halved by the 2:1 view). */
+/** Every camp's centre and its kingdom (its sanctuary ring keeps monsters out while the land is free). */
+const CAMP_CENTRES = LANDMARKS.filter((l) => l.kind === 'camp').map((l) => ({ u: l.i + 0.5, v: l.j + 0.5, el: l.el! }));
 const SPEED_PX = 340;
 /** Player collision half-size, in tiles. */
 const RADIUS = 0.28;
+/** How close (tiles, centre to centre) the player may come to a tree, a rock or a chest. */
+const SOLID_R = 0.62;
 const WAVE_MS = 700;
 /** Screen px each step of water depth lowers the surface. */
 const DEPTH_STEP = 18;
@@ -71,14 +82,15 @@ const SPRING_K = 240;
 const SPRING_C = 9;
 const KICK = 190;
 const KICK_NEIGHBOUR = 60;
+/** Overlays that take the colour of the ground under them (the rest keep their own: lava, ice, water). */
+const TINTED_OVERLAY = new Set(['rubble', 'pebbles', 'moss', 'ash', 'path1', 'path2', 'path3']);
 /** Elevation from which a stone tile is capped with snow. */
 const SNOW_LEVEL = 7;
 /** Damage a swing does to a monster (they have 6 health), by equipped tool. */
 const TOOL_DAMAGE: Record<string, number> = {
     none: 1, sword: 3, axe: 2, pickaxe: 2, hammer: 3, shovel: 2, fishingpole: 1, watercan: 1, shield: 1,
 };
-/** Source px of the iso art → atlas px. Top-face centre of a 500 px tile is (250, 139). */
-const ANCHOR_X = 250 * ISO_SCALE;
+/** Source px of the iso art → atlas px. Top-face centre of a 500 px tile is (250, 139); every frame is centred on x. */
 const ANCHOR_CUBE_Y = 139 * ISO_SCALE;
 const ANCHOR_TALL_Y = (500 + 139) * ISO_SCALE;
 
@@ -149,7 +161,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         const tex = frame(name);
         const s = new Sprite(tex);
         const tall = tex.height > 200;
-        s.anchor.set(ANCHOR_X / tex.width, (tall ? ANCHOR_TALL_Y : ANCHOR_CUBE_Y) / tex.height);
+        s.anchor.set(0.5, (tall ? ANCHOR_TALL_Y : ANCHOR_CUBE_Y) / tex.height);
         s.position.set(Math.round(x), Math.round(y));
         return s;
     };
@@ -198,7 +210,17 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     world.addChild(objects);
     stage.root.addChild(world);
 
+    // The story (Land 1) is made once the combat simulation exists; survival asks it through these.
+    let story: StoryLayer | null = null;
     const survival = createSurvivalLayer({
+        story: {
+            target: (u, v) => story?.target(u, v),
+            prompt: (u, v, f) => story?.prompt(u, v, f) ?? null,
+            npcCamp: (id) => (story ? story.npcCamp(id) : progress.kingdom()),
+            npcAt: (id) => story?.npcAt(id) ?? null,
+            gather: () => story?.gather() ?? null,
+            active: () => quest.active(),
+        },
         map,
         layer: objects,
         glowTex: softTex,
@@ -314,11 +336,16 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                 const j = cy * CHUNK_TILES + dj;
                 const k = j * MAP_TILES + i;
                 const t = map.terrain[k];
+                // The void between the interiors is never drawn.
+                if (t === VOID) continue;
                 const h = map.height[k];
                 const v = map.variant[k] + 1;
                 const x = sx(i + 0.5, j + 0.5);
                 const y = sy(i + 0.5, j + 0.5);
-                const base = t === WATER ? 'water' : t === SAND ? 'sand' : t === STONE ? `stone${v}` : `dirt${v}`;
+                // A land's biome or a cave's floor and walls draw with their own art and tint (world/biomes.ts).
+                const st = t === WATER ? undefined : STYLES[map.style[k]];
+                const base = t === WATER ? 'water' : st ? st.cube(v) : t === SAND ? 'sand' : t === STONE ? `stone${v}` : `dirt${v}`;
+                const groundTint = (kk: number) => (st ? st.tint : regionTint(kk));
                 const tone = map.tone[k];
                 const depth = t === WATER ? Math.min(MAX_DEPTH, map.shoreDist[k] - 1) : 0;
                 const lift = t === WATER ? depth * DEPTH_STEP : 0; // screen px the surface sits below the shore
@@ -343,11 +370,11 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                 const drop = Math.max(h - hAt(i + 1, j), h - hAt(i, j + 1), 0);
                 for (let level = h - 2 * Math.max(0, Math.ceil(drop / 2) - 1); level < h; level += 2) {
                     const sp = isoSprite(base, x, y - Math.max(0, level) * LEVEL_H + lift);
-                    sp.tint = mul(shade(h, tone), regionTint(k));
+                    sp.tint = mul(shade(h, tone), groundTint(k));
                     add(sp, 0);
                 }
                 const topCube = isoSprite(base, x, y - h * LEVEL_H + lift);
-                topCube.tint = t === WATER ? (lava(k) ? mul(0xff8a4a, waterTint(depth)) : waterTint(depth)) : mul(shade(h, tone), regionTint(k));
+                topCube.tint = t === WATER ? (lava(k) ? mul(0xff8a4a, waterTint(depth)) : waterTint(depth)) : mul(shade(h, tone), groundTint(k));
                 add(topCube, 0);
                 const top = y - h * LEVEL_H;
                 if (t === WATER) {
@@ -387,10 +414,21 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                 }
                 if (t === GRASS) {
                     const g = isoSprite(`grass${v}`, x, top);
-                    g.tint = mul(shade(h, tone), regionTint(k));
+                    g.tint = mul(shade(h, tone), st?.grass ? 0xd8f0a0 : regionTint(k));
                     add(g, Z_OVERLAY);
-                } else if (t === STONE && h >= SNOW_LEVEL) add(isoSprite('snow', x, top), Z_OVERLAY);
-                for (const f of flatsByCell.get(k) ?? []) add(isoSprite(f.name, x, top), Z_DECAL);
+                } else if (t === STONE && h >= SNOW_LEVEL && !map.place[k]) add(isoSprite('snow', x, top), Z_OVERLAY);
+                // The style's own overlay now and then (ash, salt crust, lava cracks, ice, moss).
+                if (st?.overlay && (((i * 73856093) ^ (j * 19349663)) >>> 0) % 1000 < st.overlay.chance * 1000 && map.blocked[k] === 0) {
+                    const o = isoSprite(st.overlay.name, x, top);
+                    if (TINTED_OVERLAY.has(st.overlay.name)) o.tint = mul(shade(h, tone), st.tint);
+                    add(o, Z_OVERLAY);
+                }
+                for (const f of flatsByCell.get(k) ?? []) {
+                    const o = isoSprite(f.name, x, top);
+                    // Stones and pebbles take the colour of the ground they lie on.
+                    if (st && TINTED_OVERLAY.has(f.name)) o.tint = mul(shade(h, tone), st.tint);
+                    add(o, Z_DECAL);
+                }
                 cells.set(k, cell);
             }
         }
@@ -409,8 +447,8 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             sprites.push(s);
             survival.trackProp(n, s);
             // A soft shadow grounds everything that stands (tall grass and flowers excepted).
-            if (!p.name.startsWith('tallgrass') && !p.name.startsWith('dbush')) {
-                const big = p.name.startsWith('tree') ? 1.45 : p.name.startsWith('rock') ? 0.95 : 1.1;
+            if (!/^(tallgrass|dbush|big_|hole|ladder|skull|bones|candle|mush)/.test(p.name)) {
+                const big = p.name.startsWith('tree') || p.name === 'palm' || p.name === 'deadtree' ? 1.45 : p.name.startsWith('rock') ? 0.95 : 1.1;
                 const sh = new Sprite(shadowTex);
                 sh.anchor.set(0.5);
                 sh.scale.set(big);
@@ -490,11 +528,19 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     const boxOk = (u: number, v: number): boolean => {
         let lo = Infinity;
         let hi = -Infinity;
+        // A tree, a rock or a chest stands in the middle of its tile: it stops you there, not at the
+        // tile's edge (a whole blocked tile around a small rock reads as an invisible wall).
+        for (let j = Math.floor(v) - 1; j <= Math.floor(v) + 1; j++) {
+            for (let i = Math.floor(u) - 1; i <= Math.floor(u) + 1; i++) {
+                if (i < 0 || j < 0 || i >= MAP_TILES || j >= MAP_TILES) continue;
+                if (map.solid[j * MAP_TILES + i] === 1 && Math.hypot(u - i - 0.5, v - j - 0.5) < SOLID_R) return false;
+            }
+        }
         for (let j = Math.floor(v - RADIUS); j <= Math.floor(v + RADIUS); j++) {
             for (let i = Math.floor(u - RADIUS); i <= Math.floor(u + RADIUS); i++) {
                 if (i < 0 || j < 0 || i >= MAP_TILES || j >= MAP_TILES) return false;
                 const k = j * MAP_TILES + i;
-                if (map.blocked[k] === 1 || !survival.canEnter(i, j)) return false;
+                if ((map.blocked[k] === 1 && map.solid[k] === 0) || !survival.canEnter(i, j) || (story && !story.canEnter(i, j))) return false;
                 lo = Math.min(lo, map.height[k]);
                 hi = Math.max(hi, map.height[k]);
             }
@@ -503,8 +549,22 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     };
     const heightAt = (u: number, v: number): number => map.height[Math.floor(v) * MAP_TILES + Math.floor(u)];
 
+    /** A cinematic's camera (where it looks, its zoom and shake), or null to follow the player. */
+    let cineCam: CinematicView | null = null;
     const placeCamera = () => {
         // Aim a little above the feet so the player sits near the screen centre (shaken by critical hits).
+        if (cineCam) {
+            const { u, v, zoom } = cineCam.cam;
+            const z = ZOOM * zoom;
+            const k = cineCam.shake * 10;
+            world.scale.set(z);
+            world.position.set(
+                stage.designWidth() / 2 - sx(u, v) * z + (Math.random() - 0.5) * k,
+                stage.height / 2 - (sy(u, v) - heightAt(u, v) * LEVEL_H - 30) * z + (Math.random() - 0.5) * k,
+            );
+            return;
+        }
+        if (world.scale.x !== ZOOM) world.scale.set(ZOOM);
         const shake = shakeMs > 0 ? (shakeMs / 220) * 7 : 0;
         world.position.set(
             stage.designWidth() / 2 - sx(pu, pv) * ZOOM + (Math.random() - 0.5) * shake,
@@ -567,7 +627,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     let swings = 0;
     const busy = () => {
         const st = store.get();
-        return st.shop || st.bagTab !== null || st.storyPopup !== null || st.npc !== null || st.house !== null || st.travel || st.kingdom === null;
+        return st.shop || st.bagTab !== null || st.storyPopup !== null || st.puzzle !== null || st.loom || st.debate || st.npc !== null || st.house !== null || st.travel || st.kingdom === null;
     };
     // Stamina: swings, gathering and dodge rolls spend it; it comes back after a short pause.
     let stamina = STAMINA_MAX;
@@ -631,6 +691,13 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             dropView.text(player.x, player.y - 70, 'Shielded!', POTION_COLOR.purple);
             return;
         }
+        // A Flashback Surge's hyper-armour, Lyra's Aegis, the Martyr's Ring.
+        const storyMul = story?.hurtMul() ?? 1;
+        if (storyMul <= 0) {
+            dropView.text(player.x, player.y - 70, 'Unbroken!', 0xfde68a);
+            return;
+        }
+        if (storyMul < 1) n = Math.max(1, Math.round(n * storyMul));
         if (buffMs.black > 0) n *= 2;
         // Worn out: the blows land harder.
         if (tired > 0) n += 1;
@@ -660,6 +727,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             sfx('revive');
         }
         store.patch({ hp });
+        story?.onHurt(hp, store.get().maxHp);
         playFx('splat', pu, pv, { scale: 2.2, life: 600, lift: 44 });
         sfx(hp === 0 ? 'fall' : 'hurt');
         character.command({ type: 'hurt' });
@@ -679,9 +747,11 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         map,
         player: () => ({ id: 'me', u: pu, v: pv, alive: !character.dead }),
         calm: () => calmNow,
-        safe: () => store.get().inCamp,
+        safe: () => store.get().inCamp && !story?.sieging(),
+        // The camps' sanctuary rings: monsters stop at the edge (except in a siege).
+        noGo: (u, v) => !story?.sieging() && CAMP_CENTRES.some((c) => Math.hypot(u - c.u, v - c.v) < CAMP_RADIUS && progress.open(c.el)),
         // Debug: ?firstWave=<s>&waveEvery=<s> shorten the wave timers when playing offline.
-        everySec: Number(q.get('waveEvery')) || 75,
+        everySec: Number(q.get('waveEvery')) || 90,
         firstSec: Number(q.get('firstWave')) || 20,
         // Debug: ?swordMul=40 makes sword drops common when playing offline, for testing.
         swordMul: Number(q.get('swordMul')) || 1,
@@ -690,6 +760,14 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             bite: hurtPlayer,
             kill: (kind: string, boss: number) => {
                 runKills++;
+                // The Hollowed are your own guildmates: a blunt tool knocks them out (they are carried to the Spire), a blade kills them.
+                if (kind === 'hollowed') {
+                    if (character.tool === 'pickaxe' || character.tool === 'hammer') {
+                        quest.bump('rescued');
+                        progress.gainXp(8);
+                        dropView.text(player.x, player.y - 100, 'Knocked out: carried to the Spire', 0x86efac);
+                    } else dropView.text(player.x, player.y - 100, 'You knew his face...', 0xfca5a5);
+                }
                 sfx('kill');
                 charge(METER_GAIN.kill);
                 // A Mimic's hoard spills out where it died (only the one who killed it drops it, so it is not doubled).
@@ -782,6 +860,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                 // Anyone who fought it nearby counts it.
                 if (Math.hypot(u - pu, v - pv) > 30) return;
                 const msg = progress.defeatBoss(code);
+                quest.on({ type: 'boss', code });
                 if (msg) {
                     banner(msg);
                     playFx('heal', pu, pv, { scale: 1.8, life: 1200, lift: 56 });
@@ -831,6 +910,29 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         },
         onTouch: (id) => sim.take(id),
     });
+    story = createStoryLayer({
+        map,
+        layer: objects,
+        glowTex: softTex,
+        heightAt: (u, v) => map.height[Math.floor(v) * MAP_TILES + Math.floor(u)],
+        toScreen: (u, v) => ({ x: sx(u, v), y: sy(u, v) }),
+        zFor: (u, v) => sy(Math.floor(u) + 0.5, Math.floor(v) + 0.5) + 0.3,
+        levelH: LEVEL_H,
+        say: (m, c) => dropView.text(player.x, player.y - 78, m, c),
+        banner: (t) => banner(t),
+        fx: (name, u, v, opts) => playFx(name, u, v, opts),
+        encounter: (kinds, u, v, level) => sim.encounter(kinds, u, v, level),
+        summon: (code, tier, u, v) => sim.summon(code, tier, u, v),
+        ward: (code, share) => sim.ward(code, share),
+        cripple: (code, what) => sim.cripple(code, what),
+        blast: (u, v, damage, r, stunMs) => sim.strike(u, v, 0, damage, r, stunMs ?? 0),
+        hurt: (n) => {
+            invuln = 0;
+            hurtPlayer(n);
+        },
+        heal: (n) => store.patch({ hp: Math.min(store.get().maxHp, store.get().hp + n) }),
+        damageMul: () => power.damage,
+    });
     const endRun = () => {
         runOver = true;
         sfx('gameover');
@@ -850,12 +952,15 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     };
     // Debug: with ?spawn= the game exposes the current combat view for automated checks.
     if (q.has('spawn')) {
-        (window as unknown as { __game?: unknown }).__game = { view: () => sim.view(), pos: () => ({ u: pu, v: pv }), store, progress, spawn: (kind: string, du: number, dv: number) => sim.debugSpawn(kind, pu + du, pv + dv) };
+        (window as unknown as { __game?: unknown }).__game = { map, view: () => sim.view(), pos: () => ({ u: pu, v: pv }), store, progress, quest, spawn: (kind: string, du: number, dv: number) => sim.debugSpawn(kind, pu + du, pv + dv), summon: (code: number, du: number, dv: number) => sim.summon(code, 0, pu + du, pv + dv) };
     }
     let hudClock = 0;
     // A swing that actually started (the character was free) lands a moment later.
     const strikes: number[] = [];
     let wasLocked = false;
+    /** Blows landed in a row (the fourth bursts as a Runic Fracture). */
+    let combo = 0;
+    let comboAt = -1e9;
     // Spells (the chest menu), drawn with the Super Pixel Effects sheets (public/images/fx), and a cooldown per spell.
     // Charges held per spell (a new run, or unlocking one, starts it full) and ms until the next charge.
     const charges = SPELLS.map(() => 0);
@@ -1075,7 +1180,16 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     const useItem = (id: ItemId) => {
         if (character.dead || !ITEMS[id] || store.get().bag[id] < 1) return;
         if (ITEMS[id].placeable) {
-            if (!survival.place(id, pu, pv, character.facing)) dropView.text(player.x, player.y - 78, 'No room there', 0xffffff);
+            if (story?.place(id, pu, pv, character.facing)) quest.on({ type: 'place', item: id });
+            else if (survival.place(id, pu, pv, character.facing)) quest.on({ type: 'place', item: id });
+            else dropView.text(player.x, player.y - 78, 'No room there', 0xffffff);
+            return;
+        }
+        if (id === 'filter_draught') {
+            if (progress.useItem(id)) {
+                story?.drink(id);
+                playFx('poison', pu, pv, { scale: 2, life: 1200, lift: 56 });
+            }
             return;
         }
         if (!ITEMS[id].usable) return;
@@ -1160,9 +1274,8 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         banner(`${e.by} helped you up!`);
         sfx('revive');
     });
-    /** Everyone in the team fell (or no one came in time): back to camp, full health, tools a little worn. */
+    /** Everyone in the team fell (or no one came in time): back to camp, full health. */
     const teamWipe = () => {
-        progress.wearAll(0.15);
         const h = progress.home();
         deadFor = 0;
         invuln = 3000;
@@ -1229,7 +1342,94 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         const i = store.get().swordIdx;
         if (i !== character.sword) character.setSword(i);
     });
+    let cinematic: Cinematic | null = null;
+
+    // ---- caves, dungeons and ruins (world/interiors.ts)
+    /** The interior the player is in (its index + 1 in PLACED; 0 = the overworld). */
+    let here = 0;
+    /** Going through a door: the fade out, the move, the fade in. */
+    let door: { d: Door; t: number; moved: boolean } | null = null;
+    /** When each interior's foes last came out (they wait a while before coming again). */
+    const roused = new Map<number, number>();
+    const lights = createLightMap(app, stage.root);
+    const fadeGfx = new Graphics();
+    app.stage.addChild(fadeGfx);
+    const DOOR_OUT = 260, DOOR_HOLD = 160, DOOR_IN = 380;
+    const stepDoor = (dtMs: number) => {
+        fadeGfx.clear();
+        if (!door) return;
+        door.t += dtMs;
+        const t = door.t;
+        if (t >= DOOR_OUT && !door.moved) {
+            door.moved = true;
+            pu = door.d.u;
+            pv = door.d.v;
+            pz = heightAt(pu, pv) * LEVEL_H;
+            standI = Math.floor(pu);
+            standJ = Math.floor(pv);
+            character.setFacing(door.d.face);
+            story?.teleported(pu, pv);
+            placeCamera();
+            syncChunks();
+            if (door.d.place) banner(door.d.name);
+        }
+        const a = t < DOOR_OUT ? t / DOOR_OUT : t < DOOR_OUT + DOOR_HOLD ? 1 : Math.max(0, 1 - (t - DOOR_OUT - DOOR_HOLD) / DOOR_IN);
+        fadeGfx.rect(0, 0, app.screen.width, app.screen.height).fill({ color: 0x000000, alpha: a });
+        if (t >= DOOR_OUT + DOOR_HOLD + DOOR_IN) door = null;
+    };
+    /** Where the player is: the overworld or an interior (its music, its dark, its foes coming out). */
+    const noteWhere = () => {
+        const n = map.place[Math.floor(pv) * MAP_TILES + Math.floor(pu)] ?? 0;
+        if (n === here) return;
+        here = n;
+        const p = placedOf(n);
+        store.patch({ indoors: p ? p.def.name : null });
+        if (!p) return;
+        // Found for the first time: a little fanfare and some experience.
+        if (progress.discover(p.def.id)) {
+            sfx('chapter', 0.7);
+            dropView.text(player.x, player.y - 92, 'Discovered! +25 XP', 0xfde68a);
+        }
+        // Its foes come out (not again for six minutes).
+        const last = roused.get(n);
+        if (last === undefined || clock - last > 360000) {
+            roused.set(n, clock);
+            const th = THEMES[p.def.theme];
+            for (const s of map.spawns) {
+                if (s.n !== n) continue;
+                const kinds = [th.foes[Math.floor(Math.random() * th.foes.length)], th.foes[Math.floor(Math.random() * th.foes.length)]];
+                sim.encounter(kinds, s.i + 0.5, s.j + 0.5, p.def.level);
+            }
+        }
+    };
+    /** The interior's dark, with every light near the player cut out of it (and the hero's own). */
+    const lightInterior = (dtMs: number) => {
+        const p = placedOf(here);
+        if (!p) {
+            lights.update(0, [], dtMs);
+            return;
+        }
+        const th = THEMES[p.def.theme];
+        const scale = world.worldTransform.a;
+        const out: Light[] = [];
+        const at = (u: number, v: number, lift: number) => world.toGlobal({ x: sx(u, v), y: sy(u, v) - heightAt(u, v) * LEVEL_H - lift });
+        const me = at(pu, pv, 40);
+        const torch = buffMs.night > 0 ? 6.5 : 4.2;
+        out.push({ x: me.x, y: me.y, r: torch * TILE_DX * scale, color: 0xffd9a0, flicker: 0.6 });
+        for (const l of map.lights) {
+            if (Math.abs(l.i - pu) > 16 || Math.abs(l.j - pv) > 16) continue;
+            const q = at(l.i + 0.5, l.j + 0.5, 50);
+            out.push({ x: q.x, y: q.y, r: l.r * TILE_DX * scale, color: l.color, flicker: 1 });
+        }
+        lights.update(th.gloom * Math.max(0.6, settingsDark()), out, dtMs);
+    };
+    let cineChecked = false;
+    const onCineKey = (e: KeyboardEvent) => {
+        if (cinematic && e.key === 'Escape') cinematic.skip();
+    };
+    window.addEventListener('keydown', onCineKey);
     const offStrike = commands.subscribe((c) => {
+        if (cinematic) return;
         if ((c.type === 'attack' || c.type === 'use') && !wasLocked && character.locked && !character.dead && character.tool === 'sword') slashAt();
         if (c.type === 'spell') castSpell(c.index);
         if (c.type === 'item') useItem(c.id as ItemId);
@@ -1239,8 +1439,10 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         if (helping) {
             net.sendRevive(helping);
             dropView.text(player.x, player.y - 92, 'Helping them up!', 0x86efac);
-        } else if (c.type === 'use' && !character.dead && survival.use(pu, pv, character.facing, character.tool)) spend(STAMINA_COST.gather);
-        if (c.type === 'skill') useSkill();
+        } else if (c.type === 'use' && !character.dead && (story?.use(pu, pv, character.facing) || survival.use(pu, pv, character.facing, character.tool))) spend(STAMINA_COST.gather);
+        if (c.type === 'hymn' && !character.dead && !busy()) story?.hymn(pu, pv);
+        if (c.type === 'skill' && !(story?.synergy(pu, pv))) useSkill();
+        if (c.type === 'interact' && !character.dead && story?.mount(pu, pv, sim.view().monsters)) spend(STAMINA_COST.dodge);
         if ((c.type === 'attack' || c.type === 'use') && !wasLocked && character.locked && !character.dead) {
             strikes.push(170);
             if (c.type === 'attack' || character.tool === 'sword' || character.tool === 'hammer') synth('swing');
@@ -1263,6 +1465,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                 const len = Math.hypot(ru, rv) || 1;
                 roll = { t: 0, du: ru / len, dv: rv / len, spin: X >= 0 ? 1 : -1, iframes: false, trail: 0 };
                 sfx('dodge');
+                story?.rolled(pu, pv);
             }
         }
     });
@@ -1272,6 +1475,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     const weather = createWeather(app, {
         above: stage.root,
         region: () => store.get().region,
+        indoors: () => here > 0,
         strike: () => {
             const a = Math.random() * Math.PI * 2;
             const d = 2 + Math.random() * 5;
@@ -1329,9 +1533,11 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         const dt = Math.min(ticker.deltaMS / 1000, 0.05);
 
         // Joystick vector is in screen space; the view is 2:1, so halve vertical px.
-        const dir = input.read();
+        const raw = input.read();
+        // The Siren's Lament turns your senses backwards.
+        const dir = story?.inverted() ? { x: -raw.x, y: -raw.y } : raw;
         // Actions, sitting and death hold the character in place.
-        const walk = character.locked || roll ? { x: 0, y: 0 } : dir;
+        const walk = character.locked || roll || cinematic || door ? { x: 0, y: 0 } : dir;
         const moving = Math.hypot(dir.x, dir.y) > 0.2 && !character.locked && !roll;
         const sprinting = store.get().sprint && moving && tired <= 0 && stamina > 1;
         if (sprinting) {
@@ -1339,7 +1545,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             staminaIdle = 0;
             if (stamina <= 0) tired = 1300;
         }
-        const speed = SPEED_PX * power.speed * (sprinting ? SPRINT_MUL : 1);
+        const speed = SPEED_PX * power.speed * (sprinting ? SPRINT_MUL : 1) * (story?.speedMul() ?? 1);
         const X = walk.x * speed * dt;
         const Y = walk.y * speed * 0.5 * dt;
         const du = (X / TILE_DX + Y / TILE_DY) / 2;
@@ -1350,6 +1556,12 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         const trapped = !boxOk(pu, pv);
         if (du !== 0 && (trapped || boxOk(pu + du, pv))) pu += du;
         if (dv !== 0 && (trapped || boxOk(pu, pv + dv))) pv += dv;
+        // Gusts, tipping gravity, a boss's polarity, the Maelstrom's knockback.
+        if (story) {
+            const sh = story.push(ticker.deltaMS);
+            if (sh.du !== 0 && boxOk(pu + sh.du, pv)) pu += sh.du;
+            if (sh.dv !== 0 && boxOk(pu, pv + sh.dv)) pv += sh.dv;
+        }
         if (roll) {
             // The distance follows the roll's clock, in small steps so it never slips through a wall.
             const before = roll.t;
@@ -1374,7 +1586,11 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             const ahead = { i: Math.floor(pu + du * 40), j: Math.floor(pv + dv * 40) };
             if (!survival.canEnter(ahead.i, ahead.j)) {
                 barrierNote = clock;
-                banner('A dark barrier. Break the seal of this kingdom to pass');
+                if (story && quest.active()) story.knockback(du, dv);
+                else banner('A dark barrier. Break the seal of this kingdom to pass');
+            } else if (story && !story.canEnter(ahead.i, ahead.j)) {
+                barrierNote = clock;
+                banner('A wall of slag blocks the way. It opens as the story goes on');
             }
         }
         // Fast travel between liberated camps (and the move home after choosing a kingdom).
@@ -1395,6 +1611,12 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         if (ci !== standI || cj !== standJ) {
             standI = ci;
             standJ = cj;
+            // A door (a cave mouth, a gate, a ladder): through it, with a fade.
+            const dk = map.doorAt.get(cj * MAP_TILES + ci);
+            if (dk !== undefined && !door && !cinematic && !character.dead) {
+                door = { d: map.doors[dk], t: 0, moved: false };
+                sfx('dodge', 0.5);
+            }
             kick(ci, cj, KICK);
             kick(ci + 1, cj, KICK_NEIGHBOUR);
             kick(ci - 1, cj, KICK_NEIGHBOUR);
@@ -1489,6 +1711,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         shakeMs = Math.max(0, shakeMs - ticker.deltaMS);
         updateFrog(ticker.deltaMS);
         survival.update(ticker.deltaMS, pu, pv, character.facing, character.tool, sim.view().monsters);
+        story?.update(ticker.deltaMS, pu, pv, character.facing, sim.view().monsters);
         {
             const w = store.get().weather;
             const want = w === 'storm' ? 1 : w === 'rain' ? 0.7 : 0;
@@ -1498,15 +1721,19 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             }
             // Breeze and birds outside (fewer at night and in the rain); a fire's crackle by a lit camp fire or a hearth.
             const st = store.get();
-            const outside = st.sheltered ? 0.25 : 1;
+            const outside = here ? 0 : st.sheltered ? 0.25 : 1;
             const day = sky.phase === 'day' ? 0.8 : sky.phase === 'night' ? 0.25 : 0.5;
             ambience.set({ breeze: day * outside * (want > 0 ? 0.4 : 1), fire: st.sheltered ? 0.5 : st.fire && st.inCamp ? 0.8 : 0 });
         }
         weather.update(ticker.deltaMS);
+        stepDoor(ticker.deltaMS);
+        noteWhere();
         {
             const st = store.get();
             const torch = buffMs.night > 0 ? TORCH_R.elixir : st.fire || st.sheltered ? TORCH_R.fire : TORCH_R.base;
-            darkness.update(sky.dark * settingsDark(), torch * stage.scale(), sky.phase === 'dusk' || sky.phase === 'dawn' ? Math.sin(sky.dark * Math.PI) : 0);
+            // Underground there is no sky: the interior's own gloom and its lights stand in for night.
+            darkness.update(here ? 0 : sky.dark * settingsDark(), torch * stage.scale(), here ? 0 : sky.phase === 'dusk' || sky.phase === 'dawn' ? Math.sin(sky.dark * Math.PI) : 0);
+            lightInterior(ticker.deltaMS);
         }
         if (!character.dead && !runOver && store.get().kingdom) {
             const st = store.get();
@@ -1528,7 +1755,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             staminaIdle += ticker.deltaMS;
             const max = staminaMax();
             const quick = progress.powers().includes('air') ? 1.3 : 1;
-            if (staminaIdle > 500) stamina = Math.min(max, stamina + sec * 25 * quick * (m.hunger < 25 || m.thirst < 25 ? 0.5 : 1));
+            if (staminaIdle > 500) stamina = Math.min(max, stamina + sec * 25 * quick * (m.hunger < 25 || m.thirst < 25 ? 0.5 : 1) * (story?.regenMul() ?? 1));
             stamina = Math.min(stamina, max);
             const key = `${Math.round(stamina)}/${Math.round(max)}/${tired > 0}`;
             if (key !== staminaShown) {
@@ -1638,18 +1865,32 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             if (strikes[i] <= 0) {
                 strikes.splice(i, 1);
                 const mul = power.damage * (buffMs.blue > 0 ? 1.5 : 1) * (buffMs.black > 0 ? 2 : 1) * (tired > 0 ? 0.5 : 1);
-                const broken = character.tool !== 'none' && progress.broken(character.tool);
-                const base = (TOOL_DAMAGE[character.tool] ?? 1) * (character.tool === 'sword' ? power.weapon : 1) * (broken ? 0.25 : 1);
-                if (character.tool === 'sword' || character.tool === 'hammer') progress.wear(character.tool);
+                const base = (TOOL_DAMAGE[character.tool] ?? 1) * (character.tool === 'sword' ? power.weapon : 1);
                 // A monster in reach can take a critical hit.
                 const faced = (() => {
                     const a = (character.facing * Math.PI) / 4;
                     const u = pu + (Math.cos(a) + Math.sin(a)) / Math.SQRT2, v = pv + (Math.sin(a) - Math.cos(a)) / Math.SQRT2;
                     return sim.view().monsters.some((m) => m.state !== 'dying' && Math.hypot(m.u - u, m.v - v) < 1.4);
                 })();
-                const crit = faced && !broken && Math.random() < CRIT.chance;
-                const dmg = Math.max(1, Math.round(base * mul * (crit ? CRIT.mul : 1)));
+                const crit = faced && Math.random() < CRIT.chance;
+                const dmg = Math.max(1, Math.round(base * mul * (crit ? CRIT.mul : 1) * (story?.swingMul(pu, pv, sim.view().monsters) ?? 1)));
                 sim.strike(pu, pv, character.facing, dmg);
+                story?.swing(pu, pv, character.facing, character.tool);
+                // Runic Fracture: the fourth blow of an unbroken string bursts around the blade.
+                if (faced) {
+                    combo = clock - comboAt < 1300 ? combo + 1 : 1;
+                    comboAt = clock;
+                    if (combo % 4 === 0) {
+                        const ra = (character.facing * Math.PI) / 4;
+                        const ru = pu + (Math.cos(ra) + Math.sin(ra)) / Math.SQRT2, rv = pv + (Math.sin(ra) - Math.cos(ra)) / Math.SQRT2;
+                        sim.strike(ru, rv, character.facing, Math.max(2, Math.round(dmg * 1.5)), 2.2);
+                        playFx('frost', ru, rv, { scale: 2.6, squash: 0.55, life: 500 });
+                        playFx('boltburst', ru, rv, { scale: 2.2, life: 450, lift: 20 });
+                        dropView.text(player.x, player.y - 120, 'Runic Fracture!', 0x7dd3fc);
+                        story?.fracture(ru, rv, sim.view().monsters);
+                        synth('mine');
+                    }
+                }
                 if (crit) {
                     shakeMs = 220;
                     const ca = (character.facing * Math.PI) / 4;
@@ -1779,10 +2020,15 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             // open, and a camp is safe ground: monsters lose you there (alone, no wave comes at all).
             {
                 const s = store.get();
-                calmNow = !!s.storyPopup || !!s.npc;
-                const key = `${calmNow}|${s.inCamp}`;
+                // Waves also hold until the story's first Sanctuary stands, and through a cinematic.
+                const held = !!story?.holdWaves();
+                calmNow = !!s.storyPopup || !!s.npc || !!s.puzzle || s.loom || s.debate || !!s.cine || held || here > 0;
+                if (s.wavesHeld !== held) store.patch({ wavesHeld: held });
+                const sieging = !!story?.sieging();
+                const safeNow = s.inCamp && !sieging;
+                const key = `${calmNow}|${safeNow}|${sieging}`;
                 if (net.online() && (key !== calmSent || clock - calmSentAt > 5000)) {
-                    net.sendCalm(calmNow, s.inCamp);
+                    net.sendCalm(calmNow, safeNow, sieging);
                     calmSent = key;
                     calmSentAt = clock;
                 }
@@ -1819,11 +2065,12 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             {
                 // Battle music once the first wave is in, while you are out in the world (camp is calm ground).
                 const battle = view.fighting && view.wave > 0 && !store.get().inCamp;
-                const fight = !!boss || battle;
+                const fight = !!boss || battle || !!story?.sieging();
                 calmFor = fight ? 0 : calmFor + 150;
                 const mood = music.mood();
-                if (runOver) { /* the game-over screen keeps its silence */ }
+                if (runOver || cinematic) { /* the game-over screen keeps its silence; a cinematic keeps its own */ }
                 else if (boss) music.set('boss');
+                else if (here) music.set('underground');
                 else if (battle) music.set('combat');
                 else if (calmFor > 2500 || (mood !== 'combat' && mood !== 'boss')) music.set('explore');
             }
@@ -1833,6 +2080,36 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             if (danger !== store.get().danger) store.patch({ danger });
         }
         wasLocked = character.locked;
+
+        // The opening cinematic, the first time the story starts in the quarry.
+        if (!cineChecked && story && !store.get().travelTo) {
+            cineChecked = true;
+            if (quest.active() && quest.land().n === 1 && quest.main()?.id === 'free' && !quest.has('cine:intro')) {
+                cinematic = createIntroCinematic({
+                    layer: objects,
+                    ground: (u, v) => ({ x: sx(u, v), y: sy(u, v) - heightAt(u, v) * LEVEL_H }),
+                    zFor: sortZ,
+                    fx: (name, u, v, o) => playFx(name, u, v, o),
+                    props: (ids, hidden) => story?.hideProps(ids, hidden),
+                    onEnd: () => undefined,
+                }, { u: pu, v: pv - 3 });
+            } else if (store.get().cine) store.patch({ cine: null });
+        }
+        if (cinematic) {
+            const view = cinematic.update(ticker.deltaMS);
+            player.visible = xray.visible = hpBar.visible = !view;
+            if (view) cineCam = view;
+            else {
+                pu = cinematic.end.u;
+                pv = cinematic.end.v;
+                pz = heightAt(pu, pv) * LEVEL_H;
+                cinematic.destroy();
+                cinematic = null;
+                cineCam = null;
+                quest.flag('cine:intro');
+                music.set('explore');
+            }
+        }
 
         placeCamera();
         syncChunks();
@@ -1880,10 +2157,16 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             shotView.destroy();
             dropView.destroy();
             survival.destroy();
+            story?.destroy();
             weather.destroy();
             darkness.destroy();
+            lights.destroy();
+            fadeGfx.destroy();
+            store.patch({ indoors: null });
             ambience.clear();
             offRevive();
+            window.removeEventListener('keydown', onCineKey);
+            cinematic?.destroy();
             for (const z of zones) z.g.destroy();
             store.patch({ downed: null, reviveTarget: null, meter: 0 });
             hpBar.destroy();

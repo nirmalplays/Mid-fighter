@@ -1,16 +1,30 @@
 /**
- * The intro cutscene's narration: what the old storyteller says over each scene (with
- * ElevenLabs v3 delivery tags), the subtitle shown, and the voice file it plays
- * (public/voice, made once with the dev voice tool: ?voicegen on the dev server). Until the
- * files exist the cutscene runs on its own clock with subtitles only.
+ * The prologue: the story of Eidolon told over thirteen illustrated scenes (ui/cutscene/Scenes.tsx),
+ * by an old storyteller and, where it is theirs to say, by the people in it: Malakor himself, a
+ * commander on the line, the quarrelling king and queen, and Lyra. Each line has its delivery
+ * (ElevenLabs v3 audio tags: the emotion, the pauses, the whispers and shouts), the subtitle shown,
+ * and its recording in public/voice. A scene can hold several lines; it lasts as long as they do.
+ *
+ * What it has to make clear, in order: the Heart feeds one world; every five hundred years it falters
+ * and the abyss comes up as a war (the Tide); united, the nations always won; Malakor foresaw a far
+ * worse Fourth Tide and watched the kings refuse to unite; so he broke the Heart in four (a Heart in
+ * pieces can never grow wild enough to wake the abyss), made the world forget so it would never be
+ * rejoined, and chained the last Tide's demons over the pieces as jailers; three hundred years later
+ * the pieces are bleeding and the Tide is coming anyway; only the Memory Pillars kept the truth, and the
+ * guild that digs for them is you and Lyra. Then: what you must do.
  */
-export type SceneId = 'oneworld' | 'peoples' | 'guardian' | 'exile' | 'whispers' | 'sunder' | 'kingdoms' | 'survivor';
+export type SceneId =
+    | 'oneworld' | 'peoples' | 'tide' | 'united' | 'charts' | 'council' | 'verdict'
+    | 'sunder' | 'aftermath' | 'wardens' | 'cracks' | 'guild' | 'survivor';
+
+export type Speaker = 'Narrator' | 'Malakor' | 'Commander' | 'King of Pyraxis' | 'Queen of Aquatica' | 'Lyra';
 
 export interface NarrationLine {
     scene: SceneId;
+    speaker: Speaker;
     /** Sent to the speech model (v3 tags shape the delivery). */
     speech: string;
-    /** Shown on screen. */
+    /** Shown on screen (exactly the words spoken). */
     subtitle: string;
     /** public/voice/<file> */
     file: string;
@@ -18,65 +32,125 @@ export interface NarrationLine {
 
 export const NARRATION: NarrationLine[] = [
     {
-        scene: 'oneworld',
-        speech: 'Long ago... the world was one. [pause] Eidolon. A single great land, beating with the light of its Heart.',
-        subtitle: 'Long ago, the world was one. Eidolon. A single great land, beating with the light of its Heart.',
-        file: 'narration_01.mp3',
+        scene: 'oneworld', speaker: 'Narrator', file: 'prologue_01.mp3',
+        speech: '[warmly, with wistful wonder] Before the lands drifted apart... there was one world. Eidolon. [softly] At its centre beat the Heart of the World... and its light ran through the earth in great ley-veins, [gently] like blood through a body.',
+        subtitle: 'Before the lands drifted apart, there was one world. Eidolon. At its centre beat the Heart of the World, and its light ran through the earth in great ley-veins, like blood through a body.',
     },
     {
-        scene: 'peoples',
-        speech: 'Four peoples shared its gifts. [pause] Fire, in the crags of Pyraxis. Wind, over the isles of Zephyria. Tide, in the depths of Aquatica. [pause] And stone, in the hollows of Terragrim.',
-        subtitle: 'Four peoples shared its gifts. Fire, in the crags of Pyraxis. Wind, over the isles of Zephyria. Tide, in the depths of Aquatica. And stone, in the hollows of Terragrim.',
-        file: 'narration_02.mp3',
+        scene: 'peoples', speaker: 'Narrator', file: 'prologue_02.mp3',
+        speech: '[fondly, painting each picture] Four nations lived by that light. The fire-smiths of Pyraxis. The sky-sailors of Zephyria. The tide-folk of Aquatica. [pause] And the stone halls of Terragrim... where the Conclave of Arch-Mages kept watch over the Heart.',
+        subtitle: 'Four nations lived by that light. The fire-smiths of Pyraxis. The sky-sailors of Zephyria. The tide-folk of Aquatica. And the stone halls of Terragrim, where the Conclave of Arch-Mages kept watch over the Heart.',
     },
     {
-        scene: 'guardian',
-        speech: 'One man was sworn to guard the Heart. [pause] Malakor. High scholar of the Council... and the wisest of us all.',
-        subtitle: 'One man was sworn to guard the Heart. Malakor. High scholar of the Council, and the wisest of us all.',
-        file: 'narration_03.mp3',
+        scene: 'tide', speaker: 'Narrator', file: 'prologue_03.mp3',
+        speech: '[ominous, slowing down] But every five hundred years... the Heart falters. Its light grows wild, and the ground splits open. [low and tense] And out of the cracks... the abyss climbs into the world. [pause] We call it the Grand Arcane Tide. [grimly] It is not a flood. [beat] It is a war.',
+        subtitle: 'But every five hundred years, the Heart falters. Its light grows wild, and the ground splits open. And out of the cracks, the abyss climbs into the world. We call it the Grand Arcane Tide. It is not a flood. It is a war.',
     },
     {
-        scene: 'exile',
-        speech: 'But power corrupts. [pause] He reached for the Heart, to make himself a god... and the Council cast him down, into the dark beneath the world.',
-        subtitle: 'But power corrupts. He reached for the Heart, to make himself a god, and the Council cast him down, into the dark beneath the world.',
-        file: 'narration_04.mp3',
+        scene: 'united', speaker: 'Narrator', file: 'prologue_04.mp3',
+        speech: '[rising, proud] Three times the Tide came. And three times, the four nations put aside every quarrel... [swelling with pride] and stood, shoulder to shoulder.',
+        subtitle: 'Three times the Tide came. And three times, the four nations put aside every quarrel, and stood shoulder to shoulder.',
     },
     {
-        scene: 'whispers',
-        speech: 'In the dark, he learned to whisper. [whispers] They steal your fire. They poison your water. They are coming for you. [/whispers]',
-        subtitle: 'In the dark, he learned to whisper. "They steal your fire. They poison your water. They are coming for you."',
-        file: 'narration_05.mp3',
+        scene: 'united', speaker: 'Commander', file: 'prologue_04b.mp3',
+        speech: '[shouting over battle, fierce] Shields together! HOLD THE LINE! [roaring] FOR EIDOLON!',
+        subtitle: 'Shields together! Hold the line! For Eidolon!',
     },
     {
-        scene: 'sunder',
-        speech: 'And when the hatred was ripe... [pause] he tore the land apart.',
-        subtitle: 'And when the hatred was ripe, he tore the land apart.',
-        file: 'narration_06.mp3',
+        scene: 'united', speaker: 'Narrator', file: 'prologue_04c.mp3',
+        speech: '[triumphant] Three times, they drove the abyss back into the dark. [pause, softer, with weight] Together... they never lost.',
+        subtitle: 'Three times, they drove the abyss back into the dark. Together, they never lost.',
     },
     {
-        scene: 'kingdoms',
-        speech: 'Now four kingdoms smoulder behind his barriers, each ruled by a corrupted warden. [pause] And at the heart of the ruin, Malakor waits in the Void Citadel... feeding on their hate.',
-        subtitle: 'Now four kingdoms smoulder behind his barriers, each ruled by a corrupted warden. And at the heart of the ruin, Malakor waits in the Void Citadel, feeding on their hate.',
-        file: 'narration_07.mp3',
+        scene: 'charts', speaker: 'Narrator', file: 'prologue_05.mp3',
+        speech: '[quiet, foreboding] Then came the age of Malakor, Grand Arch-Mage of the Conclave. [pause] Night after night, he read the coming Tide in the stars.',
+        subtitle: 'Then came the age of Malakor, Grand Arch-Mage of the Conclave. Night after night, he read the coming Tide in the stars.',
     },
     {
-        scene: 'survivor',
-        speech: 'But one survivor still stands. [pause] Choose your allegiance. Master your kingdom\'s power. [pause] And make Eidolon whole again.',
-        subtitle: 'But one survivor still stands. Choose your allegiance. Master your kingdom\'s power. And make Eidolon whole again.',
-        file: 'narration_08.mp3',
+        scene: 'charts', speaker: 'Malakor', file: 'prologue_05b.mp3',
+        speech: '[horrified whisper] No... [breath catching] ten times the last. Twenty. [voice shaking] This one will not be a war... [barely audible] it will be the end of us.',
+        subtitle: 'No... ten times the last. Twenty. This one will not be a war. It will be the end of us.',
+    },
+    {
+        scene: 'council', speaker: 'Narrator', file: 'prologue_06.mp3',
+        speech: '[heavy] He carried his charts to the kings and queens of his age. [sighs] But they were proud... and old grudges ran deep.',
+        subtitle: 'He carried his charts to the kings and queens of his age. But they were proud, and old grudges ran deep.',
+    },
+    {
+        scene: 'council', speaker: 'King of Pyraxis', file: 'prologue_06b.mp3',
+        speech: '[furious, slamming the table] Pyraxis will NOT march under a wind-folk banner!',
+        subtitle: 'Pyraxis will not march under a wind-folk banner!',
+    },
+    {
+        scene: 'council', speaker: 'Queen of Aquatica', file: 'prologue_06c.mp3',
+        speech: '[cold, scornful] Then let Pyraxis burn alone... as it always threatens to.',
+        subtitle: 'Then let Pyraxis burn alone, as it always threatens to.',
+    },
+    {
+        scene: 'council', speaker: 'Malakor', file: 'prologue_06d.mp3',
+        speech: '[quietly, devastated] They will not stand together. [long pause] And alone... [whispers] they will lose.',
+        subtitle: 'They will not stand together. And alone, they will lose.',
+    },
+    {
+        scene: 'verdict', speaker: 'Malakor', file: 'prologue_07.mp3',
+        speech: '[cold resolve, slow and deliberate] If the world cannot win this war... then there will be no war. [pause] The Tide is born of the Heart. A Heart broken in four can never grow wild again. [firm, final] I will end the cycle. [beat] Forever.',
+        subtitle: 'If the world cannot win this war, then there will be no war. The Tide is born of the Heart. A Heart broken in four can never grow wild again. I will end the cycle. Forever.',
+    },
+    {
+        scene: 'sunder', speaker: 'Narrator', file: 'prologue_08.mp3',
+        speech: '[dramatic, building] So he drove obsidian spikes into the world’s veins... [intense] and broke the Heart. [pause, grief-stricken] And the world broke with it.',
+        subtitle: 'So he drove obsidian spikes into the world’s veins, and broke the Heart. And the world broke with it.',
+    },
+    {
+        scene: 'aftermath', speaker: 'Narrator', file: 'prologue_09.mp3',
+        speech: '[sorrowful] Four lands, cast adrift on the Abyssal Maelstrom, walled apart by his barriers. [pause] And so that no one would ever try to make them whole again... [bitterly] he made them forget. [softly] A pale Mist rose, and ate the memories of the people. [pause] Neighbours became strangers. [heavy] Strangers became enemies.',
+        subtitle: 'Four lands, cast adrift on the Abyssal Maelstrom, walled apart by his barriers. And so that no one would ever try to make them whole again, he made them forget. A pale Mist rose, and ate the memories of the people. Neighbours became strangers. Strangers became enemies.',
+    },
+    {
+        scene: 'wardens', speaker: 'Narrator', file: 'prologue_10.mp3',
+        speech: '[low, menacing] Three pieces of the Heart, the Cores of Fire, Storm and Frost, he sealed deep beneath three of the lands... and set jailers over them. [bitterly] His own champions, who knelt to him, twisted by his magic into monsters. [darkly] But beneath Pyraxis, he chained something worse. [pause] A demon of the last Tide. Ignis, the Molten Scourge. [whispering] A beast that feeds on memory.',
+        subtitle: 'Three pieces of the Heart, the Cores of Fire, Storm and Frost, he sealed deep beneath three of the lands, and set jailers over them: his own champions, who knelt to him, twisted by his magic into monsters. But beneath Pyraxis, he chained something worse. A demon of the last Tide. Ignis, the Molten Scourge. A beast that feeds on memory.',
+    },
+    {
+        scene: 'wardens', speaker: 'Narrator', file: 'prologue_10b.mp3',
+        speech: '[cold, quiet] The last piece, the Heart itself, he kept for himself... in a citadel at the centre of the world, where Terragrim had stood. [pause, sorrowful] Terragrim became the Void Wastes.',
+        subtitle: 'The last piece, the Heart itself, he kept for himself, in a citadel at the centre of the world, where Terragrim had stood. Terragrim became the Void Wastes.',
+    },
+    {
+        scene: 'cracks', speaker: 'Narrator', file: 'prologue_11.mp3',
+        speech: '[urgent, rising] But a broken heart does not heal. [pause] Three hundred years on, the Cores are bleeding. The Maelstrom is rising. The jailers strain at their chains... [grave] and the Fourth Tide is coming anyway. [quietly, sadly] To a world that no longer remembers how to stand together.',
+        subtitle: 'But a broken heart does not heal. Three hundred years on, the Cores are bleeding. The Maelstrom is rising. The jailers strain at their chains, and the Fourth Tide is coming anyway. To a world that no longer remembers how to stand together.',
+    },
+    {
+        scene: 'guild', speaker: 'Narrator', file: 'prologue_12.mp3',
+        speech: '[warmer, a spark of hope] Only the Memory Pillars kept the truth: old stones that remember what the Mist erased. [lighter] And a small guild of archaeologist-enchanters went digging for them... [fondly] you, among them. [pause] And Lyra.',
+        subtitle: 'Only the Memory Pillars kept the truth: old stones that remember what the Mist erased. And a small guild of archaeologist-enchanters went digging for them. You, among them. And Lyra.',
+    },
+    {
+        scene: 'guild', speaker: 'Lyra', file: 'prologue_12b.mp3',
+        speech: '[excited, warm] If the stones remember, then so can we. [laughs softly] Come on, slowpoke. History won’t dig itself up.',
+        subtitle: 'If the stones remember, then so can we. Come on, slowpoke. History won’t dig itself up.',
+    },
+    {
+        scene: 'survivor', speaker: 'Narrator', file: 'prologue_13.mp3',
+        speech: '[determined, stirring] This is where your story begins. [pause] Find what was stolen. Mend what was broken. [building] And when the Tide comes... [powerful, rousing] make sure the world stands together.',
+        subtitle: 'This is where your story begins. Find what was stolen. Mend what was broken. And when the Tide comes, make sure the world stands together.',
     },
 ];
 
-/** How long a line takes when there is no voice file: a slow storyteller's pace, plus room to breathe. */
+/** How long a line takes when there is no voice file: a storyteller's pace, plus room to breathe. */
 export const estimateSeconds = (line: NarrationLine): number => {
     const words = line.subtitle.split(/\s+/).length;
-    const pauses = (line.speech.match(/\[pause\]|\.\.\./g) ?? []).length;
-    return Math.max(5, words / 2.3 + pauses * 0.6 + 1.2);
+    const pauses = (line.speech.match(/\[pause\]|\[beat\]|\.\.\./g) ?? []).length;
+    return Math.max(3, words / 2.4 + pauses * 0.6 + 0.8);
 };
 
-/** The voice the narration was made with (described for the voice designer). */
-export const NARRATOR_VOICE = {
-    name: 'Eidolon Storyteller',
-    description: 'An old male storyteller with a deep, weathered, slightly gravelly voice. Slow, grave and warm, like an elder telling an ancient legend by a campfire. Neutral accent, calm and measured, with gravitas.',
-    sample: 'Gather close, and listen. Long ago, before the kingdoms burned and the barriers rose, the world was one. I was young then, and I remember the light of the Heart on every face. Let me tell you how it was lost, and how it may yet be found.',
+/** How each speaker's name is coloured in the subtitles. */
+export const SPEAKER_COLOR: Record<Speaker, string> = {
+    Narrator: '#f3eefb',
+    Malakor: '#d8b4fe',
+    Commander: '#fca5a5',
+    'King of Pyraxis': '#fdba74',
+    'Queen of Aquatica': '#7dd3fc',
+    Lyra: '#fde68a',
 };

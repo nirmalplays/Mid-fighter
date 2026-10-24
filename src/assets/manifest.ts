@@ -14,6 +14,7 @@
  */
 import type { AssetsManifest, UnresolvedAsset } from 'pixi.js';
 import { ITEM_IDS, ITEMS } from '../game/survival.ts';
+import { NPC_SHEETS } from '../game/world/npcAtlas.ts';
 
 /**
  * A narrowing of Pixi's AssetsManifest: Pixi also allows `assets` to be a
@@ -82,13 +83,15 @@ export const MANIFEST: Manifest = {
                 { alias: 'char:idle', src: 'images/world/char/idle.png' },
                 { alias: 'char:walk', src: 'images/world/char/walk.png' },
                 { alias: 'char:run', src: 'images/world/char/run.png' },
+                // The story's people (tools/build-npcs.py), for the camps and the cinematics.
+                ...Object.entries(NPC_SHEETS).flatMap(([who, anims]) => Object.keys(anims).map((anim) => ({ alias: `npc:${who}:${anim}`, src: `images/world/npc/${who}-${anim}.png` }))),
             ],
         },
         {
             name: 'deferred',
             assets: [
                 // Item pictures, for loot lying on the ground.
-                ...ITEM_IDS.map((id) => ({ alias: `item:${id}`, src: `images/${ITEMS[id].icon}` })),
+                ...ITEM_IDS.filter((id) => !ITEMS[id].icon.startsWith("ico:")).map((id) => ({ alias: `item:${id}`, src: `images/${ITEMS[id].icon}` })),
             ],
         },
     ],

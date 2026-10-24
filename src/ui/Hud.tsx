@@ -24,6 +24,10 @@ import {
     BagPanel, BigMap, BossBar, BuildPanel, DownedOverlay, Hotbar4, HousePanel, KingdomChooser, maybeShowIntro, NpcPanel, Radar,
     StoryDialog, TravelPanel,
 } from './SurvivalHud.tsx';
+import { PuzzlePanel, StoryHud } from './StoryPanels.tsx';
+import { CinematicOverlay } from './CinematicOverlay.tsx';
+import { Coach, ObjectiveCard } from './Guide.tsx';
+import { DebatePanel, LoomPanel } from './StoryPuzzles.tsx';
 import { CARRY_MAX, COOLDOWN_MAX, cooldownFor, levelCost, maxCharges, SPELLS, UNLOCK_COST } from '../game/world/spells.ts';
 
 const TAN = '#e9bf9a';
@@ -219,12 +223,15 @@ export default function Hud() {
     const netStatus = useStore((s) => s.netStatus);
     const online = useStore((s) => s.online);
     const roomCode = useStore((s) => s.roomCode);
-    // The story starts with Elder Theron's prologue the first time.
+    // A cinematic owns the screen: only its letterbox and lines show.
+    const cinematic = useStore((s) => s.cine !== null);
+    // The story starts with Master Orin's prologue the first time.
     useEffect(() => {
         const id = window.setTimeout(maybeShowIntro, 600);
         return () => window.clearTimeout(id);
     }, []);
 
+    if (cinematic) return <CinematicOverlay />;
     return (
         <div className="pointer-events-none absolute inset-0 pt-safe-top">
             {/* Top: the minimap and what is around (left), the stone buttons (right); bottom: the vitals */}
@@ -244,6 +251,12 @@ export default function Hud() {
             <BigMap />
             <BagPanel />
             <KingdomChooser />
+            <StoryHud />
+            <ObjectiveCard />
+            <Coach />
+            <PuzzlePanel />
+            <LoomPanel />
+            <DebatePanel />
             <StoryDialog />
             <GameOver />
             <Hotbar4 />

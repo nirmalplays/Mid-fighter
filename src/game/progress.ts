@@ -14,12 +14,12 @@ import { store } from '../state/store.ts';
 import { GEM_CAP, SKILL_CAP, upgradeCost } from './skills.ts';
 import { HOTBAR, type Tool } from './world/character.ts';
 import { CARRY_MAX, COOLDOWN_MAX, defaultSpellSave, levelCost, SPELLS, UNLOCK_COST, type SpellSave } from './world/spells.ts';
-import { MAP_TILES } from './world/constants.ts';
+import { WORLD_TILES } from './world/constants.ts';
 import {
     ARMORS, buildCost, BUILDINGS, cardScale, cardSlots, CARDS, chapterAt, CHAPTER_COUNT, emptyBag, emptyBuildings, emptyStats,
     essenceOf, FOOD, FUSE_N, GEAR_FORGE, GEAR_TOP, gearCost, gem2Of, gem3Of, gemKeep, infuseCost, ITEMS, keepShare, levelDamage, levelHp,
     RARE_POTIONS, RECIPES, regenEvery, relicMul, relicOf, rollCard, socketsFor, STACK_CAP, STAMINA_COST, stormEvery, WEAPONS, xpToNext,
-    BACKPACK_TOP, backpackCost, backpackSlots, HOTBAR_SLOTS, maxDurability, repairCost, roomFor, slotsUsed, TOOL_ITEMS,
+    BACKPACK_TOP, backpackCost, backpackSlots, HOTBAR_SLOTS, roomFor, slotsUsed, TOOL_ITEMS,
     type Bag, type BuildingId, type CardId, type GemSkill, type ItemId, type StatId,
 } from './survival.ts';
 import {
@@ -27,6 +27,7 @@ import {
     type Element, type NpcId, type Region,
 } from './eidolon.ts';
 import type { FighterSave } from '../saveConfig.ts';
+import { npcIdOf, quest, STORY_NPC } from './story/quest.ts';
 
 /** Card level from the copies found: 1 copy is level 1, 1+2 copies level 2, 1+2+3 level 3, ... */
 export const levelFromCopies = (copies: number): number => Math.floor((Math.sqrt(8 * copies + 1) - 1) / 2);
@@ -74,7 +75,7 @@ const maxHpOf = (d: FighterSave): number => {
 
 // ---- fog of war: the map is FOG_N × FOG_N cells of FOG_CELL tiles, one bit each.
 export const FOG_CELL = 8;
-export const FOG_N = MAP_TILES / FOG_CELL;
+export const FOG_N = WORLD_TILES / FOG_CELL;
 let fogCache: { s: string; bits: Uint8Array } | null = null;
 function exploredBits(s: string): Uint8Array {
     if (fogCache && fogCache.s === s) return fogCache.bits;
@@ -295,10 +296,12 @@ export const progress = {
         const d = saveSystem.data;
         if (!d) return;
         Object.assign(d, { bag: emptyBag(), cards: {}, equipped: [], buildings: emptyBuildings(), level: 1, xp: 0, story: { step: 0, base: 0, introSeen: false }, stats: emptyStats(), chests: {} });
+        d.quest = { land: 1, main: 0, side: {}, flags: [], n: {}, lyra: 30, pressure: 0, done: false, placed: [] };
+        store.patch({ storyQueue: [], storyPopup: null, puzzle: null, saga: { ...store.get().saga, lyra: null, pressure: null, timer: null, spire: null, mist: 0, sulfur: false, qte: null, hymn: null, carrying: false } });
         Object.assign(d, { hotbar: ['tool_sword', 'tool_axe', 'tool_pickaxe', null], held: 0, durability: { tool_sword: 80, tool_axe: 150, tool_pickaxe: 150, tool_fishingpole: 100 }, backpack: 0 });
         Object.assign(d.bag, { tool_sword: 1, tool_axe: 1, tool_pickaxe: 1, tool_fishingpole: 1 });
-        Object.assign(d, { kingdom: null, wardens: [], guards: [], malakor: 0, gear: { weapon: 0, armor: 0, bp: 0, infusion: null, relics: [], relic: null }, sockets: [], meters: { hunger: 100, thirst: 100, rest: 100 }, explored: '', towers: [], houses: {}, talked: [] });
-        Object.assign(d, { scene: 'world', world: { u: MAP_TILES / 2 + 0.5, v: MAP_TILES / 2 + 0.5, set: false }, tool: 'none', hp: 6, playSeconds: 0, kills: 0, bestWave: 0, swords: [], sword: -1, skills: { attack: 0, defence: 0, speed: 0, vitality: 0 }, gems: { attack: 0, defence: 0, speed: 0, vitality: 0 }, spells: defaultSpellSave() });
+        Object.assign(d, { kingdom: null, wardens: [], guards: [], malakor: 0, gear: { weapon: 0, armor: 0, bp: 0, infusion: null, relics: [], relic: null }, sockets: [], meters: { hunger: 100, thirst: 100, rest: 100 }, explored: '', towers: [], houses: {}, talked: [], found: [] });
+        Object.assign(d, { scene: 'world', world: { u: WORLD_TILES / 2 + 0.5, v: WORLD_TILES / 2 + 0.5, set: false }, tool: 'none', hp: 6, playSeconds: 0, kills: 0, bestWave: 0, swords: [], sword: -1, skills: { attack: 0, defence: 0, speed: 0, vitality: 0 }, gems: { attack: 0, defence: 0, speed: 0, vitality: 0 }, spells: defaultSpellSave() });
         store.patch({ playSeconds: 0, kills: 0, swordsOwned: [], swordIdx: -1, maxHp: 6, hp: 6, skills: { attack: 0, defence: 0, speed: 0, vitality: 0 }, gems: { attack: 0, defence: 0, speed: 0, vitality: 0 }, spells: defaultSpellSave() });
         saveSystem.save();
         this.syncSurvival();
@@ -422,7 +425,6 @@ export const progress = {
         if (ITEMS[r.out].tool && d.bag[r.out] > 0) return false;
         if (roomFor(d.bag, d.hotbar, d.backpack, r.out) < r.n || !this.pay(r.cost)) return false;
         d.bag[r.out] += r.n;
-        if (ITEMS[r.out].tool) d.durability[r.out] = maxDurability(r.out, d.gear.weapon);
         d.stats.crafted += 1;
         sfx('craft');
         if (r.out.startsWith('potion_')) d.stats.potions += 1;
@@ -553,6 +555,15 @@ export const progress = {
     },
 
     /** XP (scaled by the Wise Owl card). Levels up as far as it goes, each healing you in full. */
+    /** The first time inside a cave, dungeon or ruin: it is found (true the first time only). */
+    discover(id: string): boolean {
+        const d = saveSystem.data;
+        if (!d || d.found.includes(id)) return false;
+        d.found = [...d.found, id];
+        this.gainXp(25);
+        saveSystem.save();
+        return true;
+    },
     gainXp(n: number): number {
         const d = saveSystem.data;
         if (!d || n <= 0) return 0;
@@ -605,7 +616,7 @@ export const progress = {
     /** Where this player's runs start. */
     home(): { u: number; v: number } {
         const e = saveSystem.data?.kingdom;
-        return e ? homeOf(e) : { u: MAP_TILES / 2 + 0.5, v: MAP_TILES / 2 + 0.5 + CITADEL_R + 4 };
+        return e ? homeOf(e) : { u: WORLD_TILES / 2 + 0.5, v: WORLD_TILES / 2 + 0.5 + CITADEL_R + 4 };
     },
 
     /** The kingdoms in the order this player meets them. */
@@ -618,6 +629,7 @@ export const progress = {
     open(r: Region): boolean {
         const d = saveSystem.data;
         if (!d || !d.kingdom) return true;
+        if (quest.active()) return quest.open(r);
         if (r === 'citadel') return d.wardens.length >= 4;
         return r === d.kingdom || d.wardens.some((w) => nextKingdom(w) === r);
     },
@@ -668,20 +680,20 @@ export const progress = {
             const left = this.guardsLeft(info.el);
             const k = KINGDOMS[info.el];
             const count = (ids: ItemId[]) => [...new Set(ids)].map((x) => `${ids.filter((y) => y === x).length > 1 ? `${ids.filter((y) => y === x).length} × ` : ''}${ITEMS[x].name}`);
-            store.patch({
-                guards: [...d.guards], bag: { ...d.bag }, gear: { ...d.gear }, swordsOwned: [...d.swords],
-                storyPopup: {
+            const story = quest.active();
+            store.patch({ guards: [...d.guards], bag: { ...d.bag }, gear: { ...d.gear }, swordsOwned: [...d.swords] });
+            store.tell({
                     speaker: info.name,
                     title: `Spoils: ${relic.name}`,
                     lines: [
                         `A relic of ${k.name}. ${relic.blurb}. Sword damage x${relicMul(this.tierOf(info.el), info.n)}, with ${k.name}'s ${info.el}. Hold it from the Gear tab.`,
                         `Also: ${[...count(potions), ITEMS[gem].name, `3 × ${ITEMS[essenceOf(info.el)].name}`].join(', ')}.`,
-                        left > 0 ? `${left} guardian${left > 1 ? 's' : ''} of ${k.name} still stand${left > 1 ? '' : 's'}. The arena stays sealed until they fall.` : `The last guardian has fallen: the arena of ${k.name} is open. ${k.warden.name} waits.`,
+                        ...(story ? [] : [left > 0 ? `${left} guardian${left > 1 ? 's' : ''} of ${k.name} still stand${left > 1 ? '' : 's'}. The arena stays sealed until they fall.` : `The last guardian has fallen: the arena of ${k.name} is open. ${k.warden.name} waits.`]),
                     ],
-                },
             });
             saveSystem.save();
             this.checkStory();
+            if (story) return `${info.name} falls!`;
             return `${info.name} is free! ${left > 0 ? `${left} guardian${left > 1 ? 's' : ''} left` : `The arena of ${k.name} is open`}`;
         }
         if (info.rank === 'warden' && info.el) {
@@ -730,8 +742,7 @@ export const progress = {
         if (tier > GEAR_TOP || d.gear.bp < tier || d.buildings.forge < GEAR_FORGE[tier] || !this.pay(gearCost(kind, tier))) return false;
         d.gear[kind] = tier;
         sfx('craft');
-        if (kind === 'weapon') d.durability.tool_sword = maxDurability('tool_sword', tier);
-        store.patch({ durability: { ...d.durability }, gear: { ...d.gear }, banner: { text: `Forged: ${(kind === 'weapon' ? WEAPONS : ARMORS)[tier].name}`, id: Date.now() } });
+        store.patch({ gear: { ...d.gear }, banner: { text: `Forged: ${(kind === 'weapon' ? WEAPONS : ARMORS)[tier].name}`, id: Date.now() } });
         this.gainXp(30 * tier);
         saveSystem.save();
         this.checkStory();
@@ -810,10 +821,22 @@ export const progress = {
         const first = !d.talked.includes(npc);
         if (first) d.talked = [...d.talked, npc];
         let gift: string | null = null;
+        const story = quest.active();
+        // A forging step: the smith (or artificer) makes it if you bring what it needs.
+        const forge = story ? quest.live().find((l) => l.step.goal.kind === 'forge' && npcIdOf(l.step.goal.npc) === npc) : undefined;
+        if (forge && forge.step.goal.kind === 'forge') {
+            const g = forge.step.goal;
+            if (this.pay(g.cost)) {
+                quest.flag(forge.step.id === 'masterwork' ? 'masterwork' : `forged:${forge.step.id}`);
+                gift = g.made;
+                quest.on({ type: 'done', step: forge.step.id });
+            } else gift = `Bring ${(Object.entries(g.cost) as [ItemId, number][]).map(([k, n]) => `${n} ${ITEMS[k].name}`).join(', ')}, and it can be made.`;
+        }
+        if (story) quest.on({ type: 'talk', npc: STORY_NPC[npc] });
         if (first && npc === 'varis') {
             d.gear.bp = Math.max(d.gear.bp, 1);
-            gift = 'Varis gives you the Bone Club and Hide Vest blueprints';
-        } else if (first && npc === 'lyra') {
+            gift = 'Bram gives you the Bone Club and Hide Vest blueprints';
+        } else if (first && npc === 'lyra' && !story) {
             d.bag.herb += 2;
             d.bag.potion_red += 1;
             gift = 'Lyra gives you wild mint (2 herbs) and a Healing draught';
@@ -943,52 +966,7 @@ export const progress = {
         const id = TOOL_ITEMS.find((k) => ITEMS[k].tool!.holds === holds);
         return !!d && !!id && d.bag[id] > 0;
     },
-    /** Wear left on a tool (by item), and its most. */
-    durability(id: ItemId): { now: number; max: number } {
-        const d = saveSystem.data;
-        const max = maxDurability(id, d?.gear.weapon ?? 0);
-        return { now: Math.min(max, d?.durability[id] ?? max), max };
-    },
-    broken(holds: string): boolean {
-        const id = TOOL_ITEMS.find((k) => ITEMS[k].tool!.holds === holds);
-        return !!id && this.durability(id).now <= 0;
-    },
-    /** A tool is used once; it may break. */
-    wear(holds: string, n = 1): void {
-        const d = saveSystem.data;
-        const id = TOOL_ITEMS.find((k) => ITEMS[k].tool!.holds === holds);
-        if (!d || !id || !(d.bag[id] > 0)) return;
-        const before = this.durability(id).now;
-        if (before <= 0) return;
-        d.durability[id] = Math.max(0, before - n);
-        if (d.durability[id] === 0) sfx('fall', 0.6);
-        if (d.durability[id] === 0) store.patch({ banner: { text: `Your ${id === 'tool_sword' ? WEAPONS[d.gear.weapon].name : ITEMS[id].name} broke! Repair it at a workbench (camp or a house)`, id: Date.now() } });
-        // Only whole-number changes in tenths of the bar reach the HUD.
-        const max = maxDurability(id, d.gear.weapon);
-        if (Math.floor((before / max) * 20) !== Math.floor((d.durability[id] / max) * 20) || d.durability[id] === 0) store.patch({ durability: { ...d.durability } });
-        saveSystem.markDirty();
-    },
-    /** A team wipe: every tool you own loses a share of its most durability. */
-    wearAll(share: number): void {
-        const d = saveSystem.data;
-        if (!d) return;
-        for (const id of TOOL_ITEMS) {
-            if (!(d.bag[id] > 0)) continue;
-            const max = maxDurability(id, d.gear.weapon);
-            d.durability[id] = Math.max(0, Math.round((d.durability[id] ?? max) - max * share));
-        }
-        store.patch({ durability: { ...d.durability } });
-        saveSystem.save();
-    },
-        repair(id: ItemId): boolean {
-        const d = saveSystem.data;
-        if (!d || !(d.bag[id] > 0) || !this.pay(repairCost(id, d.gear.weapon))) return false;
-        d.durability[id] = maxDurability(id, d.gear.weapon);
-        sfx('craft');
-        store.patch({ durability: { ...d.durability }, banner: { text: `${id === 'tool_sword' ? WEAPONS[d.gear.weapon].name : ITEMS[id].name} repaired`, id: Date.now() } });
-        saveSystem.save();
-        return true;
-    },
+    // Tools never wear out or break (the old save field `durability` is kept only so old saves load).
     /** Throw away some of an item (to free backpack slots). */
     discard(id: ItemId, n: number): void {
         const d = saveSystem.data;
@@ -1050,6 +1028,10 @@ export const progress = {
     publishObjective(): void {
         const d = saveSystem.data;
         if (!d) return;
+        if (quest.active()) {
+            quest.publish();
+            return;
+        }
         const ch = this.chapter();
         const p = this.goalProgress();
         const cur = store.get().objective;
@@ -1057,11 +1039,15 @@ export const progress = {
         if (!cur || cur.have !== next.have || cur.step !== next.step || cur.need !== next.need || cur.task !== next.task) store.patch({ objective: next });
     },
 
-    /** Finish the current chapter if its goal is met: pay the reward and open the next one (Elder Theron explains it). */
+    /** Finish the current chapter if its goal is met: pay the reward and open the next one (Master Orin explains it). */
     checkStory(): void {
         const d = saveSystem.data;
         if (!d || !d.kingdom) {
             this.publishObjective();
+            return;
+        }
+        if (quest.active()) {
+            quest.check();
             return;
         }
         for (let guard = 0; guard < 5; guard++) {
@@ -1085,13 +1071,11 @@ export const progress = {
             store.patch({ bag: { ...d.bag }, cards: { ...d.cards } });
             const finale = d.story.step === CHAPTER_COUNT;
             sfx(finale ? 'fanfare' : 'chapter');
-            store.patch({
-                storyPopup: {
-                    speaker: 'Elder Theron',
-                    title: finale ? 'Eidolon Restored' : `Chapter complete: ${done.title}`,
-                    lines: finale ? [...EPILOGUE_EIDOLON, `Next: ${next.title}. ${next.task}.`] : [...next.say, `Next: ${next.title}. ${next.task}.`],
-                    reward: `Reward: ${got.join(' · ')}`,
-                },
+            store.tell({
+                speaker: 'Master Orin',
+                title: finale ? 'Eidolon Restored' : `Chapter complete: ${done.title}`,
+                lines: finale ? [...EPILOGUE_EIDOLON, `Next: ${next.title}. ${next.task}.`] : [...next.say, `Next: ${next.title}. ${next.task}.`],
+                reward: `Reward: ${got.join(' · ')}`,
             });
             saveSystem.save();
             this.gainXp(done.reward.xp);
