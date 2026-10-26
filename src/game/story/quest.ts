@@ -375,7 +375,7 @@ export const quest = {
         const main = live.find((l) => l.side === null)?.step;
         if (!main) return;
         const p = this.goalProgress(main);
-        const sides = live.filter((l) => l.side !== null).map((l) => ({ title: l.land.sides.find((s) => s.id === l.side)!.title, task: l.step.task }));
+        const sides = live.filter((l) => l.side !== null).map((l) => ({ id: l.side!, title: l.land.sides.find((s) => s.id === l.side)!.title, task: l.step.task }));
         const next = { title: main.quest, task: main.task, have: Math.min(p.have, p.need), need: p.need, step: q.land * 100 + q.main, how: main.how.replace(/\{hero\}/g, heroName()), act: main.act, land: this.land().title, sides };
         const cur = store.get().objective;
         if (JSON.stringify(cur) !== JSON.stringify(next)) store.patch({ objective: next });

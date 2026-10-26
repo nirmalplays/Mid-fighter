@@ -13,6 +13,7 @@ import { Ico } from './icons.tsx';
 import { KeyCap, PackButton, PxButton, PxPanel } from './px.tsx';
 import { ALL_PUZZLES } from '../game/story/lands.ts';
 import { DataPuzzle } from './StoryPuzzles.tsx';
+import { useHudLayout } from './HudTop.tsx';
 
 // ------------------------------------------------------------------ tones (the chimes and the song)
 
@@ -41,12 +42,13 @@ const INKC = '#3a2414';
 
 export function Frame({ title, hint, children, onLeave }: { title: string; hint: string; children: ReactNode; onLeave: () => void }) {
     return (
-        <div className="pointer-events-auto absolute inset-0 z-[45] flex items-center justify-center" style={{ background: 'rgba(6,4,12,.72)' }}>
-            <PxPanel frame={5} className="flex w-[min(520px,94vw)] flex-col gap-3 px-6 py-5" style={{ color: INKC }}>
-                <div className="text-[30px] leading-none" style={{ fontFamily: 'var(--font-relic)', color: '#7a4a14' }}>{title}</div>
-                <div className="text-[13px] leading-snug" style={{ color: INKC }}>{hint}</div>
-                <div className="flex min-h-[200px] items-center justify-center">{children}</div>
-                <div className="flex justify-end">
+        <div className="pointer-events-auto absolute inset-0 z-[45] flex items-center justify-center p-1.5" style={{ background: 'rgba(6,4,12,.72)' }}>
+            <PxPanel frame={5} className="flex max-h-full w-[min(560px,96vw)] flex-col gap-2 px-6 py-4 [@media(max-height:500px)]:gap-1 [@media(max-height:500px)]:py-2" style={{ color: INKC }}>
+                <div className="shrink-0 text-[30px] leading-none [@media(max-height:500px)]:text-[24px]" style={{ fontFamily: 'var(--font-relic)', color: '#7a4a14' }}>{title}</div>
+                <div className="shrink-0 text-[13px] leading-snug" style={{ color: INKC }}>{hint}</div>
+                {/* the puzzle itself: it scrolls if the screen is too short for it, the way out never does */}
+                <div className="pan-y flex min-h-0 flex-1 items-center justify-center overflow-y-auto [@media(max-height:500px)]:min-h-[120px]">{children}</div>
+                <div className="flex shrink-0 justify-end">
                     <PxButton variant="stone" onClick={onLeave}>Step back</PxButton>
                 </div>
             </PxPanel>
@@ -331,6 +333,7 @@ export function PuzzlePanel() {
 
 /** Timers, the Spire's health, the finishing beat, the Hymn button, and the Mist and the sulfur over the screen. */
 export function StoryHud() {
+    const lay = useHudLayout();
     const saga = useStore((s) => s.saga);
     const phase = useStore((s) => s.phase);
     const [, tick] = useState(0);
@@ -391,19 +394,19 @@ export function StoryHud() {
                 <div className="pointer-events-none absolute z-[6] flex items-center gap-1 text-[12px] font-black text-[#fde68a]" style={{ left: 16, bottom: 120, textShadow: '0 1px 2px #000' }}>Wedges planted {saga.wedges}/3 · <KeyCap>E</KeyCap> detonate</div>
             )}
             {saga.carrying && (
-                <div className="pointer-events-none absolute left-1/2 z-[6] -translate-x-1/2 text-[13px] font-black text-[#bae6fd]" style={{ bottom: 150, textShadow: '0 1px 3px #000' }}>Carrying Lyra · you move slower</div>
+                <div className="pointer-events-none absolute left-1/2 z-[6] -translate-x-1/2 text-[13px] font-black text-[#bae6fd]" style={{ bottom: lay.compact ? 154 : 150, textShadow: '0 1px 3px #000' }}>Carrying Lyra · you move slower</div>
             )}
             {saga.companion !== null && (
-                <div className="pointer-events-auto absolute z-[7] flex flex-col items-center gap-0.5" style={{ right: 250, bottom: 214 }}>
-                    <PackButton variant="stone" size={50} label="Lyra's synergy" dim={saga.companion > 0} glow={saga.companion === 0 ? '#5eead4' : undefined} onPress={() => commands.emit({ type: 'skill' })}>
+                <div className="pointer-events-auto absolute z-[7] flex flex-col items-center gap-0.5" style={{ right: lay.compact ? 238 : 250, bottom: lay.compact ? 132 : 214 }}>
+                    <PackButton variant="stone" size={lay.compact ? 52 : 50} label="Lyra's synergy" dim={saga.companion > 0} glow={saga.companion === 0 ? '#5eead4' : undefined} onPress={() => commands.emit({ type: 'skill' })}>
                         {saga.companion > 0 ? <span className="text-[16px] font-black text-white">{saga.companion}</span> : <Ico name="heart" size={22} color="#5eead4" />}
                     </PackButton>
                     <span className="flex items-center gap-1 text-[10px] font-black text-white" style={{ textShadow: '0 1px 2px #000' }}>Lyra <KeyCap>Q</KeyCap></span>
                 </div>
             )}
             {saga.hymn !== null && (
-                <div className="pointer-events-auto absolute z-[7] flex flex-col items-center gap-0.5" style={{ right: 250, bottom: 140 }}>
-                    <PackButton variant="stone" size={50} label="Resonant Hymn" dim={saga.hymn > 0} glow={saga.hymn === 0 ? '#7dd3fc' : undefined} onPress={() => commands.emit({ type: 'hymn' })}>
+                <div className="pointer-events-auto absolute z-[7] flex flex-col items-center gap-0.5" style={{ right: lay.compact ? 238 : 250, bottom: lay.compact ? 64 : 140 }}>
+                    <PackButton variant="stone" size={lay.compact ? 52 : 50} label="Resonant Hymn" dim={saga.hymn > 0} glow={saga.hymn === 0 ? '#7dd3fc' : undefined} onPress={() => commands.emit({ type: 'hymn' })}>
                         {saga.hymn > 0 ? <span className="text-[16px] font-black text-white">{saga.hymn}</span> : <Ico name="star" size={22} color="#bae6fd" />}
                     </PackButton>
                     <span className="flex items-center gap-1 text-[10px] font-black text-white" style={{ textShadow: '0 1px 2px #000' }}>Hymn <KeyCap>R</KeyCap></span>

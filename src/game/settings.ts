@@ -21,8 +21,10 @@ export interface Settings {
     /** Music on, and its volume (0-1). */
     music: boolean;
     musicVolume: number;
+    /** The quest tracker folded down to one line (tap it to open it again). */
+    questCollapsed: boolean;
 }
-const DEFAULTS: Settings = { weatherFx: true, night: 'normal', hints: true, radar: true, sound: true, volume: 0.7, music: true, musicVolume: 0.45 };
+const DEFAULTS: Settings = { weatherFx: true, night: 'normal', hints: true, radar: true, sound: true, volume: 0.7, music: true, musicVolume: 0.45, questCollapsed: false };
 const KEY = 'meh-fighter-settings';
 
 let current: Settings = { ...DEFAULTS };

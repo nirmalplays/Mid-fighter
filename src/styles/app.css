@@ -238,3 +238,12 @@ button, input, textarea, select { font-family: inherit; }
 @keyframes surge-fade { 0% { opacity: 0; } 8% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
 
 @keyframes objective-card { 0% { opacity: 0; transform: translate(-50%, -10px); } 10% { opacity: 1; transform: translate(-50%, 0); } 85% { opacity: 1; } 100% { opacity: 0; } }
+
+/* The rotate-your-phone hint: the phone tips onto its side and back. */
+@keyframes rotate-hint { 0%, 15% { transform: rotate(0deg); } 55%, 80% { transform: rotate(-90deg); } 100% { transform: rotate(0deg); } }
+
+/* Touch screens: no keyboard hints (keys mean nothing there), and scrolling panels pan under a finger. */
+@media (pointer: coarse) {
+    .kbd-only { display: none !important; }
+}
+.pan-y { touch-action: pan-y; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }

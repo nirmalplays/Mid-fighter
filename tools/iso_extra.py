@@ -410,6 +410,26 @@ def bookshelf():
     return im
 
 
+def scorched_pine():
+    """Pyraxis's pine: the pack's pine with its needles charred near black, embers glowing at their tips."""
+    import numpy as np
+    im = src("Tiles/Trees/Pine_Stage4.png")
+    a = np.array(im).astype(np.float32)
+    r, g, b, al = a[:, :, 0], a[:, :, 1], a[:, :, 2], a[:, :, 3]
+    green = (g >= r - 10) & (g > b + 25) & (al > 0)  # the olive needles (not the trunk or the outline)
+    lum = (r + g + b) / 3
+    # needles to charcoal, keeping their light and shade
+    a[:, :, 0] = np.where(green, 34 + lum * 0.32, r)
+    a[:, :, 1] = np.where(green, 26 + lum * 0.22, g)
+    a[:, :, 2] = np.where(green, 30 + lum * 0.22, b)
+    # the brightest needle edges smoulder
+    hot = green & (lum > np.percentile(lum[green], 88))
+    a[:, :, 0] = np.where(hot, 255, a[:, :, 0])
+    a[:, :, 1] = np.where(hot, 120 + lum * 0.3, a[:, :, 1])
+    a[:, :, 2] = np.where(hot, 40, a[:, :, 2])
+    return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8))
+
+
 def item(path, scale=1.35, drop=24):
     """A pack item set on a tall canvas, its bottom just below the tile centre."""
     it = Image.open(ROOT + "PlacebleItems/" + path).convert("RGBA")
@@ -452,6 +472,7 @@ def make():
     s["ladder_up"] = ladder(True)
     s["hole_ladder"] = hole_ladder()
     s["deadtree"] = dead_tree()
+    s["pine_scorched"] = scorched_pine()
     s["cactus"] = cactus()
     s["palm"] = palm()
     s["coral1"] = coral("#f472b6")

@@ -13,6 +13,7 @@ import { KINGDOMS } from '../game/eidolon.ts';
 import type { ItemId } from '../game/survival.ts';
 import { SPELLS } from '../game/world/spells.ts';
 import { store, useStore, type ActKind } from '../state/store.ts';
+import { useHudLayout } from './HudTop.tsx';
 import { press } from './hudKit.tsx';
 import { ELEMENT_ICON, Ico, type IconName } from './icons.tsx';
 import { KeyCap, PackButton, PackIcon, slice, SwordSprite } from './px.tsx';
@@ -100,7 +101,7 @@ function ActionPrompt() {
             <button
                 type="button"
                 aria-label={shown.label}
-                className="pointer-events-auto flex touch-none items-center gap-2 transition-transform active:translate-y-[2px]"
+                className="pointer-events-auto flex min-h-[46px] touch-none items-center gap-2 transition-transform active:translate-y-[2px]"
                 style={{ animation: 'act-in .15s ease-out both' }}
                 onPointerDown={press(() => commands.emit({ type: 'use' }))}
             >
@@ -118,14 +119,23 @@ function ActionPrompt() {
 }
 
 /** The cluster's layout: each control's centre as (left, up) from the screen's bottom-right corner, and its size. */
-const SPOT: Record<'attack' | 'skill' | 'spells' | 'dodge' | 'heal', { r: number; b: number; s: number }> = {
+type Spot = Record<'attack' | 'skill' | 'spells' | 'dodge' | 'heal', { r: number; b: number; s: number }>;
+const SPOT: Spot = {
     attack: { r: 70, b: 76, s: 84 },
     skill: { r: 172, b: 56, s: 62 },
     spells: { r: 156, b: 160, s: 54 },
     dodge: { r: 64, b: 182, s: 54 },
     heal: { r: 262, b: 50, s: 52 },
 };
-const place = (k: keyof typeof SPOT): CSSProperties => ({ position: 'absolute', right: SPOT[k].r - SPOT[k].s / 2, bottom: SPOT[k].b - SPOT[k].s / 2 - 8 });
+/** A phone held sideways: the Attack button in the thumb's corner, the others in an arc round it, none under 46 px. */
+const SPOT_COMPACT: Spot = {
+    attack: { r: 54, b: 58, s: 78 },
+    dodge: { r: 54, b: 144, s: 54 },
+    spells: { r: 130, b: 122, s: 52 },
+    skill: { r: 136, b: 48, s: 54 },
+    heal: { r: 198, b: 96, s: 50 },
+};
+const place = (spot: Spot, k: keyof Spot): CSSProperties => ({ position: 'absolute', right: spot[k].r - spot[k].s / 2, bottom: spot[k].b - spot[k].s / 2 - 8 });
 
 export function ActionCluster() {
     const sprint = useStore((s) => s.sprint);
@@ -134,30 +144,33 @@ export function ActionCluster() {
     const spellState = useStore((s) => s.spellState);
     const swordIdx = useStore((s) => s.swordIdx);
     const [more, setMore] = useState(false);
-    // Short screens: shrink the cluster (laid out for about 600 px of height).
+    const { compact } = useHudLayout();
+    const spot = compact ? SPOT_COMPACT : SPOT;
+    // Tall screens shrink the cluster a little on the way down (laid out for about 600 px of height);
+    // a sideways phone has its own arc and keeps every button thumb-sized.
     const [scale, setScale] = useState(1);
     useEffect(() => {
-        const fit = () => setScale(Math.max(0.66, Math.min(1, window.innerHeight / 600)));
+        const fit = () => setScale(compact ? 1 : Math.max(0.66, Math.min(1, window.innerHeight / 600)));
         fit();
         window.addEventListener('resize', fit);
         return () => window.removeEventListener('resize', fit);
-    }, []);
+    }, [compact]);
     const anyUnlocked = spells.unlocked.some(Boolean);
-    const box = (k: keyof typeof SPOT, node: ReactNode) => <div style={place(k)}>{node}</div>;
+    const box = (k: keyof Spot, node: ReactNode) => <div style={place(spot, k)}>{node}</div>;
     return (
         <>
             <div className="pointer-events-none absolute bottom-0 right-0 pb-safe-bottom pr-1" data-quiet>
-                <div className="relative" style={{ width: 310, height: 240, transform: `scale(${scale})`, transformOrigin: '100% 100%' }}>
+                <div className="relative" style={{ width: compact ? 232 : 310, height: compact ? 190 : 240, transform: `scale(${scale})`, transformOrigin: '100% 100%' }}>
                     {/* the spells, opened from their button */}
                     {more && (
-                        <div className="pointer-events-auto absolute flex items-end gap-3 px-3 pb-3 pt-2" style={{ ...slice('frame5', 2), right: 40, bottom: 222 }}>
+                        <div className="pointer-events-auto absolute flex items-end gap-3 px-3 pb-3 pt-2" style={{ ...slice('frame5', 2), right: compact ? 6 : 40, bottom: compact ? 182 : 222 }}>
                             {!anyUnlocked && <span className="max-w-[200px] text-center text-[12px] text-[#2f2a35]">No spells yet. Find the frog to unlock one.</span>}
                             {SPELLS.map((sp, i) => {
                                 if (!spells.unlocked[i]) return null;
                                 const st = spellState[i];
                                 const empty = st.charges < 1;
                                 return (
-                                    <Control key={sp.name} size={48} name={empty ? `${st.cd}s` : `${st.charges}/${st.max}`} label={sp.name} dim={empty} onPress={() => { commands.emit({ type: 'spell', index: i }); setMore(false); }}>
+                                    <Control key={sp.name} size={compact ? 50 : 48} name={empty ? `${st.cd}s` : `${st.charges}/${st.max}`} label={sp.name} dim={empty} onPress={() => { commands.emit({ type: 'spell', index: i }); setMore(false); }}>
                                         <img src={`images/${sp.icon}`} width={28} height={28} draggable={false} alt="" style={{ objectFit: 'contain' }} />
                                     </Control>
                                 );
@@ -165,27 +178,27 @@ export function ActionCluster() {
                         </div>
                     )}
                     {box('attack', (
-                        <Control variant="wood" size={SPOT.attack.s} name="Attack" keyHint="J" label="Attack" onPress={() => commands.emit({ type: 'attack' })}>
+                        <Control variant="wood" size={spot.attack.s} name="Attack" keyHint="J" label="Attack" onPress={() => commands.emit({ type: 'attack' })}>
                             <SwordSprite index={swordIdx >= 0 ? swordIdx : 13} size={56} />
                         </Control>
                     ))}
-                    {box('skill', <SkillControl size={SPOT.skill.s} />)}
+                    {box('skill', <SkillControl size={spot.skill.s} />)}
                     {box('spells', (
-                        <Control size={SPOT.spells.s} name="Spells" label="Spells" glow={more ? '#c4b5fd' : undefined} onPress={() => setMore((m) => !m)}>
+                        <Control size={spot.spells.s} name="Spells" label="Spells" glow={more ? '#c4b5fd' : undefined} onPress={() => setMore((m) => !m)}>
                             <Ico name="star" size={30} color="#c4b5fd" />
                         </Control>
                     ))}
                     {box('dodge', (
-                        <Control size={SPOT.dodge.s} name="Dodge" keyHint="K" label="Dodge roll" dim={stamina.tired} onPress={() => commands.emit({ type: 'dodge' })}>
+                        <Control size={spot.dodge.s} name="Dodge" keyHint="K" label="Dodge roll" dim={stamina.tired} onPress={() => commands.emit({ type: 'dodge' })}>
                             <PackIcon index={8} size={30} />
                         </Control>
                     ))}
-                    {box('heal', <HealControl size={SPOT.heal.s} />)}
+                    {box('heal', <HealControl size={spot.heal.s} />)}
                 </div>
             </div>
             {/* Run, on the movement side */}
-            <div className="pointer-events-none absolute bottom-3 left-4 pb-safe-bottom" data-quiet>
-                <Control size={50} name={sprint ? 'Running' : 'Run'} keyHint="Shift" label="Sprint" glow={sprint ? '#fde047' : undefined} variant={sprint ? 'wood' : 'stone'} onPress={() => store.patch({ sprint: !store.get().sprint })}>
+            <div className="pointer-events-none absolute bottom-2 pb-safe-bottom" style={{ left: 'max(12px, env(safe-area-inset-left))' }} data-quiet>
+                <Control size={compact ? 54 : 50} name={sprint ? 'Running' : 'Run'} keyHint="Shift" label="Sprint" glow={sprint ? '#fde047' : undefined} variant={sprint ? 'wood' : 'stone'} onPress={() => store.patch({ sprint: !store.get().sprint })}>
                     <PackIcon index={3} size={26} />
                 </Control>
             </div>

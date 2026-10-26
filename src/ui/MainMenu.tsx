@@ -218,7 +218,7 @@ export default function MainMenu() {
                     )}
 
                     {/* the list, right */}
-                    <nav className="absolute right-[6vw] top-1/2 flex w-[min(460px,40vw)] -translate-y-[38%] flex-col items-end" aria-label="Main menu">
+                    <nav className="absolute right-[max(4vw,env(safe-area-inset-right))] top-1/2 flex max-h-[96%] w-[min(460px,44vw)] -translate-y-1/2 flex-col items-end overflow-y-auto overscroll-contain py-1" style={{ touchAction: 'pan-y' }} aria-label="Main menu">
                         {heading && <p className="mb-2 text-[min(14px,2.6vh)] tracking-[0.25em]" style={{ color: error ? '#ff9a8a' : '#d8c89a', textShadow: '0 2px 0 #000' }}>{heading.toUpperCase()}</p>}
                         {screen === 'join' && (
                             <input
@@ -245,11 +245,12 @@ export default function MainMenu() {
                         <div className="mt-3 h-[2px] w-full" style={{ background: 'linear-gradient(270deg, rgba(243,227,192,.85), rgba(243,227,192,0))', animation: 'menu-in .6s ease-out .4s both' }} />
                         <div className="mt-2 flex min-h-[18px] items-center gap-3 text-[min(13px,2.4vh)] text-white/80" style={{ textShadow: '0 2px 0 #000', animation: 'menu-in .6s ease-out .5s both' }}>
                             <span className="mr-auto text-white/60">{items[cur]?.hint ?? ''}</span>
-                            {screen !== 'title' && <span className="flex items-center gap-1.5"><Key>Esc</Key> Back</span>}
-                            <span className="flex items-center gap-1.5"><Key>Enter</Key> Select</span>
+                            {/* (keys only mean something with a keyboard: a touch screen shows the words alone) */}
+                            {screen !== 'title' && <span className="kbd-only flex items-center gap-1.5"><Key>Esc</Key> Back</span>}
+                            <span className="kbd-only flex items-center gap-1.5"><Key>Enter</Key> Select</span>
                         </div>
                     </nav>
-                    <p className="absolute bottom-[3vh] right-[6vw] text-[11px] tracking-[0.2em] text-white/35">MEH FIGHTER · EARLY ACCESS</p>
+                    <p className="absolute bottom-[2vh] right-[6vw] text-[10px] tracking-[0.2em] text-white/35">MEH FIGHTER · EARLY ACCESS</p>
                 </>
             )}
 
@@ -274,8 +275,8 @@ function MenuRow({ item, on, delay, onHover }: { item: Item; on: boolean; delay:
             onPointerEnter={onHover}
             onFocus={onHover}
             onClick={item.act}
-            className="relative flex w-full items-center justify-end py-[0.4vh] pr-3 disabled:opacity-40"
-            style={{ animation: `menu-in .5s ease-out ${0.15 + delay}s both` }}
+            className="relative flex w-full items-center justify-end pr-3 disabled:opacity-40"
+            style={{ minHeight: 'clamp(38px, 11vh, 52px)', animation: `menu-in .5s ease-out ${0.15 + delay}s both` }}
         >
             <span className="pointer-events-none absolute inset-y-0 right-0 transition-[width,opacity] duration-200" style={{ width: on ? '100%' : '0%', opacity: on ? 1 : 0, background: 'linear-gradient(270deg, rgba(196,148,52,.75) 0%, rgba(196,148,52,.35) 45%, rgba(196,148,52,0) 100%)' }} />
             {on && <img src="images/ui/cursor-sword.png" alt="" draggable={false} className="pointer-events-none absolute" style={{ right: 'calc(100% - 26px)', width: 32, height: 32, imageRendering: 'pixelated', transform: 'scaleX(-1) rotate(-45deg)', animation: 'sword-nudge 1s ease-in-out infinite' }} />}

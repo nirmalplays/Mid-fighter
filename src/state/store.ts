@@ -157,7 +157,9 @@ export interface AppState {
     level: number;
     xp: number;
     /** The current story objective and how far along it is. */
-    objective: { title: string; task: string; have: number; need: number; step: number; how?: string; act?: number; land?: string; sides?: { title: string; task: string }[] } | null;
+    objective: { title: string; task: string; have: number; need: number; step: number; how?: string; act?: number; land?: string; sides?: { id: string; title: string; task: string }[] } | null;
+    /** The side quest the player chose to follow (the marker and the arrow point at it), or null for the main story. */
+    tracked: string | null;
     /** A story dialog waiting to be read (the world keeps going behind it, but bites are held off). */
     storyPopup: StoryPopup | null;
     /** Story pages waiting their turn behind the one open. */
@@ -261,6 +263,7 @@ let state: AppState = {
     wavesCalm: false,
     wavesHeld: false,
     indoors: null,
+    tracked: null,
     cine: null,
     fighting: false,
     onslaughtLeft: 0,

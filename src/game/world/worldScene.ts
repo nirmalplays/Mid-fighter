@@ -41,7 +41,7 @@ import { createWorldSim } from './worldSim.ts';
 import { ISO_FRAMES, ISO_SCALE } from './isoAtlas.ts';
 import { generateWorld, GRASS, MAX_HEIGHT, SAND, STONE, VOID, WATER, type Flat } from './mapGen.ts';
 import { STYLES } from './biomes.ts';
-import { createSurvivalLayer, nearestBoss } from './survivalLayer.ts';
+import { createSurvivalLayer, isTree, nearestBoss } from './survivalLayer.ts';
 import { createStoryLayer, type StoryLayer } from './storyLayer.ts';
 import { createIntroCinematic, type Cinematic, type CinematicView } from './cinematic.ts';
 import { quest } from '../story/quest.ts';
@@ -448,7 +448,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             survival.trackProp(n, s);
             // A soft shadow grounds everything that stands (tall grass and flowers excepted).
             if (!/^(tallgrass|dbush|big_|hole|ladder|skull|bones|candle|mush)/.test(p.name)) {
-                const big = p.name.startsWith('tree') || p.name === 'palm' || p.name === 'deadtree' ? 1.45 : p.name.startsWith('rock') ? 0.95 : 1.1;
+                const big = isTree(p.name) ? 1.45 : p.name.startsWith('rock') ? 0.95 : 1.1;
                 const sh = new Sprite(shadowTex);
                 sh.anchor.set(0.5);
                 sh.scale.set(big);
@@ -1397,8 +1397,9 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             const th = THEMES[p.def.theme];
             for (const s of map.spawns) {
                 if (s.n !== n) continue;
-                const kinds = [th.foes[Math.floor(Math.random() * th.foes.length)], th.foes[Math.floor(Math.random() * th.foes.length)]];
-                sim.encounter(kinds, s.i + 0.5, s.j + 0.5, p.def.level);
+                // One foe to a lair, and none waiting right inside the door you came in by (no ambush on the threshold).
+                if (Math.hypot(s.i + 0.5 - pu, s.j + 0.5 - pv) < 7) continue;
+                sim.encounter([th.foes[Math.floor(Math.random() * th.foes.length)]], s.i + 0.5, s.j + 0.5, p.def.level);
             }
         }
     };

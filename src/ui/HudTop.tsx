@@ -29,6 +29,23 @@ export function useCompact(): boolean {
     }, []);
     return c;
 }
+/**
+ * How the bottom row is shared out: the Run button and the movement side on the left, the action
+ * buttons on the right, the vitals and hotbar in the room between (they are centred in it, never
+ * under a thumb). A phone held sideways (under 560 px tall) gets a tighter set, laid out for thumbs:
+ * every button at least 46 px, nothing shrunk below that.
+ */
+export interface HudLayout { compact: boolean; left: number; right: number }
+export function useHudLayout(): HudLayout {
+    const calc = (): HudLayout => (window.innerHeight < 560 ? { compact: true, left: 92, right: 236 } : { compact: false, left: 150, right: 300 });
+    const [l, setL] = useState(calc);
+    useEffect(() => {
+        const on = () => setL((p) => { const n = calc(); return n.compact === p.compact ? p : n; });
+        window.addEventListener('resize', on);
+        return () => window.removeEventListener('resize', on);
+    }, []);
+    return l;
+}
 const SHADOW = '0 1px 2px #000, 0 0 6px rgba(0,0,0,.8)';
 
 // ------------------------------------------------------------------ pixel icons (16 × 16, the pack's white-with-outline style)
@@ -91,7 +108,7 @@ export function StoneButton({ label, onPress, children, size = 44, active = fals
 export function TopButtons() {
     const s = useSettings();
     const compact = useCompact();
-    const z = compact ? 36 : 44;
+    const z = 44; // (a thumb's width, however short the screen)
     const muted = !s.sound && !s.music;
     return (
         <div className="absolute right-3 top-3 flex items-center gap-2 pt-safe-top" data-quiet>
@@ -199,24 +216,48 @@ export function QuestTracker() {
     const lyra = useStore((x) => x.saga.lyra);
     const pressure = useStore((x) => x.saga.pressure);
     const nightIn = useStore((x) => x.saga.nightIn);
-    const s = { saga: { lyra, pressure, nightIn } };
+    const tracked = useStore((x) => x.tracked);
+    const s = { saga: { lyra, pressure, nightIn }, tracked };
     const compact = useCompact();
+    const folded = useSettings().questCollapsed;
     if (!obj || !kingdom) return null;
     const f = obj.need > 0 ? Math.min(1, obj.have / obj.need) : 0;
+    const top = compact ? 130 : 176;
+    // Folded: one line (the chapter, and how far along), tap to open it again. A new objective still announces itself (ObjectiveCard).
+    if (folded) {
+        return (
+            <button
+                key={obj.step}
+                type="button"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={() => settings.set({ questCollapsed: false })}
+                aria-label={`Show the quest: ${obj.title}`}
+                aria-expanded={false}
+                className="pointer-events-auto absolute left-3 flex min-h-[40px] max-w-[min(260px,34vw)] items-center gap-1.5 rounded-lg py-1 pl-2 pr-3 text-left"
+                style={{ top, background: 'rgba(8,6,14,.62)', border: '1px solid rgba(224,169,72,.45)', textShadow: SHADOW, animation: 'cs-fade-up .3s ease-out both' }}
+            >
+                <Ico name="scroll" size={14} color="#ffd98a" />
+                <span className="truncate text-[12px] font-black text-[#ffd98a]">{obj.task}</span>
+                {obj.need > 1 && <span className="shrink-0 text-[11px] font-black tabular-nums text-[#ffd98a]">{Math.min(obj.have, obj.need)}/{obj.need}</span>}
+                <span className="shrink-0 text-[14px] leading-none text-white/70" aria-hidden="true">▾</span>
+            </button>
+        );
+    }
     return (
+        <div className="pointer-events-none absolute left-3" style={{ top, width: compact ? 'min(250px, 30vw)' : 'min(300px, 34vw)' }}>
         <button
             type="button"
             onClick={() => store.patch({ bagTab: 'story' })}
-            className="pointer-events-auto absolute left-3 flex w-[min(300px,34vw)] flex-col items-start gap-0.5 rounded-lg py-1.5 pl-2 pr-3 text-left"
-            style={{ top: compact ? 130 : 176, maxWidth: compact ? 250 : undefined, background: 'linear-gradient(90deg, rgba(8,6,14,.62), rgba(8,6,14,.25) 80%, rgba(8,6,14,0))', textShadow: SHADOW }}
+            className="pointer-events-auto flex w-full flex-col items-start gap-0.5 rounded-lg py-1.5 pl-2 pr-9 text-left"
+            style={{ background: 'linear-gradient(90deg, rgba(8,6,14,.62), rgba(8,6,14,.25) 80%, rgba(8,6,14,0))', textShadow: SHADOW }}
             aria-label={`Objective: ${obj.task}`}
         >
-            {obj.act && <span className="text-[10px] font-black uppercase tracking-[0.18em] text-[#e0a948]">Act {roman(obj.act)} · {obj.land ?? 'Pyraxis'}</span>}
-            <span className="flex items-center gap-1.5 text-[20px] leading-none" style={{ fontFamily: 'var(--font-relic)', color: '#ffd98a' }}>
-                <Ico name="scroll" size={16} color="#ffd98a" />
-                {obj.title}
+            {obj.act && !compact && <span className="max-w-full truncate text-[10px] font-black uppercase tracking-[0.18em] text-[#e0a948]">Act {roman(obj.act)} · {obj.land ?? 'Pyraxis'}</span>}
+            <span className="flex max-w-full items-center gap-1.5 leading-none" style={{ fontFamily: 'var(--font-relic)', color: '#ffd98a', fontSize: compact ? 15 : 20 }}>
+                <Ico name="scroll" size={compact ? 13 : 16} color="#ffd98a" />
+                <span className={compact ? 'truncate' : ''}>{obj.title}</span>
             </span>
-            <span className="text-[14px] font-black leading-snug text-white">{obj.task}</span>
+            <span className={`font-black leading-snug text-white ${compact ? 'line-clamp-2 text-[12px]' : 'text-[14px]'}`}>{obj.task}</span>
             {!compact && <span className="text-[11px] font-semibold leading-snug text-[#d8e4f0]">{obj.how ?? howTo(store.get())}</span>}
             {obj.need > 1 && (
                 <span className="mt-0.5 flex w-full items-center gap-2">
@@ -251,11 +292,26 @@ export function QuestTracker() {
             )}
             {!compact && obj.sides && obj.sides.length > 0 && (
                 <span className="mt-1 flex flex-col gap-0.5">
-                    {obj.sides.slice(0, 2).map((x) => (
-                        <span key={x.title} className="text-[11px] font-semibold leading-snug text-[#c8d4e0]">
-                            <span className="text-[#e0a948]">Side · </span>{x.task}
-                        </span>
-                    ))}
+                    {obj.sides.slice(0, compact ? 1 : 3).map((x) => {
+                        // Tap a side quest to follow it (the marker and the arrow point at it); tap again for the main story.
+                        const on = s.tracked === x.id;
+                        return (
+                            <span
+                                key={x.id}
+                                role="button"
+                                tabIndex={0}
+                                aria-pressed={on}
+                                title={on ? 'Following: tap to go back to the main story' : 'Tap to follow this side quest'}
+                                onPointerDown={(e) => e.stopPropagation()}
+                                onClick={(e) => { e.stopPropagation(); store.patch({ tracked: on ? null : x.id }); }}
+                                className="cursor-pointer rounded-sm px-1 text-[11px] font-semibold leading-snug [@media(pointer:coarse)]:flex [@media(pointer:coarse)]:min-h-[32px] [@media(pointer:coarse)]:items-center"
+                                style={{ color: on ? '#fff3c4' : '#c8d4e0', background: on ? 'rgba(224,169,72,.22)' : undefined, outline: on ? '1px solid rgba(224,169,72,.6)' : undefined }}
+                            >
+                                <span className="text-[#e0a948]">{on ? 'Following · ' : 'Side · '}</span>{x.task}
+                            </span>
+                        );
+                    })}
+                    {!s.tracked && !compact && <span className="text-[10px] italic text-white/45">Tap a side quest to follow it</span>}
                 </span>
             )}
             {target && (
@@ -265,6 +321,18 @@ export function QuestTracker() {
                 </span>
             )}
         </button>
+        <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => settings.set({ questCollapsed: true })}
+            aria-label="Fold the quest away"
+            aria-expanded
+            title="Fold the quest away"
+            className="pointer-events-auto absolute right-0 top-0 flex h-11 w-11 items-start justify-end pr-1 pt-1"
+        >
+            <span className="flex h-6 w-6 items-center justify-center rounded-md text-[16px] leading-none text-white/80" style={{ background: 'rgba(8,6,14,.7)', border: '1px solid rgba(224,169,72,.5)' }}>▴</span>
+        </button>
+        </div>
     );
 }
 
@@ -289,6 +357,7 @@ export function EdgeArrow() {
 
 /** Health on the pack's pixel bar, level and experience, stamina, and the three needs. */
 export function BottomVitals() {
+    const lay = useHudLayout();
     const hp = useStore((s) => s.hp);
     const maxHp = useStore((s) => s.maxHp);
     const level = useStore((s) => s.level);
@@ -308,7 +377,7 @@ export function BottomVitals() {
         </span>
     );
     return (
-        <div className="pointer-events-none absolute flex flex-col items-center gap-[3px] pb-safe-bottom" style={{ left: 150, right: 300, bottom: 84 }}>
+        <div className="pointer-events-none absolute flex flex-col items-center gap-[3px] pb-safe-bottom" style={{ left: lay.left, right: lay.right, bottom: lay.compact ? 70 : 84 }}>
             <div className="flex w-[min(340px,100%)] items-center gap-1.5">
                 <span className="shrink-0 text-[11px] font-black text-[#fff3d6]" style={{ fontFamily: CINZEL, textShadow: SHADOW }}>Lv {level}</span>
                 {/* the pixel health bar: the brown trough, the green fill */}

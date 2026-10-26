@@ -12,6 +12,7 @@
  *
  * Keep 'critical' small: every asset here delays first interaction.
  */
+import { ISO_VERSION } from '../game/world/isoAtlas.ts';
 import type { AssetsManifest, UnresolvedAsset } from 'pixi.js';
 import { ITEM_IDS, ITEMS } from '../game/survival.ts';
 import { NPC_SHEETS } from '../game/world/npcAtlas.ts';
@@ -30,7 +31,8 @@ export const MANIFEST: Manifest = {
         {
             name: 'critical',
             assets: [
-                { alias: 'iso', src: 'images/world/iso.png' },
+                // (versioned: a cached older sheet must never be drawn with the new frames)
+                { alias: 'iso', src: `images/world/iso.png?v=${ISO_VERSION}` },
                 { alias: 'swords', src: 'images/swords.png' },
                 { alias: 'slashes', src: 'images/slashes.png' },
                 { alias: 'frog', src: 'images/world/frog.png' },

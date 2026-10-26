@@ -131,20 +131,20 @@ const MAIN: Step[] = [
             ] },
             say(ORIN, 'Emptied', 'Not a burn on her. Her hand was on the Pillar when the beast took it, child, and everything she was went with the stone. They are not gone. I saw it swallow the Pillar whole.', 'It sits in its furnace-belly, unmelted. But the Mist pours into an emptied mind like water into a cracked jar. If it fills her before you crack that beast open, there will be nothing left to pour her memories back into.'),
         ],
-        reward: { xp: 60, flags: ['orin'], items: { rune_torch: 2 } },
+        reward: { xp: 60, flags: ['orin'], items: { rune_torch: 4 } },
     },
     {
         id: 'descend', quest: "The Apothecary's Tether", act: 1,
         task: 'Descend into the Sunken Village of Oakhaven',
-        how: 'Lyra has less than an hour. Orin\'s alchemy kit and the Cinder-Lotus lie down in Oakhaven. Craft Runic Way-Torches at the bench first (Bag › Craft): the village is drowned in Mist.',
+        how: 'Orin\'s alembic and the Cinder-Lotus lie down in Oakhaven: follow the gold marker. Orin gave you four Runic Way-Torches for the Mist there, and they are already on your hotbar.',
         goal: { kind: 'reach', site: 'oakhaven', r: 12 }, at: 'oakhaven',
-        intro: [say(ORIN, "The Apothecary's Tether", 'There is a draught, a Brimstone Lucid Draught. It holds the Mist out of a mind for a while. My alembic is in the bathhouse at Oakhaven, and the Cinder-Lotus grows by the hot springs behind it.', 'The Mist is thick down there. Breathe it unwarded and it eats who you are. Carry way-torches, child, and keep to their light.')],
+        intro: [say(ORIN, "The Apothecary's Tether", 'There is a draught, a Brimstone Lucid Draught. It holds the Mist out of a mind for a while. My alembic is in the bathhouse at Oakhaven, and the Cinder-Lotus grows by the hot springs behind it.', 'The Mist is thick down there. Breathe it unwarded and it eats who you are. Take these four way-torches, child: set them down as you go, and keep to their light.')],
         reward: { xp: 30 },
     },
     {
         id: 'torches', quest: "The Apothecary's Tether", act: 1,
         task: 'Light the way: place 4 Runic Way-Torches in Oakhaven',
-        how: 'Put the torches in your hotbar and use them to set them down, a few paces apart. Out of their light for long, your sight whitens and your stamina slows.',
+        how: 'Your way-torches are on your hotbar (the slot with the flame): press its number, or tap it, and you set one down in front of you. Place them a few paces apart through the village. Out of their light for long, your sight whitens and your stamina slows. Need more? Craft them at a workbench: Bag › Craft, 1 wood and 1 resin make 2.',
         goal: { kind: 'place', items: { rune_torch: 4 } }, at: 'oakhaven',
         reward: { xp: 40 },
     },
@@ -417,7 +417,7 @@ const SIDES: SideQuest[] = [
         id: 'tombs', title: 'The Empty Tombs of the Conclave', unlock: 'orin',
         steps: [
             {
-                id: 't_wall', quest: 'The Empty Tombs of the Conclave', act: 1, task: 'Break the false wall in the Whispering Catacombs', how: 'Go to the catacombs between Oakhaven and the ridge. Strike the wall behind the weeping statue until it breaks.',
+                id: 't_wall', quest: 'The Empty Tombs of the Conclave', act: 1, task: 'Break the false wall in the Whispering Catacombs', how: 'The catacombs lie underground: walk in through the ruined stone gate between Oakhaven and the ridge (tap this side quest to follow its marker). Inside, go up the main hall to the narrow passage at its end: it is bricked up with newer stone that glows faintly. Strike it (J) until it breaks.',
                 goal: { kind: 'break', props: ['t_wall'] }, at: 'catacombs',
                 intro: [vision('Outside the Mausoleum', 'A ghost-projection flickers at the tomb\'s door: guards carrying heavy iron coffins out of the tomb. The coffins are thrashing.')],
             },

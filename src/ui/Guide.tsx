@@ -10,6 +10,7 @@ import { sfx } from '../game/audio.ts';
 import { quest } from '../game/story/quest.ts';
 import { store, useStore } from '../state/store.ts';
 import { KeyCap } from './px.tsx';
+import { useHudLayout } from './HudTop.tsx';
 
 export function ObjectiveCard() {
     const step = useStore((s) => s.objective?.step ?? null);
@@ -36,34 +37,38 @@ export function ObjectiveCard() {
     );
 }
 
-interface Tip { id: string; keys: string[]; text: string }
+interface Tip { id: string; keys: string[]; text: string; /** What a touch screen reads (there are no keys on one). */ touch?: string }
+const COARSE = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
 
 /** Which tip applies now (the first whose moment it is and that has not been learnt). */
 function pick(s: ReturnType<typeof store.get>, moved: number, seen: Set<string>): Tip | null {
-    const step = quest.active() ? quest.main()?.id ?? null : null;
+    // (while a side quest is followed, the main story's step tips keep quiet)
+    const step = quest.active() && !s.tracked ? quest.main()?.id ?? null : null;
     const o = s.objective;
     const done = (id: string) => seen.has(id) || quest.has(`tip:${id}`);
     const tips: (Tip & { when: boolean })[] = [
-        { id: 'move', keys: ['W', 'A', 'S', 'D'], text: 'Move (or drag the stick on a touch screen)', when: step === 'free' && moved < 1.5 },
-        { id: 'strike', keys: ['J', 'Space'], text: 'Strike: break the three boulders walling Lyra in', when: step === 'free' && (o?.have ?? 0) === 0 },
+        { id: 'move', keys: ['W', 'A', 'S', 'D'], text: 'Move (or drag the stick on a touch screen)', touch: 'Drag anywhere to move: a stick appears under your thumb', when: step === 'free' && moved < 1.5 },
+        { id: 'strike', keys: ['J', 'Space'], text: 'Strike: break the three boulders walling Lyra in', touch: 'Tap Attack (bottom right) to break the three boulders walling Lyra in', when: step === 'free' && (o?.have ?? 0) === 0 },
         { id: 'fracture', keys: ['J'], text: 'Three hits in a row, and the fourth bursts as a Runic Fracture', when: step === 'free' && (o?.have ?? 0) >= 1 },
-        { id: 'lift', keys: ['E'], text: 'Use: take Lyra’s hand', when: step === 'carry' && !s.saga.carrying },
-        { id: 'carry', keys: ['J'], text: 'Lead her to the Watchtower (the gold marker). Leeches hunt her: fight them off', when: step === 'carry' && s.saga.carrying },
-        { id: 'gather', keys: ['3', 'E'], text: 'Pickaxe is on 3, axe on 2. Walk up to a rock or a tree and press E', when: step === 'gather' },
-        { id: 'bag', keys: ['B'], text: 'Your bag: items, crafting, camp building and the map', when: step === 'gather' && (o?.have ?? 0) >= 3 },
-        { id: 'spire', keys: ['E'], text: 'Press E at the cracked Memory Spire', when: step === 'seal' },
-        { id: 'waves', keys: ['K'], text: 'Waves come five at a time. Beat them for a 90-second respite. Inside a Sanctuary’s stone ring nothing can reach you', when: s.fighting && s.wave > 0 && !s.wavesHeld },
-        { id: 'roll', keys: ['K', 'L'], text: 'Roll: you cannot be hit mid-roll', when: s.danger && s.hp < s.maxHp },
-        { id: 'heal', keys: ['H'], text: 'Drink a healing draught', when: s.hp > 0 && s.hp <= s.maxHp * 0.4 && s.bag.potion_red > 0 },
-        { id: 'respite', keys: ['B'], text: 'Respite! Build (Bag › Camp), craft and brew before the next onslaught', when: !s.fighting && s.wave > 0 },
-        { id: 'craft', keys: ['B'], text: 'Craft at a workbench: Bag › Craft (way-torches, traps, draughts)', when: step === 'descend' || step === 'torches' },
-        { id: 'hymn', keys: ['R'], text: 'The Resonant Hymn: stuns everything near you and breaks some boss wards', when: s.saga.hymn !== null },
+        { id: 'lift', keys: ['E'], text: 'Use: take Lyra’s hand', touch: 'Tap the button beside you to take Lyra’s hand', when: step === 'carry' && !s.saga.carrying },
+        { id: 'carry', keys: ['J'], text: 'Lead her to the Watchtower (the gold marker). Leeches hunt her: fight them off', touch: 'Lead her to the Watchtower (the gold marker). Leeches hunt her: tap Attack to fight them off', when: step === 'carry' && s.saga.carrying },
+        { id: 'gather', keys: ['3', 'E'], text: 'Pickaxe is on 3, axe on 2. Walk up to a rock or a tree and press E', touch: 'Pickaxe is slot 3, axe slot 2 (tap them). Walk up to a rock or a tree and tap the button beside you', when: step === 'gather' },
+        { id: 'bag', keys: ['B'], text: 'Your bag: items, crafting, camp building and the map', touch: 'Your bag (top right): items, crafting, camp building and the map', when: step === 'gather' && (o?.have ?? 0) >= 3 },
+        { id: 'spire', keys: ['E'], text: 'Press E at the cracked Memory Spire', touch: 'Tap the button beside you at the cracked Memory Spire', when: step === 'seal' },
+        { id: 'waves', keys: ['K'], text: 'Waves come five at a time. Beat them for a 90-second respite. Inside a Sanctuary’s stone ring nothing can reach you', touch: 'Waves come five at a time. Beat them for a 90-second respite. Inside a Sanctuary’s stone ring nothing can reach you', when: s.fighting && s.wave > 0 && !s.wavesHeld },
+        { id: 'roll', keys: ['K', 'L'], text: 'Roll: you cannot be hit mid-roll', touch: 'Tap Dodge to roll: you cannot be hit mid-roll', when: s.danger && s.hp < s.maxHp },
+        { id: 'heal', keys: ['H'], text: 'Drink a healing draught', touch: 'Tap Heal to drink a healing draught', when: s.hp > 0 && s.hp <= s.maxHp * 0.4 && s.bag.potion_red > 0 },
+        { id: 'respite', keys: ['B'], text: 'Respite! Build (Bag › Camp), craft and brew before the next onslaught', touch: 'Respite! Open your bag (top right) to build, craft and brew before the next onslaught', when: !s.fighting && s.wave > 0 },
+        { id: 'torch', keys: [String(Math.max(1, s.hotbar.indexOf('rune_torch') + 1))], text: 'Set a way-torch down in front of you (press its slot on the hotbar)', touch: 'Tap the torch on your hotbar to set one down in front of you', when: step === 'torches' && s.bag.rune_torch > 0 && s.hotbar.includes('rune_torch') },
+        { id: 'craft', keys: ['B'], text: 'Out of way-torches: craft more at a workbench (Bag › Craft: 1 wood and 1 resin make 2)', when: step === 'torches' && s.bag.rune_torch === 0 },
+        { id: 'hymn', keys: ['R'], text: 'The Resonant Hymn: stuns everything near you and breaks some boss wards', touch: 'Tap the Hymn button: it stuns everything near you and breaks some boss wards', when: s.saga.hymn !== null },
     ];
     const t = tips.find((x) => x.when && !done(x.id));
-    return t ? { id: t.id, keys: t.keys, text: t.text } : null;
+    return t ? { id: t.id, keys: t.keys, text: COARSE && t.touch ? t.touch : t.text } : null;
 }
 
 export function Coach() {
+    const lay = useHudLayout();
     const [tip, setTip] = useState<Tip | null>(null);
     const seen = useRef(new Set<string>());
     const start = useRef<{ x: number; y: number } | null>(null);
@@ -101,9 +106,15 @@ export function Coach() {
     }, []);
     if (!tip) return null;
     return (
-        <div key={tip.id} className="pointer-events-none absolute left-1/2 z-[12] flex -translate-x-1/2 items-center gap-2 px-4 py-2" style={{ bottom: 196, background: 'rgba(8,6,14,.78)', border: '2px solid #e0a948', boxShadow: '0 0 0 2px #1a0c10', animation: 'cs-fade-up .35s ease-out both', maxWidth: 'min(640px, 92vw)' }}>
-            <span className="flex gap-1">{tip.keys.map((k) => <KeyCap key={k}>{k}</KeyCap>)}</span>
-            <span className="text-[14px] leading-snug text-[#fff3d6]" style={{ fontFamily: 'var(--font-pixel)' }}>{tip.text}</span>
+        // Centred in the room between the movement side and the buttons, above the vitals (never over a thumb).
+        <div key={tip.id} className="pointer-events-none absolute z-[12] flex items-center justify-center" style={lay.compact
+            // A short screen: just above the vitals and right of the quest card, clear of the hero, the hotbar and every thumb.
+            ? { left: 'calc(12px + min(250px, 30vw) + 12px)', right: lay.right, bottom: 122 }
+            : { left: lay.left, right: lay.right, bottom: 196 }}>
+            <div className="flex items-center gap-2 px-3 py-1.5" style={{ background: 'rgba(8,6,14,.82)', border: '2px solid #e0a948', boxShadow: '0 0 0 2px #1a0c10', animation: 'cs-fade-up .35s ease-out both', maxWidth: 'min(640px, 100%)' }}>
+                <span className="flex gap-1">{tip.keys.map((k) => <KeyCap key={k}>{k}</KeyCap>)}</span>
+                <span className="leading-snug text-[#fff3d6]" style={{ fontFamily: 'var(--font-pixel)', fontSize: lay.compact ? 12 : 14 }}>{tip.text}</span>
+            </div>
         </div>
     );
 }

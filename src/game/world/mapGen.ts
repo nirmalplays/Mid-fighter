@@ -669,9 +669,10 @@ export function generateWorld(seed = 1337): WorldMap {
     const rock = () => `rock${intIn(1, 5)}`;
     scatter(1700 * S2, 2, (i, j) => {
         const s = styleAt(i, j);
-        if (s === STYLE.ASH) place(rand() < 0.5 ? 'deadtree' : rand() < 0.5 ? 'obsidian' : rock(), i, j, true);
-        else if (s === STYLE.BADLANDS) place(rand() < 0.45 ? 'cactus' : rock(), i, j, true);
-        else if (s === STYLE.SCORCH) place(rand() < 0.55 ? 'deadtree' : rand() < 0.6 ? rock() : 'stump', i, j, true);
+        // Pyraxis: stands of scorched pine (the resin the story asks for), dead trees, obsidian, cacti in the badlands.
+        if (s === STYLE.ASH) place(rand() < 0.45 ? 'pine_scorched' : rand() < 0.5 ? 'deadtree' : rand() < 0.5 ? 'obsidian' : rock(), i, j, true);
+        else if (s === STYLE.BADLANDS) place(rand() < 0.45 ? 'cactus' : rand() < 0.4 ? 'pine_scorched' : rock(), i, j, true);
+        else if (s === STYLE.SCORCH) place(rand() < 0.6 ? 'pine_scorched' : rand() < 0.5 ? 'deadtree' : rand() < 0.6 ? rock() : 'stump', i, j, true);
         else if (s === STYLE.SALT) place(rand() < 0.4 ? 'deadtree' : rand() < 0.5 ? 'ruinwall' : rand() < 0.5 ? 'pillar_broken' : 'crystal1', i, j, true);
         else if (s === STYLE.BEACH || s === STYLE.CORAL) place('palm', i, j, true);
         else place(height[at(i, j)] >= 2 && rand() < 0.7 ? 'tree_pine' : pick(broadleaf), i, j, true);

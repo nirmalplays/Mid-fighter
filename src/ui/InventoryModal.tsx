@@ -140,7 +140,7 @@ export function InventoryGrid() {
                 <div className="flex flex-wrap items-center gap-1">
                     {CATS.map((c) => (
                         <button key={c.id} type="button" onPointerDown={press(() => setCat(c.id))} title={c.label}
-                            className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors"
+                            className="flex min-h-[36px] items-center gap-1 rounded-full px-3 py-1 text-[11px] font-bold transition-colors"
                             style={{ fontFamily: CINZEL, color: cat === c.id ? '#2a1a10' : CREAM, background: cat === c.id ? GOLD : 'rgba(0,0,0,.25)', border: `1.5px solid ${cat === c.id ? '#ffe08a' : GOLD_DIM}` }}>
                             <Ico name={c.icon} size={13} color={cat === c.id ? '#2a1a10' : GOLD} />
                             {c.label}
@@ -148,7 +148,7 @@ export function InventoryGrid() {
                     ))}
                     <span className="ml-auto text-[12px] font-bold" style={{ fontFamily: CINZEL, color: used >= max ? '#f87171' : CREAM }}>Capacity {used}/{max}</span>
                 </div>
-                <div className="grid min-h-0 flex-1 auto-rows-min grid-cols-5 gap-2 overflow-y-auto pr-1 sm:grid-cols-6">
+                <div className="pan-y grid min-h-0 flex-1 auto-rows-min grid-cols-5 gap-2 overflow-y-auto pr-1 min-[560px]:grid-cols-6">
                     {Array.from({ length: slots }, (_, n) => {
                         const c = shown[n];
                         return <Slot key={n} id={c?.id} n={c?.n} on={!!c && sel === c.id} onPick={() => c && setPick(c.id)} />;
@@ -174,7 +174,7 @@ export function InventoryGrid() {
             </div>
 
             {/* the chosen item, large */}
-            <div className="hidden w-[min(300px,34%)] shrink-0 flex-col items-center gap-2 rounded-xl p-3 sm:flex" style={{ background: 'radial-gradient(circle at 50% 25%, #4a3320 0%, #24170e 70%)', border: `2px solid ${GOLD_DIM}` }}>
+            <div className="hidden w-[min(300px,34%)] shrink-0 flex-col items-center gap-2 overflow-y-auto rounded-xl p-3 min-[560px]:flex" style={{ background: 'radial-gradient(circle at 50% 25%, #4a3320 0%, #24170e 70%)', border: `2px solid ${GOLD_DIM}` }}>
                 {sel ? (
                     <>
                         <div className="flex aspect-square w-[70%] items-center justify-center rounded-full" style={{ background: 'radial-gradient(circle, rgba(255,210,120,.25), transparent 70%)' }}>

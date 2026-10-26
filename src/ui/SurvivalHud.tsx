@@ -25,10 +25,11 @@ import { Bar, BROWN, BROWN_DARK, Btn, Cost, Icon, INK, OUTLINE, PANEL, Panel, pr
 import { InventoryGrid, RepairList, useInventoryKey } from './InventoryModal.tsx';
 import { MAP_TILES } from '../game/world/constants.ts';
 import { STYLES } from '../game/world/biomes.ts';
+import { isTree } from '../game/world/survivalLayer.ts';
 import { MAX_HEIGHT, VOID } from '../game/world/mapGen.ts';
 import { store, useStore, type AppState } from '../state/store.ts';
 import { drawIcon, ELEMENT_ICON, Ico, Sigil, type IconName } from './icons.tsx';
-import { useCompact } from './HudTop.tsx';
+import { useCompact, useHudLayout } from './HudTop.tsx';
 
 /** A boss's name and health across the bottom while one is near. */
 export function BossBar() {
@@ -470,19 +471,19 @@ export function BagPanel() {
     const t = TABS.find((x) => x.id === tab)!;
     const close = () => store.patch({ bagTab: null });
     return (
-        <div className="pointer-events-auto absolute inset-0 z-30 flex items-center justify-center p-[min(16px,2vh)]" style={{ background: 'rgba(6,4,10,.62)', backdropFilter: 'blur(3px)' }} onPointerDown={(e) => e.target === e.currentTarget && close()} data-quiet>
+        <div className="pointer-events-auto absolute inset-0 z-30 flex items-center justify-center p-[min(16px,1.5vh)]" style={{ background: 'rgba(6,4,10,.62)', backdropFilter: 'blur(3px)' }} onPointerDown={(e) => e.target === e.currentTarget && close()} data-quiet>
             {/* the satchel: dark leather, a double gold edge, gold flourishes in the corners */}
-            <div className="relative flex h-[min(640px,94vh)] w-[min(1060px,97vw)] gap-3 rounded-[14px] p-[min(14px,2vh)]"
+            <div className="relative flex h-[min(640px,96vh)] w-[min(1060px,98vw)] gap-2 rounded-[14px] p-[min(14px,1.8vh)] [@media(max-height:500px)]:gap-1.5"
                 style={{ background: 'radial-gradient(ellipse at 40% 20%, #45301f 0%, #2a1c12 60%, #1e140c 100%)', border: '3px solid #d9a441', boxShadow: 'inset 0 0 0 4px #2a1c12, inset 0 0 0 5px #8a6424, 0 20px 60px rgba(0,0,0,.6)', animation: 'act-in .2s ease-out both' }}>
                 <BagFlourish className="left-[-10px] top-[-12px]" />
                 <BagFlourish className="right-[-10px] top-[-12px]" flip />
                 {/* the sections, down the left */}
-                <div className="flex shrink-0 flex-col items-center gap-2 rounded-xl px-1.5 py-2" style={{ background: 'linear-gradient(180deg, #24170e, #1a110a)', border: '2px solid #8a6424' }}>
+                <div className="pan-y flex shrink-0 flex-col items-center gap-2 overflow-y-auto rounded-xl px-1.5 py-2 [@media(max-height:500px)]:gap-0.5 [@media(max-height:500px)]:py-1" style={{ background: 'linear-gradient(180deg, #24170e, #1a110a)', border: '2px solid #8a6424' }}>
                     {TABS.map((x) => {
                         const on = x.id === tab;
                         return (
                             <button key={x.id} type="button" title={x.label} aria-label={x.label} onPointerDown={press(() => store.patch({ bagTab: x.id }))}
-                                className="flex h-[min(46px,7.5vh)] w-[min(46px,7.5vh)] items-center justify-center rounded-full transition-transform hover:scale-105"
+                                className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full transition-transform hover:scale-105 [@media(max-height:500px)]:h-[42px] [@media(max-height:500px)]:w-[42px]"
                                 style={{ background: on ? 'radial-gradient(circle at 50% 35%, #ffe08a, #d9a441 60%, #8a6424)' : 'transparent', border: `2px solid ${on ? '#ffe9b0' : 'transparent'}`, boxShadow: on ? '0 0 12px rgba(255,200,90,.5)' : 'none' }}>
                                 <Ico name={x.icon} size={22} color={on ? '#2a1a10' : '#d9a441'} />
                             </button>
@@ -493,7 +494,7 @@ export function BagPanel() {
                 <div className="flex min-w-0 flex-1 flex-col gap-2">
                     <div className="flex items-start justify-between gap-2">
                         <div className="leading-none">
-                            <div className="text-[min(40px,7vh)] leading-none" style={{ fontFamily: 'var(--font-relic)', color: '#e9b95a', textShadow: '0 2px 0 #1a0f08' }}>{t.title}</div>
+                            <div className="text-[min(40px,7vh)] leading-none [@media(max-height:500px)]:text-[26px]" style={{ fontFamily: 'var(--font-relic)', color: '#e9b95a', textShadow: '0 2px 0 #1a0f08' }}>{t.title}</div>
                             <div className="mt-1 text-[12px] font-semibold tracking-[0.18em] text-[#c9b08a]" style={{ fontFamily: 'var(--font-pixel)' }}>{t.label}</div>
                         </div>
                         <button type="button" aria-label="Close" onPointerDown={press(close)}
@@ -506,7 +507,7 @@ export function BagPanel() {
                         <div className="min-h-0 flex-1"><InventoryGrid /></div>
                     ) : (
                         // the other sections on a parchment page, like a journal inside the satchel
-                        <div className="min-h-0 flex-1 overflow-y-auto rounded-lg p-2.5" style={{ background: `linear-gradient(${TAN_LIGHT}, ${TAN})`, border: '2px solid #8a6424', boxShadow: 'inset 0 0 18px rgba(90,50,20,.35)', color: INK }}>
+                        <div className="pan-y min-h-0 flex-1 overflow-y-auto rounded-lg p-2.5" style={{ background: `linear-gradient(${TAN_LIGHT}, ${TAN})`, border: '2px solid #8a6424', boxShadow: 'inset 0 0 18px rgba(90,50,20,.35)', color: INK }}>
                             {tab === 'craft' && <CraftTab />}
                             {tab === 'gear' && <GearTab />}
                             {tab === 'cards' && <CardsTab />}
@@ -573,7 +574,7 @@ export function NpcPanel() {
             </div>
             <div className="flex flex-col gap-1">
                 {npc.talk.map((t, i) => (
-                    <button key={i} type="button" className="rounded-lg px-2 py-1 text-left text-[13px] font-bold" style={{ background: answer === i ? '#fff' : 'rgba(255,255,255,.45)', border: `2px solid ${BROWN}` }} onPointerDown={press(() => setAnswer(i))}>
+                    <button key={i} type="button" className="min-h-[40px] rounded-lg px-2 py-1 text-left text-[13px] font-bold" style={{ background: answer === i ? '#fff' : 'rgba(255,255,255,.45)', border: `2px solid ${BROWN}` }} onPointerDown={press(() => setAnswer(i))}>
                         › {t.q}
                     </button>
                 ))}
@@ -718,6 +719,7 @@ export function maybeShowIntro(): void {
 
 /** The four hotbar slots (keys 1-4): tools and weapons go in hand; food, drink and traps are used at once. */
 export function Hotbar4() {
+    const lay = useHudLayout();
     const hotbar = useStore((s) => s.hotbar);
     const held = useStore((s) => s.held);
     const bag = useStore((s) => s.bag);
@@ -732,9 +734,9 @@ export function Hotbar4() {
         timer.current = window.setTimeout(() => setName(null), 1500);
     };
     return (
-        <div className="pointer-events-none absolute bottom-2 flex flex-col items-center gap-1 pb-safe-bottom" style={{ left: 150, right: 300 }} data-quiet>
+        <div className="pointer-events-none absolute bottom-1 flex flex-col items-center gap-1 pb-safe-bottom" style={{ left: lay.left, right: lay.right }} data-quiet>
             <div className="h-5 text-sm font-bold text-white transition-opacity duration-300" style={{ textShadow: '0 1px 3px #000', opacity: name ? 1 : 0 }}>{name ?? ''}</div>
-            <div className="flex gap-[10px]">
+            <div className="flex" style={{ gap: lay.compact ? 8 : 10 }}>
                 {hotbar.map((id, n) => {
                     const owned = id ? bag[id] > 0 : true;
                     const sel = n === held && (!id || !!ITEMS[id].tool);
@@ -746,7 +748,7 @@ export function Hotbar4() {
                             className="pointer-events-auto relative flex touch-none items-center justify-center"
                             style={{
                                 // the pack's small frames as 9-slices: stone for a slot, wood with studs for the one in hand
-                                width: 50, height: 50, boxSizing: 'border-box', borderStyle: 'solid', borderWidth: 8,
+                                width: lay.compact ? 48 : 50, height: lay.compact ? 48 : 50, boxSizing: 'border-box', borderStyle: 'solid', borderWidth: 8,
                                 borderImage: `url(images/ui/${sel ? 'slot8' : 'slot5'}.png) 4 fill / 8px stretch`, imageRendering: 'pixelated', opacity: owned ? 1 : 0.45,
                             }}
                             onPointerDown={press(() => pick(n))}
@@ -801,7 +803,7 @@ function mapReady() {
         const nodes = new Map<number, { i: number; j: number; rock: boolean }[]>();
         for (const p of map.props) {
             const rock = p.name.startsWith('rock');
-            if (!rock && !p.name.startsWith('tree_')) continue;
+            if (!rock && !isTree(p.name)) continue;
             const key = Math.floor(p.j / BUCKET) * 1000 + Math.floor(p.i / BUCKET);
             let list = nodes.get(key);
             if (!list) nodes.set(key, (list = []));

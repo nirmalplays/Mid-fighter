@@ -15,6 +15,7 @@ import IntroCutscene from './IntroCutscene.tsx';
 import KingdomSelect from './KingdomSelect.tsx';
 import Hud from './Hud.tsx';
 import GameCanvas from '../game/GameCanvas.tsx';
+import RotatePrompt from './RotatePrompt.tsx';
 
 
 export default function App() {
@@ -46,6 +47,7 @@ export default function App() {
                     <Hud />
                 </div>
             )}
+            <RotatePrompt />
         </div>
     );
 }

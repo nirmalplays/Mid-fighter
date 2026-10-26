@@ -313,6 +313,13 @@ export const progress = {
     syncSurvival(): void {
         const d = saveSystem.data;
         if (!d) return;
+        // Anything to set down that you carry sits on a free hotbar slot (older saves never put it there).
+        for (const id of Object.keys(d.bag) as ItemId[]) {
+            if (d.bag[id] > 0 && ITEMS[id]?.placeable && !d.hotbar.includes(id)) {
+                const slot = d.hotbar.indexOf(null);
+                if (slot >= 0) d.hotbar[slot] = id;
+            }
+        }
         store.patch({
             bag: { ...d.bag }, cards: { ...d.cards }, equipped: [...d.equipped], buildings: { ...d.buildings },
             level: d.level, xp: d.xp, maxHp: maxHpOf(d), hp: Math.min(store.get().hp, maxHpOf(d)),
@@ -388,6 +395,14 @@ export const progress = {
             return 0;
         }
         d.bag[id] += add;
+        // Something to set down (a way-torch, a trap) goes straight onto a free hotbar slot, ready to use.
+        if (ITEMS[id].placeable && !d.hotbar.includes(id)) {
+            const slot = d.hotbar.indexOf(null);
+            if (slot >= 0) {
+                d.hotbar[slot] = id;
+                store.patch({ hotbar: [...d.hotbar], banner: { text: `${ITEMS[id].name} is on your hotbar: press ${slot + 1} (or tap it) to set one down`, id: Date.now() } });
+            }
+        }
         const stat = id as StatId;
         if (stat in d.stats) d.stats[stat] += add;
         if (id.startsWith('ess_')) d.stats.essence += add;

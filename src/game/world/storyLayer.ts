@@ -189,8 +189,12 @@ export function createStoryLayer(o: {
             g.rect(-3, -18, 6, 6).fill(0xfbbf24);
         } else if (t === 'fakewall') {
             if (broken) { g.rect(-34, -8, 68, 8).fill(0x4a4048).stroke(ln); return; }
-            g.rect(-34, -64, 68, 64).fill(0x6a6070).stroke(ln);
-            for (let y = -56; y < 0; y += 14) g.moveTo(-34, y).lineTo(34, y).stroke({ width: 2, color: 0x4a4048 });
+            // Newer, paler brick than the old walls, cracked, with a draught of light seeping through: it wants hitting.
+            g.rect(-36, -66, 72, 66).fill(0x9a8e86).stroke(ln);
+            for (let y = -54; y < 0; y += 12) g.moveTo(-36, y).lineTo(36, y).stroke({ width: 2, color: 0x6a5e5a });
+            for (let y = -66, row = 0; y < 0; y += 12, row++) for (let x = -36 + (row % 2) * 12; x < 36; x += 24) g.moveTo(x, y).lineTo(x, y + 12).stroke({ width: 2, color: 0x6a5e5a });
+            g.moveTo(-6, -64).lineTo(4, -44).lineTo(-8, -28).lineTo(6, -10).lineTo(0, 0).stroke({ width: 3, color: 0x2a2028 });
+            g.moveTo(-6, -64).lineTo(4, -44).lineTo(-8, -28).lineTo(6, -10).lineTo(0, 0).stroke({ width: 1.5, color: 0xd8b4fe, alpha: 0.85 });
         } else if (t === 'sarcophagus') {
             g.poly([-34, 0, 0, -16, 34, 0, 0, 16]).fill(0x4a4450).stroke(ln);
             g.rect(-30, -18, 60, 14).fill(quest.has('done:t_mirror') ? 0xfde68a : 0x5a5462).stroke({ width: 2, color: OUTLINE });
@@ -1852,9 +1856,27 @@ export function createStoryLayer(o: {
             blockers.set(Math.floor(c.v + p.at[1]) * MAP_TILES + Math.floor(c.u + p.at[0]), p.id);
         }
     }
+    /** The side quest the player follows, if one: where its step happens. */
+    const sideAim = (): Point | null => {
+        const id = store.get().tracked;
+        const l = id ? quest.live().find((x) => x.side === id) : null;
+        if (!l) return null;
+        const g = l.step.goal;
+        const label = l.step.quest;
+        if (g.kind === 'break' || g.kind === 'strikes') {
+            const left = g.props.map((pid) => byId.get(pid)).find((p) => p && !quest.has(`broke:${p.def.id}`));
+            if (left) return { u: left.u, v: left.v, label: `${label} · ${left.def.name ?? PROP_NAME[left.def.type] ?? 'here'}` };
+        }
+        const at = (l.step as { at?: string }).at;
+        if (at?.startsWith('prop:')) {
+            const p = byId.get(at.slice(5));
+            if (p) return { u: p.u, v: p.v, label };
+        } else if (at && !at.startsWith('npc:')) return { ...siteAt(l.land, at), label };
+        return null;
+    };
     const aimRaw = layer.target.bind(layer);
     layer.target = (u, v) => {
-        const t = aimRaw(u, v);
+        const t = sideAim() ?? aimRaw(u, v);
         return t ? route(t, u, v) : t;
     };
     return layer;

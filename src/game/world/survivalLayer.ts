@@ -33,10 +33,12 @@ import { STONE, WATER, type WorldMap } from './mapGen.ts';
 import { FX } from './fxAtlas.ts';
 import type { ViewMonster } from './monsters.ts';
 
+/** Every kind of tree in the world (they all give wood and resin to the axe). */
+export const isTree = (name: string): boolean => name.startsWith('tree_') || name === 'pine_scorched' || name === 'deadtree' || name === 'palm' || name === 'cactus';
 /** What a prop gives when gathered, the tool it takes, and how long it takes to grow back (ms). */
 interface Yield { item: ItemId; tool: string[]; regrow: number; verb: string }
 const yieldOf = (name: string): Yield | null => {
-    if (name.startsWith('tree_') || name === 'stump' || name.startsWith('driftwood')) return { item: 'wood', tool: ['axe'], regrow: 45000, verb: 'Chop' };
+    if (isTree(name) || name === 'stump' || name.startsWith('driftwood')) return { item: 'wood', tool: ['axe'], regrow: 45000, verb: 'Chop' };
     if (name.startsWith('rock')) return { item: 'stone', tool: ['pickaxe'], regrow: 60000, verb: 'Mine' };
     if (name.startsWith('gbush') || name.startsWith('bbush')) return { item: 'berries', tool: ['none', 'shovel'], regrow: 30000, verb: 'Pick berries' };
     if (name.startsWith('dbush')) return { item: 'herb', tool: ['none', 'shovel'], regrow: 30000, verb: 'Pick herbs' };

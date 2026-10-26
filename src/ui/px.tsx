@@ -174,7 +174,7 @@ export function PackButton({ variant = 'stone', size, label, onPress, children, 
 /** A little keyboard key (the pack's white button), for key hints. */
 export function KeyCap({ children, style }: { children: ReactNode; style?: CSSProperties }) {
     return (
-        <span className="pointer-events-none inline-flex items-center justify-center px-[3px] text-[10px] leading-none" style={{ ...slice('btn1-normal', 1), minWidth: 18, height: 20, boxSizing: 'border-box', color: '#33284f', ...style }}>
+        <span className="kbd-only pointer-events-none inline-flex items-center justify-center px-[3px] text-[10px] leading-none" style={{ ...slice('btn1-normal', 1), minWidth: 18, height: 20, boxSizing: 'border-box', color: '#33284f', ...style }}>
             {children}
         </span>
     );

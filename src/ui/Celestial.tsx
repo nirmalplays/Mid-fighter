@@ -51,7 +51,7 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
         setCopyName('');
         window.setTimeout(() => setSaved(null), 3000);
     };
-    const row = 'flex items-center justify-between gap-3 px-2 py-1.5 text-[15px] text-[#2f2a35]';
+    const row = 'flex min-h-[44px] items-center justify-between gap-3 px-2 py-1 text-[15px] text-[#2f2a35]';
     const Toggle = ({ label, on, set }: { label: string; on: boolean; set: (v: boolean) => void }) => (
         <button type="button" onClick={() => set(!on)} className={row} style={{ borderBottom: '2px solid rgba(47,42,53,.15)' }}>
             {label}
@@ -60,20 +60,21 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
         </button>
     );
     return (
-        <div className="flex max-h-[calc(100dvh-60px)] w-[min(480px,92vw)] flex-col gap-0.5 overflow-y-auto px-4 pb-3 pt-2" style={{ ...slice('frame5', 3), color: '#2f2a35' }}>
-            <div className="text-center text-[34px] leading-none" style={{ fontFamily: 'var(--font-relic)', color: '#2f2a35' }}>Settings</div>
+        <div className="flex max-h-[calc(100dvh-16px)] w-[min(480px,94vw)] flex-col px-4 pb-2 pt-2" style={{ ...slice('frame5', 3), color: '#2f2a35' }}>
+            <div className="shrink-0 text-center text-[30px] leading-none" style={{ fontFamily: 'var(--font-relic)', color: '#2f2a35' }}>Settings</div>
+            <div className="pan-y flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
             <Toggle label="Rain, storm and fog effects" on={s.weatherFx} set={(v) => settings.set({ weatherFx: v })} />
             <Toggle label="Hints" on={s.hints} set={(v) => settings.set({ hints: v })} />
             <Toggle label="Minimap" on={s.radar} set={(v) => settings.set({ radar: v })} />
             <Toggle label="Music" on={s.music} set={(v) => settings.set({ music: v })} />
-            <label className={row}>Music volume<input type="range" min={0} max={1} step={0.05} value={s.musicVolume} onChange={(e) => settings.set({ musicVolume: Number(e.target.value) })} className="w-40 accent-[#8a5a2a]" /></label>
+            <label className={row}>Music volume<input type="range" min={0} max={1} step={0.05} value={s.musicVolume} onChange={(e) => settings.set({ musicVolume: Number(e.target.value) })} className="h-8 w-44 cursor-pointer accent-[#8a5a2a]" /></label>
             <Toggle label="Sound effects" on={s.sound} set={(v) => settings.set({ sound: v })} />
-            <label className={row}>Effects volume<input type="range" min={0} max={1} step={0.05} value={s.volume} onChange={(e) => settings.set({ volume: Number(e.target.value) })} className="w-40 accent-[#8a5a2a]" /></label>
+            <label className={row}>Effects volume<input type="range" min={0} max={1} step={0.05} value={s.volume} onChange={(e) => settings.set({ volume: Number(e.target.value) })} className="h-8 w-44 cursor-pointer accent-[#8a5a2a]" /></label>
             <div className={row}>
                 Night darkness
                 <span className="flex gap-1">
                     {(['soft', 'normal', 'deep'] as const).map((n) => (
-                        <button key={n} type="button" onClick={() => settings.set({ night: n })} className="px-2 text-[13px] capitalize" style={{ ...slice(s.night === n ? 'btn3-normal' : 'btn2-normal', 2), color: s.night === n ? '#fff3d6' : '#fbf7f0' }}>{n}</button>
+                        <button key={n} type="button" onClick={() => settings.set({ night: n })} className="min-h-[40px] px-3 text-[13px] capitalize" style={{ ...slice(s.night === n ? 'btn3-normal' : 'btn2-normal', 2), color: s.night === n ? '#fff3d6' : '#fbf7f0' }}>{n}</button>
                     ))}
                 </span>
             </div>
@@ -82,13 +83,14 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
                     <span className="text-[15px]">Journey: <b>{cur.name}</b> <span className="text-[12px] text-[#4a4450]">(saves itself as you play)</span></span>
                     <span className="flex gap-1.5">
                         <input value={copyName} onChange={(e) => setCopyName(e.target.value.slice(0, 32))} placeholder="Name a save state…" maxLength={32} className="min-w-0 flex-1 px-2 text-[14px] outline-none" style={{ ...slice('btn2-pressed', 2), color: '#2f2a35' }} />
-                        <button type="button" onClick={() => void saveCopy()} className="px-2 text-[13px]" style={{ ...slice('btn3-normal', 2), color: '#fff3d6' }}>Save as</button>
+                        <button type="button" onClick={() => void saveCopy()} className="min-h-[40px] px-3 text-[13px]" style={{ ...slice('btn3-normal', 2), color: '#fff3d6' }}>Save as</button>
                     </span>
                     {saved && <span className="text-[12px] text-[#3f6e4a]">{saved}</span>}
                 </div>
             )}
             <div className="mt-1 text-[10px] leading-snug text-[#4a4450]">Art: Super Pixel Effects Gigapack (Will Tice / unTied Games) · UI Asset Pack (Beowulf) · slash and frog art (Frostwindz) · buildings, items and portal (CraftPix). Fonts: Cinzel Decorative, Jacquard 12, Pixelify Sans, Silkscreen (OFL). Sounds: Mixkit, Pixabay creators, and the game's BGM and effect packs.</div>
-            <div className="mt-2 flex justify-center gap-2">
+            </div>
+            <div className="mt-2 flex shrink-0 justify-center gap-2">
                 <PxButton variant="stone" onClick={() => { if (!confirm) { setConfirm(true); window.setTimeout(() => setConfirm(false), 4000); return; } progress.reset(); setConfirm(false); }}>{confirm ? 'Tap again to erase this journey' : 'Restart this journey'}</PxButton>
                 <PxButton variant="wood" onClick={onBack}>Back</PxButton>
             </div>
