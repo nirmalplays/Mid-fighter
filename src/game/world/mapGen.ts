@@ -7,7 +7,8 @@
  * renderer in worldScene.ts turns it into sprites a chunk at a time.
  */
 import { MAP_TILES, WORLD_TILES } from './constants.ts';
-import { BUILDINGS, BUILDING_IDS, type BuildingId } from '../survival.ts';
+import { type BuildingId } from '../survival.ts';
+import { layCamps } from './campLayout.ts';
 import { ELEMENTS, LANDMARKS, regionOf, type Element } from '../eidolon.ts';
 import { STYLE } from './biomes.ts';
 import { charAt, entranceCell, glowsOf, PLACED, THEMES } from './interiors.ts';
@@ -610,16 +611,10 @@ export function generateWorld(seed = 1337): WorldMap {
         // What stands there is solid: the arena seal, the citadel gate and towers (one tile). Houses can be walked into.
         if (L.kind === 'arena' || L.kind === 'citadel' || L.kind === 'tower') blocked[at(L.i, L.j)] = 1;
     }
-    // Every kingdom's camp has the same five tents (only liberated camps can use them).
-    const camps: { el: Element; id: BuildingId; i: number; j: number }[] = [];
-    for (const L of LANDMARKS) {
-        if (L.kind !== 'camp' || !L.el) continue;
-        for (const id of BUILDING_IDS) {
-            const c = { el: L.el, id, i: L.i + BUILDINGS[id].at[0], j: L.j + BUILDINGS[id].at[1] };
-            camps.push(c);
-            blocked[at(c.i, c.j)] = 1;
-        }
-    }
+    // ---- CAMP TEAM: every kingdom's walled war camp (world/campLayout.ts): its trodden paths, the palisade, towers,
+    // barricades and tents that block. All of a camp's own ground and blocking is laid here, in this one call.
+    const camps = layCamps({ N, terrain, style, blocked, solid: solidAt, flats, occupied, dirt: DIRT });
+    // ---- end CAMP TEAM
     const nearLandmark = (i: number, j: number, pad: number) => LANDMARKS.some((L) => Math.hypot(i - L.i, j - L.j) <= L.r + pad);
     for (const { at: e } of doorways) for (let j = e.j - 3; j <= e.j + 3; j++) for (let i = e.i - 3; i <= e.i + 3; i++) if (inMap(i, j)) occupied.add(at(i, j));
 

@@ -15,7 +15,7 @@
  * hunger, thirst and rest.
  */
 import {
-    Assets, Container, Graphics, Rectangle, Sprite, Text, Texture,
+    Assets, Container, Graphics, Rectangle, RenderLayer, Sprite, Text, Texture,
     type Application, type Ticker,
 } from 'pixi.js';
 import { store } from '../../state/store.ts';
@@ -213,7 +213,10 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
 
     // The story (Land 1) is made once the combat simulation exists; survival asks it through these.
     let story: StoryLayer | null = null;
+    // Camp fires and torches drawn over the night's dark (put above it once the dark exists, below).
+    const nightLights = new RenderLayer();
     const survival = createSurvivalLayer({
+        nightLayer: nightLights,
         story: {
             target: (u, v) => story?.target(u, v),
             prompt: (u, v, f) => story?.prompt(u, v, f) ?? null,
@@ -1475,6 +1478,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
 
     // Storms throw lightning near the player.
     const darkness = createDarkness(app, stage.root);
+    app.stage.addChildAt(nightLights, app.stage.getChildIndex(stage.root) + 2);
     const weather = createWeather(app, {
         above: stage.root,
         region: () => store.get().region,
@@ -2164,6 +2168,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             weather.destroy();
             darkness.destroy();
             lights.destroy();
+            nightLights.destroy();
             fadeGfx.destroy();
             store.patch({ indoors: null });
             ambience.clear();

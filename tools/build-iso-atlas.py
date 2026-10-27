@@ -87,6 +87,7 @@ import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import iso_extra
 sprites.update(iso_extra.make())
+import iso_camp; sprites.update(iso_camp.make())  # the kingdoms' war camps (Camp team)
 
 scaled = {n: im.resize((round(im.width * K), round(im.height * K)), Image.LANCZOS) for n, im in sprites.items()}
 

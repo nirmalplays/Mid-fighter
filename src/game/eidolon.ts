@@ -165,7 +165,7 @@ export const LANDMARKS: Landmark[] = (() => {
             const p = spot(e, d, side);
             out.push({ kind, el: e, n, i: p.i, j: p.j, r, id: `${kind}:${e}:${n}` });
         };
-        add('camp', 0, 70, 0, 7);
+        add('camp', 0, 70, 0, 10); // r 10: the walled war camp (world/campLayout.ts) and the barricades before its gate
         add('guard', 1, 94, -28, 3);
         add('guard', 2, 94, 28, 3);
         add('guard', 3, 112, 0, 3);
