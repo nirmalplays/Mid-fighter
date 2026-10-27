@@ -10,7 +10,8 @@ import { defaultSave, saveSystem, type FighterSave } from '../saveConfig.ts';
 import { store } from '../state/store.ts';
 import { KINGDOMS } from './eidolon.ts';
 import { LANDS } from './story/lands.ts';
-import { setLook, type HeroLook } from './world/heroLook.ts';
+import { normalizeLook, setLook, type HeroLook } from './world/heroLook.ts';
+import { isClassId, type ClassId } from './classes.ts';
 
 export interface SlotInfo {
     id: string;
@@ -96,15 +97,17 @@ export const slots = {
         applyHook?.();
         return true;
     },
-    /** A new journey in a new slot (the others stay). */
-    async create(name: string, hero: string, look: HeroLook): Promise<void> {
+    /** A new journey in a new slot (the others stay), for a hero with this name, look and class. */
+    async create(name: string, hero: string, look: HeroLook, cls: ClassId = 'warrior'): Promise<void> {
         await saveSystem.flush();
         const id = `s${Date.now().toString(36)}`;
         const key = `meh-slot-${id}`;
         saveSystem.setKey(key);
         saveSystem.data = defaultSave();
-        saveSystem.data.hero = { name: hero, look: { ...look } };
-        setLook(look);
+        const dressed = normalizeLook(look);
+        // Assigned onto the fresh save's hero so any field the save adds keeps its default.
+        Object.assign(saveSystem.data.hero, { name: hero, look: dressed, cls: isClassId(cls) ? cls : 'warrior' });
+        setLook(dressed);
         index.slots.push({ id, key, name, hero, where: 'The beginning', seconds: 0, updated: Date.now() });
         index.last = id;
         await saveSystem.flush();

@@ -4,9 +4,10 @@
  * from the poses and actions the room relays: positions are eased toward the
  * latest pose, facing and tool are set directly, and actions replay as commands.
  */
-import { Container, Text } from 'pixi.js';
+import { Container, Sprite, Text } from 'pixi.js';
 import { createCharacter, type Character, type Tool, TOOLS } from '../world/character.ts';
 import { net } from './multiplayer.ts';
+import { decodeLook, relook, type HeroLook } from '../world/heroLook.ts';
 
 interface Avatar {
     character: Character;
@@ -15,6 +16,9 @@ interface Avatar {
     v: number;
     z: number;
     name: string;
+    /** Their look as sent (encoded), and decoded; null until they send one (older clients). */
+    lookCode: string;
+    look: HeroLook | null;
 }
 
 export interface RemotePlayers {
@@ -59,7 +63,7 @@ export function createRemotePlayers(opts: {
                     });
                     label.anchor.set(0.5, 1);
                     opts.layer.addChild(character.player, label);
-                    a = { character, label, u: pose.u, v: pose.v, z: pose.z, name: r.name };
+                    a = { character, label, u: pose.u, v: pose.v, z: pose.z, name: r.name, lookCode: '', look: null };
                     avatars.set(id, a);
                 }
                 if (a.name !== r.name) {
@@ -90,6 +94,14 @@ export function createRemotePlayers(opts: {
                 const angle = (pose.face * Math.PI) / 4;
                 const push = pose.anim === 'run' ? 1 : 0.4;
                 c.update(dtMs, moving ? { x: Math.cos(angle) * push, y: Math.sin(angle) * push } : { x: 0, y: 0 }, moving);
+                // Dressed as they chose: the character draws our own look, so swap in the same frame in theirs.
+                if ((pose.look ?? '') !== a.lookCode) {
+                    a.lookCode = pose.look ?? '';
+                    a.look = decodeLook(a.lookCode);
+                    c.player.tint = a.look ? 0xffffff : REMOTE_TINT;
+                }
+                const body = c.player.children[1];
+                if (a.look && body instanceof Sprite) body.texture = relook(body.texture, a.look);
 
                 const p = opts.toScreen(a.u, a.v);
                 c.player.position.set(p.x, p.y - a.z);
