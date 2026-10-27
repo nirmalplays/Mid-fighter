@@ -61,13 +61,60 @@ const DEMON_BASE: Record<string, string> = {
     d_voidknight: 'skeleton', d_amalgam: 'wolf', d_echo: 'wizard', d_reliquary: 'skeleton', d_malakor: 'skeleton',
 };
 for (const [d, base] of Object.entries(DEMON_BASE)) KINDS[d] = { ...KINDS[base], weight: 0 };
+
+// ================================================================ BESTIARY (Bestiary team) ======
+// Mythical foes and bosses (designs, archetypes and phases: src/game/bestiary.ts). Registration only:
+// the two hooks outside this block are `...BEAST_KIND_NAMES` at the end of KIND_NAMES (wire order)
+// and the `mythicBossSpec` line at the top of bossSpec. Weight 0 = not in waves yet; whoever owns
+// waveSpec adds them by bestiary.ts `minWave` / `replaces`, and maps `archetype` onto the AI.
+const BEAST_FOES: Record<string, KindDef> = {
+    imp: { hp: 5, speed: 3.0, reach: 1.0, attackMs: 600, hitAt: 0.6, recoverMs: 900, weight: 0, ranged: { range: 7, keep: 4, every: 2200, shot: 'bolt', speed: 6.5, damage: 1 } },
+    harpy: { hp: 8, speed: 3.3, reach: 1.25, attackMs: 620, hitAt: 0.55, recoverMs: 1300, weight: 0 },
+    hellhound: { hp: 10, speed: 4.0, reach: 1.2, attackMs: 460, hitAt: 0.5, recoverMs: 1100, weight: 0, dmgMul: 1.2 },
+    gargoyle: { hp: 18, speed: 2.2, reach: 1.25, attackMs: 760, hitAt: 0.6, recoverMs: 1500, weight: 0, dmgMul: 1.5, knock: 0.5 },
+    salamander: { hp: 14, speed: 2.1, reach: 1.5, attackMs: 700, hitAt: 0.6, recoverMs: 1300, weight: 0, dmgMul: 1.3 },
+    wisp: { hp: 6, speed: 2.0, reach: 1.0, attackMs: 800, hitAt: 0.7, recoverMs: 900, weight: 0, ranged: { range: 8, keep: 5, every: 2400, shot: 'bolt', speed: 5.5, damage: 2 } },
+    deathknight: { hp: 24, speed: 1.7, reach: 1.4, attackMs: 900, hitAt: 0.62, recoverMs: 1500, weight: 0, dmgMul: 1.8, knock: 0.4 },
+};
+/** Each mythical boss's kind fights from this body until the boss phases are data-driven. */
+const BEAST_BOSS_BASE: Record<string, string> = {
+    b_dragon: 'brute', b_griffin: 'wolf', b_hydra: 'scorpion', b_kraken: 'scorpion', b_colossus: 'brute',
+    b_minotaur: 'brute', b_basilisk: 'scorpion', b_phoenix: 'wizard', b_cerberus: 'wolf', b_manticore: 'wolf',
+};
+Object.assign(KINDS, BEAST_FOES);
+for (const [k, base] of Object.entries(BEAST_BOSS_BASE)) KINDS[k] = { ...KINDS[base], attackMs: Math.max(800, KINDS[base].attackMs), weight: 0 };
+/** Wire names for the new kinds (appended after the old ones, so old indices stay valid). */
+const BEAST_KIND_NAMES = ['imp', 'harpy', 'hellhound', 'gargoyle', 'salamander', 'wisp', 'deathknight',
+    'b_dragon', 'b_griffin', 'b_hydra', 'b_kraken', 'b_colossus', 'b_minotaur', 'b_basilisk', 'b_phoenix', 'b_cerberus', 'b_manticore'] as const;
+/** Mythical bosses, codes 60-69 (game/eidolon.ts names them): kind, health, speed, blow, reach, slam ms, [shot fan every ms, count]. */
+const MYTHIC_BOSSES: Record<number, StoryBossRow> = {
+    60: ['b_dragon', 620, 0.95, 3, 2.0, 5600, [3400, 7]],
+    61: ['b_griffin', 420, 1.35, 3, 1.6, 0, [3000, 4]],
+    62: ['b_hydra', 640, 0.85, 3, 2.1, 0, [2600, 3]],
+    63: ['b_kraken', 700, 0.6, 3, 2.4, 4800, [3600, 5]],
+    64: ['b_colossus', 800, 0.7, 4, 2.0, 4200],
+    65: ['b_minotaur', 560, 1.2, 4, 1.7, 5200],
+    66: ['b_basilisk', 520, 1.1, 3, 1.8, 0, [3200, 3]],
+    67: ['b_phoenix', 480, 1.25, 3, 1.5, 6000, [2400, 6]],
+    68: ['b_cerberus', 600, 1.3, 3, 1.8, 0, [3800, 3]],
+    69: ['b_manticore', 540, 1.3, 3, 1.7, 0, [2800, 5]],
+};
+type StoryBossRow = [string, number, number, number, number, number, [number, number]?];
+function mythicBossSpec(code: number, tier: number) {
+    const row = MYTHIC_BOSSES[code];
+    if (!row) return null;
+    const [kind, target, speedMul, damage, reachMul, slamMs, volley] = row;
+    const t = Math.min(5, Math.max(0, Math.floor(tier)));
+    return { kind, hpMul: (target * Math.pow(1.3, t)) / KINDS[kind].hp, speedMul, damage: damage + Math.floor(t / 2), reachMul, slamMs, ...(volley ? { volley: { every: volley[0], n: volley[1] } } : {}) };
+}
+// ============================================================== end BESTIARY ======
 /** What enemies shoot. */
 export const SHOT_KINDS = ['bolt', 'arrow'] as const;
 export type ShotKind = (typeof SHOT_KINDS)[number];
 /** Index order used on the wire. */
 export const KIND_NAMES = ['goblin', 'slime', 'wolf', 'skeleton', 'kobolt', 'scorpion', 'wizard', 'archer', 'brute', 'wraith', 'bomber', 'hollowed',
     'd_cindergore', 'd_tarek', 'd_pyra', 'd_ignis', 'd_zephyrclaw', 'd_baruch', 'd_skyshredder', 'd_vael',
-    'd_frostbite', 'd_queen', 'd_paladin', 'd_hydros', 'd_voidknight', 'd_amalgam', 'd_echo', 'd_reliquary', 'd_malakor'] as const;
+    'd_frostbite', 'd_queen', 'd_paladin', 'd_hydros', 'd_voidknight', 'd_amalgam', 'd_echo', 'd_reliquary', 'd_malakor', ...BEAST_KIND_NAMES] as const;
 export const SKILLS = ['attack', 'defence', 'speed', 'vitality'] as const;
 export type Skill = (typeof SKILLS)[number];
 /** Potions: a drink that gives a short boost (red heals, blue Attack, yellow Speed, purple a shield, black Rage). */
@@ -110,6 +157,7 @@ export function bossSpec(code: number, tier: number) {
     const guardKinds = ['kobolt', 'wolf', 'slime', 'scorpion'];
     // Health is set directly (whatever the kind's own health), so every kingdom's bosses are as tough.
     const hp = (kind: string, target: number) => target / KINDS[kind].hp;
+    if (code >= 60 && code <= 69) return mythicBossSpec(code, t); // BESTIARY hook (see the block above)
     if (code === 98) return { kind: 'slime', hpMul: hp('slime', 30 * Math.pow(1.5, t)), speedMul: 1.4, damage: 2 + Math.ceil(t / 2), reachMul: 1.3, slamMs: 0 };
     if (code === 99) return { kind: 'd_malakor', hpMul: hp('d_malakor', 500 * Math.pow(1.35, t)), speedMul: 1.15, damage: 4 + Math.min(4, t), reachMul: 2.2, slamMs: 4200, volley: { every: 3200, n: 6 } };
     const e = Math.floor(code / 10) - 1;

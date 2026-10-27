@@ -8,6 +8,7 @@
  * Malakor's Void Citadel in the middle.
  */
 import { WORLD_SCALE, WORLD_TILES } from './world/constants.ts';
+import { creatureByCode, MYTHIC_CODE_MAX, MYTHIC_CODE_MIN } from './bestiary.ts'; // BESTIARY
 
 export const ELEMENTS = ['fire', 'air', 'water', 'earth'] as const;
 export type Element = (typeof ELEMENTS)[number];
@@ -236,7 +237,18 @@ export interface BossInfo {
     rank: 'guard' | 'warden' | 'malakor';
     n: number;
 }
+// ================================================================ BESTIARY (Bestiary team) ======
+// The mythical bosses, codes 60-69 (designs in game/bestiary.ts, stats in shared/sim.ts). They count as
+// wardens for size (drawn big) but belong to no kingdom's quest line (`el` null), so beating one
+// changes no story progress; their rewards are for whoever places them in the world to decide.
+function mythicBossInfo(code: number): BossInfo | null {
+    const c = creatureByCode(code);
+    return c ? { name: `${c.name}, ${c.title}`, kind: c.art, tint: 0xffffff, el: null, rank: 'warden', n: 0 } : null;
+}
+// ============================================================== end BESTIARY ======
+
 export function bossInfo(code: number): BossInfo | null {
+    if (code >= MYTHIC_CODE_MIN && code <= MYTHIC_CODE_MAX) return mythicBossInfo(code); // BESTIARY hook
     if (code === MIMIC_CODE) return { name: 'Mimic', kind: 'slime', tint: 0xffffff, el: null, rank: 'guard', n: 0 };
     if (code === MALAKOR_CODE) return { name: `${MALAKOR.name}, ${MALAKOR.title}`, kind: MALAKOR.kind, tint: MALAKOR.tint, el: null, rank: 'malakor', n: 0 };
     const e = ELEMENTS[Math.floor(code / 10) - 1];
