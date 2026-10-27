@@ -45,7 +45,43 @@ for (const [kind, h] of Object.entries(DEMON_HEIGHT)) {
     const size = (DEMON_LORDS.has(kind) ? 160 : 200) / h;
     LOOK[kind] = { size, barY: h * 0.5 * size + 8, hop: 0, moveFrameMs: 120 };
 }
-const isDemon = (kind: string) => kind in DEMON_HEIGHT;
+// ================================================================ BESTIARY (Bestiary team) ======
+// The mythical bosses (b_*) and foes (imp, harpy, ... with _1/_2 colour tiers): game/bestiary.ts.
+// Their sheets can be any cell size, frame count and number of facings (beastAtlas.ts says which), so
+// final art can replace the placeholders without code changes. Hooks outside this block: isDemon
+// (b_* load on first sight like demons), and sheetGeom / faceFor in load(), create() and sync().
+import { BEAST_ART } from './beastAtlas.ts';
+/** How tall each one stands, in sprite px before SCALE (a boss is then drawn x2.2 by its warden rank). */
+const BEAST_STATURE: Record<string, number> = {
+    b_dragon: 125, b_griffin: 110, b_hydra: 135, b_kraken: 130, b_colossus: 150, b_minotaur: 140, b_basilisk: 130, b_phoenix: 130, b_cerberus: 120, b_manticore: 115,
+    imp: 120, harpy: 165, hellhound: 175, gargoyle: 185, salamander: 175, wisp: 120, deathknight: 190,
+};
+const BEAST_HOP: Record<string, number> = { imp: 6, wisp: 5, harpy: 4 };
+for (const [kind, h] of Object.entries(BEAST_STATURE)) {
+    const art = BEAST_ART[kind];
+    if (!art) continue;
+    const size = h / art.height;
+    LOOK[kind] = { size, barY: art.height * 0.5 * size + 10, hop: BEAST_HOP[kind] ?? 0, moveFrameMs: kind.startsWith('b_') ? 130 : 110 };
+}
+const isBeastBoss = (kind: string) => kind.startsWith('b_') && kind in BEAST_ART;
+/** An art id's sheet layout: cell size, feet, facing rows and frames per animation. */
+function sheetGeom(art: string, isDemonArt: boolean): { w: number; h: number; feet: [number, number]; facings: number; cols: (key: string) => number } {
+    const b = BEAST_ART[art];
+    if (b) return { w: b.w, h: b.h, feet: b.feet, facings: b.facings, cols: (key) => b.frames[key.slice(art.length + 1) as 'move' | 'attack' | 'die'] };
+    const cell = isDemonArt ? DEMON_CELL : ENEMY_CELL;
+    return { w: cell, h: cell, feet: ENEMY_FEET[art] ?? DEMON_FEET[art] ?? [90, 168], facings: 5, cols: (key) => ENEMY_SHEETS[key] ?? DEMON_SHEETS[key] };
+}
+/** The row (and mirroring) for a screen direction (0-7, as FACINGS), for sheets with 1, 3, 5 or 8 facing rows. */
+function faceFor(art: string, sector: number): { row: number; flip: boolean } {
+    const f = FACINGS[sector];
+    const n = BEAST_ART[art]?.facings ?? 5;
+    if (n === 8) return { row: (sector + 6) % 8, flip: false };
+    if (n === 3) return { row: [0, 0, 1, 2, 2][f.row], flip: f.flip };
+    if (n === 1) return { row: 0, flip: f.flip };
+    return f;
+}
+// ============================================================== end BESTIARY ======
+const isDemon = (kind: string) => kind in DEMON_HEIGHT || isBeastBoss(kind);
 /** The art a kind is drawn with (the newer foes borrow an older one's). */
 const baseOf = (kind: string): string => LOOK[kind]?.base ?? kind;
 const feetOf = (art: string): [number, number] => ENEMY_FEET[art] ?? DEMON_FEET[art] ?? [90, 168];
@@ -151,14 +187,14 @@ export function createMonsterView(opts: {
     const loading = new Set<string>();
     const load = (art: string) => {
         loading.add(art);
-        const cell = isDemon(art) ? DEMON_CELL : ENEMY_CELL;
+        const g = sheetGeom(art, isDemon(art));
         return Promise.all((['move', 'attack', 'die'] as const).map(async (anim) => {
             const key = `${art}-${anim}`;
             const sheet = await Assets.load<Texture>({ alias: `enemy:${key}`, src: `images/world/enemy/${key}.png` });
-            const cols = ENEMY_SHEETS[key] ?? DEMON_SHEETS[key];
-            frames.set(key, Array.from({ length: 5 }, (_, row) =>
+            const cols = g.cols(key);
+            frames.set(key, Array.from({ length: g.facings }, (_, row) =>
                 Array.from({ length: cols }, (__, col) =>
-                    new Texture({ source: sheet.source, frame: new Rectangle(col * cell, row * cell, cell, cell) }))));
+                    new Texture({ source: sheet.source, frame: new Rectangle(col * g.w, row * g.h, g.w, g.h) }))));
         })).then(() => { if (!destroyed) ready.add(art); }).catch(() => { /* this one just is not drawn */ });
     };
     // The first colour of every kind now; the tougher colours right after (a monster of a colour that is not in yet wears the first).
@@ -176,10 +212,9 @@ export function createMonsterView(opts: {
         const art = ready.has(want) ? want : base;
         const mimic = m.boss === MIMIC_CODE;
         const sprite = new Sprite(mimic ? Assets.get<Texture>('chest') : frames.get(`${art}-move`)![0][0]);
-        const [fx, fy] = feetOf(art);
-        const cell = isDemon(art) ? DEMON_CELL : ENEMY_CELL;
+        const g = sheetGeom(art, isDemon(art));
         if (mimic) sprite.anchor.set(0.5, 0.85);
-        else sprite.anchor.set(fx / cell, fy / cell);
+        else sprite.anchor.set(g.feet[0] / g.w, g.feet[1] / g.h);
         const info = m.boss ? bossInfo(m.boss) : null;
         const big = mimic ? 1 : info ? (info.rank === 'malakor' ? 2.8 : info.rank === 'warden' ? 2.2 : 1.5) : 1;
         sprite.scale.set(mimic ? 0.9 : SCALE * look.size * big);
@@ -259,7 +294,7 @@ export function createMonsterView(opts: {
                 const sx = (du - dv) * TILE_DX;
                 const sy = (du + dv) * TILE_DY;
                 const sector = ((Math.round(Math.atan2(sy, sx) / (Math.PI / 4)) % 8) + 8) % 8;
-                const face = FACINGS[sector];
+                const face = faceFor(s.art, sector);
 
                 let rows: Texture[][];
                 let idx: number;
