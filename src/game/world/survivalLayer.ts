@@ -13,7 +13,7 @@
  * What the player owns lives in progress.ts (the save); this shows the world and turns a
  * Use press into gathering, drinking, a chest, a tower, a boss fight or a panel.
  */
-import { Assets, Container, Graphics, Rectangle, Sprite, Text, Texture, type Renderer } from 'pixi.js';
+import { Assets, Container, Graphics, Rectangle, Sprite, Text, Texture, type Renderer, type RenderLayer } from 'pixi.js';
 import { store, type AppState } from '../../state/store.ts';
 import { commands } from '../commands.ts';
 import { progress } from '../progress.ts';
@@ -31,6 +31,8 @@ const NPC_ART: Record<string, string> = { theron: 'orin', varis: 'bram', lyra: '
 import { MAP_TILES, TILE_DX, TILE_DY } from './constants.ts';
 import { STONE, WATER, type WorldMap } from './mapGen.ts';
 import { FX } from './fxAtlas.ts';
+import { createCampView } from './campView.ts';
+import { WALL_R } from './campLayout.ts';
 import type { ViewMonster } from './monsters.ts';
 
 /** Every kind of tree in the world (they all give wood and resin to the axe). */
@@ -77,6 +79,8 @@ export function createSurvivalLayer(o: {
     glowTex: Texture;
     shadowTex: Texture;
     renderer: Renderer;
+    /** Drawn above the night's dark: the camps' fires show through it from afar. */
+    nightLayer?: RenderLayer | null;
     /** An iso-art frame as a sprite whose tile centre is at (x, y). */
     isoSprite: (name: string, x: number, y: number) => Sprite;
     heightAt: (u: number, v: number) => number;
@@ -177,47 +181,47 @@ export function createSurvivalLayer(o: {
         s.scale.set(0.21);
         stand(s, c.i + 0.5, c.j + 0.5);
         shadow(c.i + 0.5, c.j + 0.5, 1.1);
-        const t = label('', 10);
         const at = ground(c.i + 0.5, c.j + 0.5);
+        // Not built yet: a pegged-out plot, a stack of logs and a sign (its name shows as you come near).
+        const site = o.isoSprite('camp_site', at.x, at.y);
+        site.zIndex = o.zFor(c.i + 0.5, c.j + 0.5) + 0.04;
+        o.layer.addChild(site);
+        all.push(site);
+        const t = label('', 10);
         t.position.set(at.x, at.y - 66);
         o.layer.addChild(t);
-        return { ...c, s, t };
+        return { ...c, s, t, site };
+    });
+    // The walled war camps themselves (world/campLayout.ts, drawn by world/campView.ts).
+    const campView = createCampView({
+        layer: o.layer, nightLayer: o.nightLayer, glowTex: o.glowTex, shadowTex: o.shadowTex, flames: campFire,
+        isoSprite: o.isoSprite, ground, zFor: o.zFor,
     });
     const campMarks = LANDMARKS.filter((l) => l.kind === 'camp').map((L) => {
         const u = L.i + 0.5, v = L.j + 0.5;
-        const fire = glow(u, v, 0xffa040, 0.9);
-        const logs = new Graphics()
-            .roundRect(-22, -4, 44, 8, 3).fill({ color: 0x6b3f22 }).stroke({ width: 3, color: 0x2b0f1c })
-            .roundRect(-6, -14, 12, 26, 3).fill({ color: 0x7a4a28 }).stroke({ width: 3, color: 0x2b0f1c });
+        const fire = glow(u, v, 0xffa040, 1.6);
+        fire.texture = campView.glowTex;
+        fire.blendMode = 'add';
         const at = ground(u, v);
-        logs.position.set(at.x, at.y);
-        logs.zIndex = o.zFor(u, v);
-        // the pack's looping fire, a frame every 80 ms
+        // the pack's looping fire in the fire pit, a frame every 80 ms
         const flame = new Sprite(campFire[0]);
         flame.anchor.set(0.5, 0.9);
-        flame.position.set(at.x, at.y + 2);
-        flame.zIndex = o.zFor(u, v) + 0.02;
-        o.layer.addChild(logs, flame);
-        all.push(logs, flame);
+        flame.position.set(at.x, at.y - 2);
+        flame.zIndex = o.zFor(u, v) + 0.08;
+        o.layer.addChild(flame);
+        all.push(flame);
+        campView.light(fire, u, v);
+        campView.light(flame, u, v);
+        // The camp's name hangs over its gate (seen as you come up the road, not over the fire).
         const names: Record<string, string> = { fire: 'Watchtower Sanctuary', air: 'Cloud-Watch Aerie', water: 'Rime-Shelf Outpost', earth: 'Coalition Sanctuary' };
         const name = label(names[L.el!] ?? `${KINGDOMS[L.el!].name} camp`, 13, 0xffe2b0);
-        name.position.set(at.x, at.y - 36);
+        const g = campView.gate(L.el!);
+        const gp = ground(g.u, g.v);
+        name.position.set(gp.x, gp.y - 160);
         o.layer.addChild(name);
-        // The sanctuary ring: rune-stones round the camp. Monsters stop at it; inside, the waves wait.
+        // The palisade is the sanctuary's edge now (monsters stop at CAMP_RADIUS, just outside it).
         const ring = new Graphics();
-        const stones = 28;
-        for (let n = 0; n < stones; n++) {
-            const a = (n / stones) * Math.PI * 2;
-            const su = u + Math.cos(a) * CAMP_RADIUS, sv = v + Math.sin(a) * CAMP_RADIUS;
-            const p = ground(su, sv);
-            ring.poly([p.x - at.x - 5, p.y - at.y, p.x - at.x, p.y - at.y - 14, p.x - at.x + 5, p.y - at.y]).fill(0x8a8494).stroke({ width: 2, color: 0x2b0f1c });
-            ring.rect(p.x - at.x - 1.5, p.y - at.y - 10, 3, 4).fill(KINGDOMS[L.el!].color);
-        }
-        ring.position.set(at.x, at.y);
-        ring.zIndex = o.zFor(u, v) - 0.6;
-        o.layer.addChild(ring);
-        all.push(ring);
-        return { L, u, v, fire, flame, ring };
+        return { L, u, v, fire, flame, ring, name, gate: g };
     });
 
     // ---- The people of your home camp (the character art, tinted).
@@ -785,6 +789,8 @@ export function createSurvivalLayer(o: {
         }
         // Fighting tasks: the waves never come into camp, so first, out of it (away from the Citadel).
         if (atHome && ((goal.kind === 'stat' && goal.stat === 'kills') || goal.kind === 'wave' || goal.kind === 'level')) {
+            // Out through the gate (the palisade has no other way out).
+            if (Math.abs(u - homeCamp.u) < WALL_R + 0.5 && Math.abs(v - homeCamp.v) < WALL_R + 0.5) return { u: homeCamp.gate.u, v: homeCamp.gate.v + 3, label: 'Leave camp' };
             const [dx, dy] = KINGDOMS[home].dir;
             const len = Math.hypot(dx, dy) || 1;
             return { u: homeCamp.u + (dx / len) * (CAMP_RADIUS + 5), v: homeCamp.v + (dy / len) * (CAMP_RADIUS + 5), label: 'Leave camp' };
@@ -953,14 +959,17 @@ export function createSurvivalLayer(o: {
             }
             const s = store.get();
             const raining = s.weather === 'rain' || s.weather === 'storm';
+            campView.update(dtMs, clock, u, v, o.dark(), (el) => open(el));
             for (const c of campMarks) {
                 const lit = open(c.L.el!) && !raining;
                 c.fire.visible = lit;
-                c.ring.visible = open(c.L.el!);
-                c.ring.alpha = 0.75 + 0.2 * Math.sin(clock / 600);
+                // The camp's name: read from the road, gone once you are through the gate.
+                const dg = Math.hypot(u - c.gate.u, v - c.gate.v - 2);
+                const within = Math.abs(u - c.u) < WALL_R + 0.5 && Math.abs(v - c.v) < WALL_R + 0.5;
+                c.name.alpha = within ? 0 : Math.max(0, Math.min(1, (dg - 3) / 2, (22 - dg) / 4));
                 c.flame.visible = lit;
                 c.fire.alpha = 0.45 + 0.15 * Math.sin(clock / 120) + 0.08 * Math.sin(clock / 47);
-                c.fire.scale.set(0.9 + 0.08 * Math.sin(clock / 90));
+                c.fire.scale.set(1.5 + 0.1 * Math.sin(clock / 90));
                 c.flame.texture = campFire[Math.floor(clock / 80) % campFire.length];
                 c.flame.scale.set(1.5 + 0.06 * Math.sin(clock / 70), 1.5 + 0.1 * Math.sin(clock / 53));
             }
@@ -1065,10 +1074,13 @@ export function createSurvivalLayer(o: {
                 for (const t of tents) {
                     const free = open(t.el);
                     const lv = s.buildings[t.id];
-                    t.t.text = free ? (lv > 0 ? `${BUILDINGS[t.id].name} · Lv ${lv}` : `${BUILDINGS[t.id].name} · empty plot`) : '';
-                    t.t.style.fill = lv > 0 ? 0xfff3c4 : 0xc9bcd6;
-                    t.s.alpha = free ? (lv > 0 ? 1 : 0.6) : 0.5;
-                    t.s.tint = free ? (lv > 0 ? 0xffffff : 0x9a9a9a) : 0x4a4048;
+                    t.t.text = free ? (lv > 0 ? `${BUILDINGS[t.id].name} · Lv ${lv}` : `${BUILDINGS[t.id].name} · build here`) : '';
+                    t.t.style.fill = lv > 0 ? 0xfff3c4 : 0xffd89a;
+                    // Unbuilt: a building site; in a fallen camp, a burnt-out tent.
+                    t.site.visible = free && lv <= 0;
+                    t.s.visible = !t.site.visible;
+                    t.s.alpha = free ? 1 : 0.85;
+                    t.s.tint = free ? 0xffffff : 0x3a3036;
                 }
                 for (const g of guards) {
                     const done = progress.guardDone(g.L.el!, g.L.n);
@@ -1124,12 +1136,13 @@ export function createSurvivalLayer(o: {
             const prev = s.target;
             const changed = !prev !== !aimTo || (prev && aimTo && (Math.abs(prev.angle - aimTo.angle) > 0.05 || Math.round(prev.dist) !== Math.round(aimTo.dist) || prev.label !== aimTo.label));
             // Tent names show only up close (a camp is not a wall of words).
-            for (const tt of tents) tt.t.alpha = Math.max(0, Math.min(1, (8 - Math.hypot(u - tt.i - 0.5, v - tt.j - 0.5)) / 3));
+            for (const tt of tents) tt.t.alpha = Math.max(0, Math.min(1, (3.6 - Math.hypot(u - tt.i - 0.5, v - tt.j - 0.5)) / 1.2));
             if (JSON.stringify(act) !== JSON.stringify(s.act)) store.patch({ act });
             if (hint !== s.hint || inCamp !== s.inCamp || fire !== s.fire || region !== s.region || changed) store.patch({ hint, inCamp, fire, region, target: aimTo });
         },
 
         destroy() {
+            campView.destroy();
             for (const n of npcs) {
                 n.s.destroy();
                 n.t.destroy();
