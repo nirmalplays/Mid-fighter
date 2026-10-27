@@ -109,7 +109,7 @@ export interface FighterSave {
 
 export function defaultSave(): FighterSave {
     return {
-        version: 5,
+        version: 7,
         scene: 'world',
         world: { u: WORLD_TILES / 2 + 0.5, v: WORLD_TILES / 2 + 0.5, set: false },
         tool: 'none',
@@ -154,7 +154,7 @@ export function defaultSave(): FighterSave {
 
 export const saveSystem = createSaveSystem<FighterSave>({
     key: 'bounce-lab-save',
-    version: 5,
+    version: 7,
     defaultSave,
     migrations: {
         // v2: the map grew from 256 to 384 tiles, so an old position no longer matches the land.
@@ -180,6 +180,12 @@ export const saveSystem = createSaveSystem<FighterSave>({
         // v5: the story's quest line. A game already under way keeps its campaign (Land 1 counts as done).
         5: (s, def) => {
             s.quest = { ...def.quest, done: s.kingdom !== null && s.kingdom !== undefined };
+        },
+        // v7: the caves and dungeons were rebuilt bigger and moved (some now lie east of the continent): anyone
+        // saved inside one wakes at home instead of inside the rock.
+        7: (s, def) => {
+            const w = s.world as { u?: number; v?: number } | undefined;
+            if (!w || !(Number(w.u) < WORLD_TILES && Number(w.v) < WORLD_TILES)) s.world = { ...def.world };
         },
     },
     validate(s, def) {

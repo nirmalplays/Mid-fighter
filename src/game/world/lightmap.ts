@@ -14,6 +14,8 @@ export interface Light {
     color: number;
     /** 0..1: how much it flickers. */
     flicker?: number;
+    /** 0..1: how much of the gloom it lifts at its heart (default 1: a torch); a cave's soft glow lifts less. */
+    a?: number;
 }
 
 export interface LightMap {
@@ -82,12 +84,13 @@ export function createLightMap(app: Application, above: Container): LightMap {
                 const h = holes[k];
                 h.position.set(l.x, l.y);
                 h.width = h.height = l.r * 2 * f;
+                h.alpha = l.a ?? 1;
                 const g = glowSprites[k];
                 g.position.set(l.x, l.y);
                 g.width = l.r * 1.6 * f;
                 g.height = l.r * 1.1 * f;
                 g.tint = l.color;
-                g.alpha = 0.55 * gloom;
+                g.alpha = 0.55 * gloom * (l.a ?? 1);
             });
             app.renderer.render({ container: mask, target: rt, clear: true });
         },
