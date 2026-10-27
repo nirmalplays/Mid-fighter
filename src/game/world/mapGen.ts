@@ -10,7 +10,7 @@ import { MAP_TILES, WORLD_TILES } from './constants.ts';
 import { BUILDINGS, BUILDING_IDS, type BuildingId } from '../survival.ts';
 import { ELEMENTS, LANDMARKS, regionOf, type Element } from '../eidolon.ts';
 import { STYLE } from './biomes.ts';
-import { charAt, entranceCell, PLACED, THEMES } from './interiors.ts';
+import { charAt, entranceCell, glowsOf, PLACED, THEMES } from './interiors.ts';
 
 export const GRASS = 0;
 export const DIRT = 1;
@@ -70,8 +70,8 @@ export interface WorldMap {
     doors: Door[];
     /** Cell -> index in doors, for the cells that take you somewhere when you step on them. */
     doorAt: Map<number, number>;
-    /** Light sources (torches, lanterns, crystals, glowing mushrooms), in tiles. */
-    lights: { i: number; j: number; color: number; r: number }[];
+    /** Light sources (torches, lanterns, crystals, glowing mushrooms, a cave's soft glow), in tiles; `a` how much gloom it lifts (default all). */
+    lights: { i: number; j: number; color: number; r: number; a?: number }[];
     /** Where foes wait in the interiors. */
     spawns: { n: number; i: number; j: number }[];
 }
@@ -1023,6 +1023,8 @@ export function generateWorld(seed = 1337): WorldMap {
                 }
             }
         }
+        // The soft glow of its open rooms and its lava or water.
+        for (const g of glowsOf(p.def)) lights.push({ i: p.i0 + 1 + g.i, j: p.j0 + 1 + g.j, color: g.color, r: g.r, a: g.a });
         ends.set(p.def.id, got);
     }
     // The doors: each interior's way out and its mouth on the overworld; a dig's ladders between its floors.

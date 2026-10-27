@@ -1422,7 +1422,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         for (const l of map.lights) {
             if (Math.abs(l.i - pu) > 16 || Math.abs(l.j - pv) > 16) continue;
             const q = at(l.i + 0.5, l.j + 0.5, 50);
-            out.push({ x: q.x, y: q.y, r: l.r * TILE_DX * scale, color: l.color, flicker: 1 });
+            out.push({ x: q.x, y: q.y, r: l.r * TILE_DX * scale, color: l.color, flicker: l.a === undefined ? 1 : 0.2, a: l.a });
         }
         lights.update(th.gloom * Math.max(0.6, settingsDark()), out, dtMs);
     };
