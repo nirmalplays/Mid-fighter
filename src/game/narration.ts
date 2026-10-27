@@ -1,7 +1,6 @@
 /**
  * The prologue: the story of Eidolon told over thirteen illustrated scenes (ui/cutscene/Scenes.tsx),
- * by an old storyteller and, where it is theirs to say, by the people in it: Malakor himself, a
- * commander on the line, the quarrelling king and queen, and Lyra. Each line has its delivery
+ * by one old storyteller (no one in the story speaks for themselves here). Each line has its delivery
  * (ElevenLabs v3 audio tags: the emotion, the pauses, the whispers and shouts), the subtitle shown,
  * and its recording in public/voice. A scene can hold several lines; it lasts as long as they do.
  *
@@ -52,11 +51,6 @@ export const NARRATION: NarrationLine[] = [
         subtitle: 'Three times the Tide came. And three times, the four nations put aside every quarrel, and stood shoulder to shoulder.',
     },
     {
-        scene: 'united', speaker: 'Commander', file: 'prologue_04b.mp3',
-        speech: '[shouting over battle, fierce] Shields together! HOLD THE LINE! [roaring] FOR EIDOLON!',
-        subtitle: 'Shields together! Hold the line! For Eidolon!',
-    },
-    {
         scene: 'united', speaker: 'Narrator', file: 'prologue_04c.mp3',
         speech: '[triumphant] Three times, they drove the abyss back into the dark. [pause, softer, with weight] Together... they never lost.',
         subtitle: 'Three times, they drove the abyss back into the dark. Together, they never lost.',
@@ -67,9 +61,9 @@ export const NARRATION: NarrationLine[] = [
         subtitle: 'Then came the age of Malakor, Grand Arch-Mage of the Conclave. Night after night, he read the coming Tide in the stars.',
     },
     {
-        scene: 'charts', speaker: 'Malakor', file: 'prologue_05b.mp3',
-        speech: '[horrified whisper] No... [breath catching] ten times the last. Twenty. [voice shaking] This one will not be a war... [barely audible] it will be the end of us.',
-        subtitle: 'No... ten times the last. Twenty. This one will not be a war. It will be the end of us.',
+        scene: 'charts', speaker: 'Narrator', file: 'prologue_05b.mp3',
+        speech: '[hushed, afraid] And what he saw there terrified him. The Fourth Tide would be ten times the last. [pause] Twenty. [barely a whisper] Not a war... an ending.',
+        subtitle: 'And what he saw there terrified him. The Fourth Tide would be ten times the last. Twenty. Not a war: an ending.',
     },
     {
         scene: 'council', speaker: 'Narrator', file: 'prologue_06.mp3',
@@ -77,24 +71,14 @@ export const NARRATION: NarrationLine[] = [
         subtitle: 'He carried his charts to the kings and queens of his age. But they were proud, and old grudges ran deep.',
     },
     {
-        scene: 'council', speaker: 'King of Pyraxis', file: 'prologue_06b.mp3',
-        speech: '[furious, slamming the table] Pyraxis will NOT march under a wind-folk banner!',
-        subtitle: 'Pyraxis will not march under a wind-folk banner!',
+        scene: 'council', speaker: 'Narrator', file: 'prologue_06b.mp3',
+        speech: '[bitter] Pyraxis would not march under another nation’s banner. [pause] Aquatica would sooner let Pyraxis burn alone. [sighs] Grudges older than any Tide... and not one crown would bend.',
+        subtitle: 'Pyraxis would not march under another nation’s banner. Aquatica would sooner let Pyraxis burn alone. Grudges older than any Tide, and not one crown would bend.',
     },
     {
-        scene: 'council', speaker: 'Queen of Aquatica', file: 'prologue_06c.mp3',
-        speech: '[cold, scornful] Then let Pyraxis burn alone... as it always threatens to.',
-        subtitle: 'Then let Pyraxis burn alone, as it always threatens to.',
-    },
-    {
-        scene: 'council', speaker: 'Malakor', file: 'prologue_06d.mp3',
-        speech: '[quietly, devastated] They will not stand together. [long pause] And alone... [whispers] they will lose.',
-        subtitle: 'They will not stand together. And alone, they will lose.',
-    },
-    {
-        scene: 'verdict', speaker: 'Malakor', file: 'prologue_07.mp3',
-        speech: '[cold resolve, slow and deliberate] If the world cannot win this war... then there will be no war. [pause] The Tide is born of the Heart. A Heart broken in four can never grow wild again. [firm, final] I will end the cycle. [beat] Forever.',
-        subtitle: 'If the world cannot win this war, then there will be no war. The Tide is born of the Heart. A Heart broken in four can never grow wild again. I will end the cycle. Forever.',
+        scene: 'verdict', speaker: 'Narrator', file: 'prologue_07.mp3',
+        speech: '[quiet, grave] Malakor saw that they would never stand together... and that alone, they would lose. [pause] So he made a terrible choice. [slow, cold] The Tide is born of the Heart. A Heart broken in four could never grow wild again. [firm] He would end the cycle. [beat] Forever.',
+        subtitle: 'Malakor saw that they would never stand together, and that alone, they would lose. So he made a terrible choice. The Tide is born of the Heart. A Heart broken in four could never grow wild again. He would end the cycle. Forever.',
     },
     {
         scene: 'sunder', speaker: 'Narrator', file: 'prologue_08.mp3',
@@ -125,11 +109,6 @@ export const NARRATION: NarrationLine[] = [
         scene: 'guild', speaker: 'Narrator', file: 'prologue_12.mp3',
         speech: '[warmer, a spark of hope] Only the Memory Pillars kept the truth: old stones that remember what the Mist erased. [lighter] And a small guild of archaeologist-enchanters went digging for them... [fondly] you, among them. [pause] And Lyra.',
         subtitle: 'Only the Memory Pillars kept the truth: old stones that remember what the Mist erased. And a small guild of archaeologist-enchanters went digging for them. You, among them. And Lyra.',
-    },
-    {
-        scene: 'guild', speaker: 'Lyra', file: 'prologue_12b.mp3',
-        speech: '[excited, warm] If the stones remember, then so can we. [laughs softly] Come on, slowpoke. History won’t dig itself up.',
-        subtitle: 'If the stones remember, then so can we. Come on, slowpoke. History won’t dig itself up.',
     },
     {
         scene: 'survivor', speaker: 'Narrator', file: 'prologue_13.mp3',
