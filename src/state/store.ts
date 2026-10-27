@@ -162,6 +162,12 @@ export interface AppState {
     tracked: string | null;
     /** A story dialog waiting to be read (the world keeps going behind it, but bites are held off). */
     storyPopup: StoryPopup | null;
+    /** Pages already closed in this run of pages (Back steps into them), newest last. */
+    storyBack: StoryPopup[];
+    /** Every page read this session, newest last (the pause screen's Story so far). */
+    storyLog: StoryPopup[];
+    /** The in-game pause screen is open (solo play stops; co-op keeps going). */
+    pauseMenu: boolean;
     /** Story pages waiting their turn behind the one open. */
     storyQueue: StoryPopup[];
     /** A story puzzle open (it holds the waves like a dialog). */
@@ -286,6 +292,9 @@ let state: AppState = {
     xp: 0,
     objective: null,
     storyPopup: null,
+    storyBack: [],
+    storyLog: [],
+    pauseMenu: false,
     storyQueue: [],
     puzzle: null,
     saga: { lyra: null, pressure: null, frost: 0, surge: null, dark: false, invert: false, zones: null, companion: null, wedges: 0, nightIn: null, timer: null, spire: null, mist: 0, sulfur: false, qte: null, hymn: null, carrying: false },
@@ -338,12 +347,22 @@ export const store = {
     tell(...pages: StoryPopup[]): void {
         if (pages.length === 0) return;
         if (state.storyPopup) store.patch({ storyQueue: [...state.storyQueue, ...pages] });
-        else store.patch({ storyPopup: pages[0], storyQueue: [...state.storyQueue, ...pages.slice(1)] });
+        // A fresh run of pages: Back reaches only within it.
+        else store.patch({ storyPopup: pages[0], storyQueue: [...state.storyQueue, ...pages.slice(1)], storyBack: [] });
     },
-    /** Close the open page; the next one waiting takes its place. */
+    /** Close the open page; the next one waiting takes its place (the closed one can be stepped back to, and is logged). */
     nextPage(): void {
         const [next, ...rest] = state.storyQueue;
-        store.patch({ storyPopup: next ?? null, storyQueue: rest });
+        const cur = state.storyPopup;
+        const log = cur && !state.storyLog.includes(cur) ? [...state.storyLog, cur].slice(-80) : state.storyLog;
+        store.patch({ storyPopup: next ?? null, storyQueue: rest, storyBack: cur && next ? [...state.storyBack, cur] : [], storyLog: log });
+    },
+    /** Back to the page before this one (it opens on its last line). */
+    prevPage(): boolean {
+        const prev = state.storyBack[state.storyBack.length - 1];
+        if (!prev) return false;
+        store.patch({ storyPopup: prev, storyBack: state.storyBack.slice(0, -1), storyQueue: state.storyPopup ? [state.storyPopup, ...state.storyQueue] : state.storyQueue });
+        return true;
     },
     /** Patch the saga HUD (a shallow merge). */
     saga(partial: Partial<SagaHud>): void {

@@ -117,7 +117,7 @@ export function TopButtons() {
             </StoneButton>
             <StoneButton size={z} label="Map (M)" onPress={() => store.patch({ bigMap: true })}><PixelIcon name="map" /></StoneButton>
             <StoneButton size={z} label="Bag (B)" onPress={() => store.patch({ bagTab: 'items' })}><PixelIcon name="bag" /></StoneButton>
-            <StoneButton size={z} label="Pause" onPress={() => store.patch({ phase: 'menu' })}><PackIcon index={2} size={24} /></StoneButton>
+            <StoneButton size={z} label="Pause (Esc)" onPress={() => store.patch({ pauseMenu: true })}><PackIcon index={2} size={24} /></StoneButton>
         </div>
     );
 }

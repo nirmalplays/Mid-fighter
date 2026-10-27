@@ -19,7 +19,8 @@ import { store, useStore } from '../state/store.ts';
 export default function GameCanvas() {
     const hostRef = useRef<HTMLDivElement | null>(null);
     const appRef = useRef<Application | null>(null);
-    const paused = useStore((s) => s.paused);
+    // The host's pause, or the pause screen in solo play (co-op's shared world never stops).
+    const paused = useStore((s) => s.paused || (s.pauseMenu && s.netStatus !== 'online'));
 
     useEffect(() => {
         let disposed = false;
@@ -38,7 +39,7 @@ export default function GameCanvas() {
             stage = createStage(app);
             scene = createWorldScene(app, stage);
             // Respect a pause that landed while the canvas was initializing.
-            if (store.get().paused) app.ticker.stop();
+            if (store.get().paused || store.get().pauseMenu) app.ticker.stop();
         })();
         return () => {
             disposed = true;

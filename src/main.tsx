@@ -38,7 +38,7 @@ async function boot() {
             skills: { ...save.skills },
             gems: { ...save.gems },
             spells: { unlocked: [...save.spells.unlocked], carry: [...save.spells.carry], cooldown: [...save.spells.cooldown] },
-            storyQueue: [], storyPopup: null, tracked: null,
+            storyQueue: [], storyPopup: null, storyBack: [], storyLog: [], pauseMenu: false, tracked: null,
         });
         setLook(save.hero.look);
         progress.syncSurvival();

@@ -26,6 +26,7 @@ import {
 } from './SurvivalHud.tsx';
 import { PuzzlePanel, StoryHud } from './StoryPanels.tsx';
 import { CinematicOverlay } from './CinematicOverlay.tsx';
+import { PauseMenu } from './PauseMenu.tsx';
 import { Coach, ObjectiveCard } from './Guide.tsx';
 import { DebatePanel, LoomPanel } from './StoryPuzzles.tsx';
 import { CARRY_MAX, COOLDOWN_MAX, cooldownFor, levelCost, maxCharges, SPELLS, UNLOCK_COST } from '../game/world/spells.ts';
@@ -267,6 +268,7 @@ export default function Hud() {
             <Buffs />
 
             <ActionCluster />
+            <PauseMenu />
 
             {/* Multiplayer: the room's code (tap to copy) and how many are in it */}
             {netStatus !== 'off' && (

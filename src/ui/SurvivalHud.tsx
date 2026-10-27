@@ -657,10 +657,26 @@ const PAGE_LOOK = {
 export function StoryDialog() {
     const popup = useStore((s) => s.storyPopup);
     const queued = useStore((s) => s.storyQueue.length);
+    const behind = useStore((s) => s.storyBack.length);
     const [page, setPage] = useState(0);
+    // Stepping back into an earlier page opens it on its last line.
+    const toEnd = useRef(false);
     const speaker = popup?.speaker ?? 'Master Orin';
     const tint = useMemo(() => hex(NPCS.theron.tint), []);
-    useEffect(() => setPage(0), [popup]);
+    useEffect(() => {
+        setPage(toEnd.current && popup ? popup.lines.length - 1 : 0);
+        toEnd.current = false;
+    }, [popup]);
+    // Keys: Enter/Space/→ on, Backspace/← back.
+    useEffect(() => {
+        if (!popup) return;
+        const on = (e: KeyboardEvent) => {
+            if (e.key === 'ArrowLeft' || e.key === 'Backspace') { e.preventDefault(); back(); }
+            else if (e.key === 'ArrowRight' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); next(); }
+        };
+        window.addEventListener('keydown', on);
+        return () => window.removeEventListener('keydown', on);
+    });
     if (!popup) return null;
     const pages = popup.lines;
     const last = page >= pages.length - 1;
@@ -671,6 +687,12 @@ export function StoryDialog() {
         progress.publishObjective();
     };
     const next = () => (last ? close() : setPage((p) => p + 1));
+    /** One line back; at the first line of a page, the page before it. */
+    const canBack = page > 0 || behind > 0;
+    const back = () => {
+        if (page > 0) setPage((p) => p - 1);
+        else if (behind > 0) { toEnd.current = true; store.prevPage(); }
+    };
     const look = popup.style ? PAGE_LOOK[popup.style] : null;
     if (look) {
         const cine = popup.style === 'cinematic';
@@ -683,7 +705,15 @@ export function StoryDialog() {
                     <div className="text-[26px] leading-none" style={{ fontFamily: 'var(--font-relic)', color: look.head }}>{popup.title}</div>
                     <p key={page} className="story-line text-[17px] leading-snug" style={{ fontFamily: look.font, fontStyle: popup.style === 'flashback' ? 'italic' : 'normal', fontSize: cine ? 20 : 17 }}>{pages[page]}</p>
                     {last && popup.reward && <p className="text-[13px]" style={{ color: popup.style === 'flashback' || popup.style === 'scroll' ? '#166534' : '#86efac' }}>{popup.reward}</p>}
-                    <div className="flex items-center justify-between text-[12px]" style={{ color: look.head }}>
+                    <div className="flex items-center justify-between gap-2 text-[12px]" style={{ color: look.head }}>
+                        <button
+                            type="button"
+                            disabled={!canBack}
+                            onPointerDown={(e) => { e.stopPropagation(); back(); }}
+                            className="min-h-[40px] rounded-md px-3 text-[13px] disabled:opacity-25"
+                            style={{ border: `1px solid ${look.head}`, color: look.head, background: 'rgba(0,0,0,.18)' }}
+                            aria-label="Previous line"
+                        >‹ Back</button>
                         <span>{page + 1}/{pages.length}{queued > 0 ? ` · ${queued} more` : ''}</span>
                         <span className="story-blink">{last ? 'Tap to continue' : 'Tap ›'}</span>
                     </div>
@@ -699,8 +729,9 @@ export function StoryDialog() {
                     <div className="text-[11px] font-black uppercase tracking-wide" style={{ color: BROWN_DARK }}>{speaker} · {popup.title}</div>
                     <p className="text-[15px] font-bold leading-snug">{pages[page]}</p>
                     {last && popup.reward && <p className="text-[12px] font-black" style={{ color: '#15803d' }}>{popup.reward}</p>}
-                    <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-black" style={{ color: BROWN_DARK }}>{page + 1}/{pages.length}</span>
+                    <div className="flex items-center justify-between gap-2">
+                        <Btn onPress={back} disabled={!canBack}>‹ Back</Btn>
+                        <span className="text-[11px] font-black" style={{ color: BROWN_DARK }}>{page + 1}/{pages.length}{queued > 0 ? ` · ${queued} more` : ''}</span>
                         <Btn onPress={next}>{last ? (queued > 0 ? 'Next ›' : "Let's go") : 'Next ›'}</Btn>
                     </div>
                 </div>
