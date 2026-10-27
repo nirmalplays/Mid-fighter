@@ -149,8 +149,9 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     const frame = (name: string): Texture => {
         let t = frameTex.get(name);
         if (!t) {
-            const [x, y, w, h] = ISO_FRAMES[name];
-            t = new Texture({ source: iso.source, frame: new Rectangle(x, y, w, h) });
+            // Frames are packed trimmed; orig/trim give back the full canvas, so anchors read as before.
+            const [x, y, w, h, ox, oy, fw, fh] = ISO_FRAMES[name];
+            t = new Texture({ source: iso.source, frame: new Rectangle(x, y, w, h), orig: new Rectangle(0, 0, fw, fh), trim: new Rectangle(ox, oy, w, h) });
             frameTex.set(name, t);
         }
         return t;
@@ -448,7 +449,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             survival.trackProp(n, s);
             // A soft shadow grounds everything that stands (tall grass and flowers excepted).
             if (!/^(tallgrass|dbush|big_|hole|ladder|skull|bones|candle|mush)/.test(p.name)) {
-                const big = isTree(p.name) ? 1.45 : p.name.startsWith('rock') ? 0.95 : 1.1;
+                const big = isTree(p.name) ? (p.name.endsWith('_s2') || p.name.startsWith('tree_bamboo') ? 0.8 : p.name.endsWith('_s3') ? 1.1 : 1.45) : p.name.startsWith('rock') ? 0.95 : 1.1;
                 const sh = new Sprite(shadowTex);
                 sh.anchor.set(0.5);
                 sh.scale.set(big);
@@ -597,8 +598,9 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     const BUFF_MS: Record<string, number> = { blue: 20000, yellow: 30000, purple: 12000, black: 15000, night: 90000, oilfire: 60000, oilice: 60000 };
     /** Which timed effect each drink or oil gives. */
     const BUFF_OF: Partial<Record<ItemId, string>> = { potion_blue: 'blue', potion_yellow: 'yellow', potion_purple: 'purple', potion_night: 'night', oil_fire: 'oilfire', oil_ice: 'oilice' };
-    // Day and night (?night starts in the dark, for testing).
+    // Day and night (?night starts in the dark, ?day in the morning, for testing).
     if (new URLSearchParams(window.location.search).has('night')) setSkyOffset(NIGHT_START - (Date.now() % CYCLE_MS));
+    else if (new URLSearchParams(window.location.search).has('day')) setSkyOffset(-(Date.now() % CYCLE_MS));
     let sky = nowSky();
     let skyShown = '';
     // The combat meter charges the home kingdom's active skill.

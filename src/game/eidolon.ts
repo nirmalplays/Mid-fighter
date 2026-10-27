@@ -7,7 +7,7 @@
  * its centre into four quadrants (one per kingdom, each in a screen direction), with
  * Malakor's Void Citadel in the middle.
  */
-import { WORLD_TILES } from './world/constants.ts';
+import { WORLD_SCALE, WORLD_TILES } from './world/constants.ts';
 
 export const ELEMENTS = ['fire', 'air', 'water', 'earth'] as const;
 export type Element = (typeof ELEMENTS)[number];
@@ -84,7 +84,7 @@ export const CITADEL = { name: 'The Void Citadel', color: 0x8b5cf6 };
 
 const C = WORLD_TILES / 2;
 /** Tiles from the centre that belong to the Void Citadel. */
-export const CITADEL_R = 22;
+export const CITADEL_R = Math.round(22 * WORLD_SCALE);
 
 export function regionOf(u: number, v: number): Region {
     const dx = u - C;
@@ -96,8 +96,13 @@ export function regionOf(u: number, v: number): Region {
     return sy > 0 ? 'water' : 'air';
 }
 
-/** A tile `d` tiles from the centre toward a kingdom, shifted `side` tiles across. */
+/**
+ * A place `d` out from the centre toward a kingdom, shifted `side` across. Both are in layout units (tiles on
+ * the 384-tile continent the places were laid out on), so the layout spreads with the map (WORLD_SCALE).
+ */
 export function spot(e: Element, d: number, side: number): { i: number; j: number } {
+    d *= WORLD_SCALE;
+    side *= WORLD_SCALE;
     const [x, y] = KINGDOMS[e].dir;
     const ux = x / Math.SQRT2, uy = y / Math.SQRT2; // along
     const px = -uy, py = ux; // across
@@ -143,10 +148,10 @@ const STORY_BOSS_SPOTS: Record<string, [number, number, number]> = { 'guard:1': 
 /** How far out (along the axis) each story zone ends: Act I, II, III; beyond the last is Act IV. */
 export const STORY_ZONES = [131, 170, 202] as const;
 export const FIRE_ZONES = STORY_ZONES;
-/** How far out along a kingdom's axis a tile lies. */
+/** How far out along a kingdom's axis a tile lies, in layout units (as spot() and STORY_ZONES). */
 export function axisDistance(e: Element, u: number, v: number): number {
     const [x, y] = KINGDOMS[e].dir;
-    return ((u - C) * x + (v - C) * y) / Math.SQRT2;
+    return ((u - C) * x + (v - C) * y) / Math.SQRT2 / WORLD_SCALE;
 }
 
 /** Every fixed place in the world: a camp, three guardians, a warden's arena, two towers and three houses per kingdom, the citadel, and Pyraxis's story sites. */

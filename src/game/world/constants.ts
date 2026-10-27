@@ -1,6 +1,6 @@
 /**
- * World dimensions: the continent of Eidolon is 384 × 384 tiles (grown from the 256-tile Durango
- * region; one tile is ~2 m, so ~768 × 768 m). The grid is 512 × 512: beyond the continent's edge lies
+ * World dimensions: the continent of Eidolon is 512 × 512 tiles (grown from 384, and before that the
+ * 256-tile Durango region; one tile is ~2 m, so ~1 × 1 km). The grid is 640 × 640: beyond the continent's edge lies
  * nothing but the caves, dungeons and ruins you walk into (world/interiors.ts). Streamed in
  * 16 × 16-tile chunks.
  *
@@ -8,9 +8,11 @@
  * ((i - j) * TILE_DX, (i + j) * TILE_DY), a 2:1 diamond.
  */
 /** The whole grid (the continent and the interiors beyond it). */
-export const MAP_TILES = 512;
+export const MAP_TILES = 640;
 /** The continent: everything outside it is interiors and the void between them. */
-export const WORLD_TILES = 384;
+export const WORLD_TILES = 512;
+/** The story's places were laid out on the 384-tile continent; their distances scale by this. */
+export const WORLD_SCALE = WORLD_TILES / 384;
 export const CHUNK_TILES = 16;
 export const MAP_CHUNKS = MAP_TILES / CHUNK_TILES;
 /** Half the width / half the height of one tile's top face, in world px. */

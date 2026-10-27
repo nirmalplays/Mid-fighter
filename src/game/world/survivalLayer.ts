@@ -28,7 +28,7 @@ import { framesOf } from './npcArt.ts';
 
 /** Which dressed figure each camp person wears. */
 const NPC_ART: Record<string, string> = { theron: 'orin', varis: 'bram', lyra: 'lyra', kael: 'kael', lin: 'lin', thorne: 'thorne', nerissa: 'nerissa' };
-import { MAP_TILES, TILE_DX } from './constants.ts';
+import { MAP_TILES, TILE_DX, TILE_DY } from './constants.ts';
 import { STONE, WATER, type WorldMap } from './mapGen.ts';
 import { FX } from './fxAtlas.ts';
 import type { ViewMonster } from './monsters.ts';
@@ -368,13 +368,35 @@ export function createSurvivalLayer(o: {
         return ((seed * 2654435761) >>> 0) % 5 === 0;
     };
 
-    // ---- Barriers: a purple veil along the edge of every sealed region near the player.
-    const veilGfx = new Graphics();
-    for (let n = 0; n < 12; n++) veilGfx.rect(0, n * 12, 2 * TILE_DX, 12).fill({ color: 0xc084fc, alpha: 0.05 + (n / 12) * 0.5 });
-    const veilTex = o.renderer.generateTexture({ target: veilGfx, resolution: 1 });
-    veilGfx.destroy();
+    // ---- Barriers: a purple curtain standing on the tile edges between a sealed region and open ground near the
+    // player. Each edge is a diagonal on screen ("/" between i-neighbours, "\\" between j-neighbours), so the
+    // curtain follows the diamond grid instead of stacking up as squares.
+    const VEIL_H = 84;
+    const curtain = (rising: boolean) => {
+        const g = new Graphics();
+        const STRIPS = 12;
+        const h = VEIL_H / STRIPS;
+        for (let n = 0; n < STRIPS; n++) {
+            const y0 = n * h, y1 = Math.min(VEIL_H, (n + 1) * h + 0.5);
+            // Bottom line: "/" runs from (0, H + DY) up to (DX, H); "\\" from (0, H) down to (DX, H + DY).
+            const [l, r] = rising ? [VEIL_H + TILE_DY, VEIL_H] : [VEIL_H, VEIL_H + TILE_DY];
+            g.poly([0, l - y0, TILE_DX, r - y0, TILE_DX, r - y1, 0, l - y1]).fill({ color: 0xc084fc, alpha: 0.55 * (1 - n / STRIPS) ** 1.6 });
+        }
+        const tex = o.renderer.generateTexture({ target: g, resolution: 1 });
+        g.destroy();
+        return tex;
+    };
+    const veilRise = curtain(true);
+    const veilFall = curtain(false);
     const veils = new Map<number, Sprite>();
     let veilKey = '';
+    /** The four edges of a cell: neighbour step, which curtain, and the edge's left end relative to the cell centre. */
+    const EDGES: [number, number, boolean, number, number][] = [
+        [1, 0, true, 0, TILE_DY],
+        [-1, 0, true, -TILE_DX, 0],
+        [0, 1, false, -TILE_DX, 0],
+        [0, -1, false, 0, -TILE_DY],
+    ];
     const syncVeils = (u: number, v: number) => {
         const key = `${Math.floor(u)},${Math.floor(v)},${store.get().wardens.join()},${store.get().kingdom}`;
         if (key === veilKey) return;
@@ -386,25 +408,30 @@ export function createSurvivalLayer(o: {
                 if (i < 1 || j < 1 || i >= MAP_TILES - 1 || j >= MAP_TILES - 1) continue;
                 const k = j * MAP_TILES + i;
                 if (open(REGION_OF(map.region[k])) || map.terrain[k] === WATER) continue;
-                const edge = [k - 1, k + 1, k - MAP_TILES, k + MAP_TILES].some((n) => open(REGION_OF(map.region[n])));
-                if (!edge) continue;
-                want.add(k);
-                if (!veils.has(k)) {
-                    const s = new Sprite(veilTex);
-                    s.anchor.set(0.5, 1);
+                for (let e = 0; e < EDGES.length; e++) {
+                    const [di, dj, rising, ox, oy] = EDGES[e];
+                    const n = k + di + dj * MAP_TILES;
+                    if (!open(REGION_OF(map.region[n])) || map.terrain[n] === WATER) continue;
+                    const id = k * 4 + e;
+                    want.add(id);
+                    if (veils.has(id)) continue;
+                    const s = new Sprite(rising ? veilRise : veilFall);
+                    // Anchor on the left end of the bottom line.
+                    s.anchor.set(0, rising ? 1 : VEIL_H / (VEIL_H + TILE_DY));
                     const at = ground(i + 0.5, j + 0.5);
-                    s.position.set(at.x, at.y + 4);
-                    s.zIndex = o.zFor(i + 0.5, j + 0.5) + 0.2;
+                    s.position.set(at.x + ox, at.y + oy);
+                    // Sorted with whichever of the two cells is nearer the viewer.
+                    s.zIndex = o.zFor(i + 0.5 + Math.max(0, di), j + 0.5 + Math.max(0, dj)) - 0.3;
                     s.blendMode = 'add';
                     o.layer.addChild(s);
-                    veils.set(k, s);
+                    veils.set(id, s);
                 }
             }
         }
-        for (const [k, s] of veils) {
-            if (!want.has(k)) {
+        for (const [id, s] of veils) {
+            if (!want.has(id)) {
                 s.destroy();
-                veils.delete(k);
+                veils.delete(id);
             }
         }
     };
@@ -1109,7 +1136,8 @@ export function createSurvivalLayer(o: {
             }
             for (const v of veils.values()) v.destroy();
             veils.clear();
-            veilTex.destroy(true);
+            veilRise.destroy(true);
+            veilFall.destroy(true);
             for (const d of defences) d.g.destroy();
             for (const x of all) x.destroy();
             propSprites.clear();

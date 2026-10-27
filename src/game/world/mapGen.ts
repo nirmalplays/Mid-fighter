@@ -623,9 +623,31 @@ export function generateWorld(seed = 1337): WorldMap {
     const nearLandmark = (i: number, j: number, pad: number) => LANDMARKS.some((L) => Math.hypot(i - L.i, j - L.j) <= L.r + pad);
     for (const { at: e } of doorways) for (let j = e.j - 3; j <= e.j + 3; j++) for (let i = e.i - 3; i <= e.i + 3; i++) if (inMap(i, j)) occupied.add(at(i, j));
 
-    const place = (name: string, i: number, j: number, solid: boolean) => {
-        props.push({ name, i, j });
+    // Every standing thing has a footprint (a radius in tiles). Nothing is set down inside another's, so a bush
+    // never grows out of a tree trunk and the art never piles up into an unreadable heap.
+    const BUCKET = 4;
+    const BUCKETS = Math.ceil(N / BUCKET);
+    const foot = new Map<number, { i: number; j: number; r: number }[]>();
+    const roomFor = (i: number, j: number, r: number, tight = 1): boolean => {
+        const bi = Math.floor(i / BUCKET), bj = Math.floor(j / BUCKET);
+        for (let y = bj - 1; y <= bj + 1; y++) {
+            for (let x = bi - 1; x <= bi + 1; x++) {
+                for (const o of foot.get(y * BUCKETS + x) ?? []) if (Math.hypot(o.i - i, o.j - j) < (o.r + r) * tight) return false;
+            }
+        }
+        return true;
+    };
+    /** Claim ground of radius r at (i, j). */
+    const reserve = (i: number, j: number, r: number) => {
         occupied.add(at(i, j));
+        const b = Math.floor(j / BUCKET) * BUCKETS + Math.floor(i / BUCKET);
+        let list = foot.get(b);
+        if (!list) foot.set(b, (list = []));
+        list.push({ i, j, r });
+    };
+    const place = (name: string, i: number, j: number, solid: boolean, r = 0.6) => {
+        props.push({ name, i, j });
+        reserve(i, j, r);
         if (solid) {
             blocked[at(i, j)] = 1;
             solidAt[at(i, j)] = 1;
@@ -636,21 +658,41 @@ export function generateWorld(seed = 1337): WorldMap {
         for (let dj = -gap; dj <= gap; dj++) for (let di = -gap; di <= gap; di++) if (occupied.has(at(i + di, j + dj))) return false;
         return true;
     };
-    // Groves and thickets: vegetation gathers in clusters instead of spreading evenly.
+    // Roads keep a verge: nothing tall within a tile of the stones.
+    const verge = new Set<number>();
+    for (const k of road) {
+        const i = k % N, j = (k - i) / N;
+        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) if (inMap(i + di, j + dj)) verge.add(at(i + di, j + dj));
+    }
+    /** Can something of radius r stand on (i, j)? `tall` things also keep off the road's verge. */
+    const canStand = (i: number, j: number, r: number, tall: boolean, tight = 1) =>
+        free(i, j, 0) && !(tall && verge.has(at(i, j))) && roomFor(i, j, r, tight);
+    /** Dart-throwing in a shuffled order over the continent, so placement has no row-by-row bias. */
+    const cells = new Int32Array(W * W);
+    for (let k = 0; k < cells.length; k++) cells[k] = k;
+    for (let k = cells.length - 1; k > 0; k--) {
+        const r = Math.floor(rand() * (k + 1));
+        const t = cells[k];
+        cells[k] = cells[r];
+        cells[r] = t;
+    }
+    const eachCell = (fn: (i: number, j: number) => void) => {
+        for (let n = 0; n < cells.length; n++) fn(cells[n] % W, Math.floor(cells[n] / W));
+    };
+    // Kept for the few places that still want a simple scatter (the beach).
     const scatter = (
-        count: number, gap: number, fn: (i: number, j: number) => void, onTerrain: number[],
+        count: number, r: number, fn: (i: number, j: number) => void, onTerrain: number[],
         maxH = MAX_HEIGHT, salt = 0, bias = 0.5,
     ) => {
         for (let n = 0, tries = 0; n < count && tries < count * 14; tries++) {
             const i = intIn(3, W - 4), j = intIn(3, W - 4);
             if (!onTerrain.includes(terrain[at(i, j)]) || height[at(i, j)] > maxH) continue;
             if (salt && vnoise(i * 0.07, j * 0.07, salt) < bias - 0.25 * rand()) continue;
-            if (!free(i, j, gap)) continue;
+            if (!canStand(i, j, r, true)) continue;
             fn(i, j);
             n++;
         }
     };
-    const broadleaf = ['tree_oak', 'tree_oak', 'tree_birch', 'tree_birch', 'tree_apple', 'tree_ginkgo', 'tree_pear', 'tree_plum', 'tree_cherry', 'tree_fantasy'];
     const bushes = ['gbush1', 'gbush2', 'gbush3', 'gbush1', 'gbush2', 'gbush3', 'bbush1', 'bbush2', 'bbush3', 'bbush1b', 'bbush2b', 'bbush3b', 'bbush1w', 'bbush2w', 'bbush3w'];
     // Treasure chests, spread out over the land (never near the camp).
     const chests: { i: number; j: number }[] = [];
@@ -660,48 +702,180 @@ export function generateWorld(seed = 1337): WorldMap {
         if (terrain[k] === WATER || terrain[k] === SAND || nearSpawn(i, j, 16) || nearLandmark(i, j, 5) || !free(i, j, 2)) continue;
         if (chests.some((c) => Math.hypot(c.i - i, c.j - j) < 14)) continue;
         chests.push({ i, j });
-        occupied.add(k);
+        reserve(i, j, 1.2);
         blocked[k] = 1;
         solidAt[k] = 1;
     }
-    // What stands on the land follows its ground: dead trees and obsidian on the ash, cacti in the
-    // badlands, palms on the beaches, ruins and crystals on the salt; woods and meadows elsewhere.
     const rock = () => `rock${intIn(1, 5)}`;
-    scatter(1700 * S2, 2, (i, j) => {
-        const s = styleAt(i, j);
+
+    // ---- The lie of the land: woods, woodland edges and open meadows, from a broad noise field, so the
+    // land reads as places (a forest, a clearing, a meadow) instead of an even sprinkle.
+    const woodAt = (i: number, j: number) => fbm(i * 0.017, j * 0.017, 3, 300) + 0.12 * (vnoise(i * 0.09, j * 0.09, 305) - 0.5);
+    const CORE = 0.57, EDGE = 0.5;
+    // Groves: patches of one kind of tree with wobbly borders (a jittered cell grid), a few in their autumn coats.
+    const grove = (i: number, j: number) => {
+        const gi = Math.floor((i + 7 * (vnoise(i * 0.05, j * 0.05, 620) - 0.5) * 2) / 18);
+        const gj = Math.floor((j + 7 * (vnoise(i * 0.05, j * 0.05, 630) - 0.5) * 2) / 18);
+        return lattice(gi, gj, 640);
+    };
+    const LAND_TREES: Record<string, string[]> = {
+        air: ['birch', 'birch', 'cherry', 'ginkgo', 'oak', 'pear'],
+        water: ['oak', 'pear', 'apple', 'ginkgo', 'birch', 'plum'],
+        earth: ['fantasy_fall', 'fantasy', 'plum_fall', 'ginkgo_fall', 'fantasy', 'fantasy_fall'],
+        fire: ['oak_fall', 'birch_fall', 'apple_fall', 'oak', 'ginkgo_fall'],
+        citadel: ['fantasy', 'plum', 'cherry', 'oak'],
+    };
+    const FALLS = new Set(['oak', 'birch', 'apple', 'cherry', 'ginkgo', 'fantasy', 'pear', 'plum']);
+    /** The tree for a grove: mostly its own kind, now and then a neighbour's; young ones toward the edge. */
+    const treeFor = (i: number, j: number, w: number): { name: string; r: number } => {
+        const land = regionOf(i + 0.5, j + 0.5);
+        const h = height[at(i, j)];
+        const g = grove(i, j);
+        const kinds = LAND_TREES[land];
+        let kind = rand() < 0.8 ? kinds[Math.floor(g * kinds.length)] : pick(kinds);
+        // Hills grow pine; Zephyria's heights are under snow.
+        if (h >= 2 && rand() < (h >= 5 ? 0.75 : h >= 3 ? 0.4 : 0.15)) kind = 'pine';
+        if (land === 'air' && h >= 6) kind = rand() < 0.7 ? 'pine_snow' : pick(['birch_snow', 'oak_snow']);
+        // A few groves of the green lands have turned.
+        else if ((land === 'air' || land === 'water') && g > 0.88 && FALLS.has(kind)) kind = `${kind}_fall`;
+        const core = w > CORE;
+        const age = rand();
+        const snowy = kind.endsWith('_snow');
+        const base = kind.replace(/_(fall|snow)$/, '');
+        if (!snowy && (core ? age < 0.12 : age < 0.3)) return { name: `tree_${base}_s3`, r: 1.05 };
+        if (!snowy && !core && age < 0.42) return { name: `tree_${base}_s2`, r: 0.75 };
+        return { name: `tree_${kind}`, r: 1.45 };
+    };
+
+    // Trees: thick in the woods' cores (crowns touching), thinning through the edge, lone ones in the meadows.
+    eachCell((i, j) => {
+        const k = at(i, j);
+        const t = terrain[k];
+        if ((t !== GRASS && t !== DIRT) || ARID.has(style[k]) || style[k] === STYLE.OBSIDIAN) return;
+        const w = woodAt(i, j);
+        const chance = w > CORE ? 0.5 : w > EDGE ? 0.12 : 0.008;
+        if (rand() >= chance) return;
+        const tr = treeFor(i, j, w);
+        // Woods pack tighter than open ground, where a lone tree wants room around it.
+        if (!canStand(i, j, tr.r, true, w > CORE ? 0.78 : w > EDGE ? 0.95 : 2.2)) return;
+        place(tr.name, i, j, true, tr.r);
+    });
+    // Bamboo stands along Zephyria's and Aquatica's lakes.
+    eachCell((i, j) => {
+        const k = at(i, j);
+        if (terrain[k] !== GRASS || dist[k] < 2 || dist[k] > 4) return;
+        const land = regionOf(i + 0.5, j + 0.5);
+        if ((land !== 'air' && land !== 'water') || vnoise(i * 0.06, j * 0.06, 650) < 0.6 || rand() > 0.35) return;
+        if (canStand(i, j, 0.7, true, 0.9)) place(rand() < 0.6 ? 'tree_bamboo3' : 'tree_bamboo2', i, j, true, 0.7);
+    });
+    // The arid lands: their own kinds of growth, sparse, in loose stands (still thicker where the wood field is).
+    eachCell((i, j) => {
+        const k = at(i, j);
+        const t = terrain[k];
+        const st = style[k];
+        if (!(t === GRASS || t === DIRT || t === SAND) || !ARID.has(st)) return;
+        const w = woodAt(i, j);
+        if (rand() >= (w > CORE ? 0.2 : w > EDGE ? 0.08 : 0.03)) return;
+        let name: string;
         // Pyraxis: stands of scorched pine (the resin the story asks for), dead trees, obsidian, cacti in the badlands.
-        if (s === STYLE.ASH) place(rand() < 0.45 ? 'pine_scorched' : rand() < 0.5 ? 'deadtree' : rand() < 0.5 ? 'obsidian' : rock(), i, j, true);
-        else if (s === STYLE.BADLANDS) place(rand() < 0.45 ? 'cactus' : rand() < 0.4 ? 'pine_scorched' : rock(), i, j, true);
-        else if (s === STYLE.SCORCH) place(rand() < 0.6 ? 'pine_scorched' : rand() < 0.5 ? 'deadtree' : rand() < 0.6 ? rock() : 'stump', i, j, true);
-        else if (s === STYLE.SALT) place(rand() < 0.4 ? 'deadtree' : rand() < 0.5 ? 'ruinwall' : rand() < 0.5 ? 'pillar_broken' : 'crystal1', i, j, true);
-        else if (s === STYLE.BEACH || s === STYLE.CORAL) place('palm', i, j, true);
-        else place(height[at(i, j)] >= 2 && rand() < 0.7 ? 'tree_pine' : pick(broadleaf), i, j, true);
-    }, [GRASS, DIRT, SAND], 5, 300, 0.48);
-    scatter(700 * S2, 1, (i, j) => { if (inKingdom(i, j, 'earth') && !ARID.has(styleAt(i, j))) place(rand() < 0.6 ? 'tree_fantasy' : 'deadtree', i, j, true); }, [GRASS, DIRT], 5);
-    scatter(40 * S2, 3, (i, j) => place('stump', i, j, true), [GRASS], 3);
-    // Bushes are walked through (a bush that stops you reads as an invisible wall).
-    scatter(4200 * S2, 1, (i, j) => { if (!ARID.has(styleAt(i, j))) place(pick(bushes), i, j, false); }, [GRASS, DIRT], 6, 310, 0.42);
-    scatter(900 * S2, 1, (i, j) => place(rock(), i, j, true), [GRASS, STONE, DIRT]);
-    scatter(1100 * S2, 1, (i, j) => place(pick(['dbush_blue', 'dbush_orange', 'dbush_pink']), i, j, false), [GRASS], 6, 320, 0.45);
-    scatter(9000 * S2, 0, (i, j) => { if (!ARID.has(styleAt(i, j))) place(`tallgrass${intIn(1, 4)}`, i, j, false); }, [GRASS, DIRT], 6, 330, 0.35);
+        if (st === STYLE.ASH) name = rand() < 0.45 ? 'pine_scorched' : rand() < 0.5 ? 'deadtree' : rand() < 0.5 ? 'obsidian' : rock();
+        else if (st === STYLE.BADLANDS) name = rand() < 0.45 ? 'cactus' : rand() < 0.4 ? 'pine_scorched' : rock();
+        else if (st === STYLE.SCORCH) name = rand() < 0.6 ? 'pine_scorched' : rand() < 0.5 ? 'deadtree' : rand() < 0.6 ? rock() : 'stump';
+        else if (st === STYLE.SALT) name = rand() < 0.4 ? 'deadtree' : rand() < 0.5 ? 'ruinwall' : rand() < 0.5 ? 'pillar_broken' : 'crystal1';
+        else if (st === STYLE.BEACH || st === STYLE.CORAL) {
+            if (w < EDGE && rand() < 0.6) return;
+            name = 'palm';
+        } else return;
+        const r = name.startsWith('rock') || name === 'stump' ? 0.8 : 1.2;
+        if (canStand(i, j, r, true, w > CORE ? 0.85 : 1.3)) place(name, i, j, true, r);
+    });
+    // Stumps where the woods were cut back, at their edges.
+    eachCell((i, j) => {
+        const k = at(i, j);
+        if (terrain[k] !== GRASS || ARID.has(style[k])) return;
+        const w = woodAt(i, j);
+        if (w > EDGE && w < CORE + 0.02 && rand() < 0.012 && canStand(i, j, 0.7, true)) place('stump', i, j, true, 0.7);
+    });
+    // Undergrowth: bushes gather along the woods' edges and in small thickets out in the open (walked through:
+    // a bush that stops you reads as an invisible wall).
+    const clump = (ci: number, cj: number, n: number, spread: number, fn: (i: number, j: number) => boolean) => {
+        for (let tries = 0, got = 0; got < n && tries < n * 6; tries++) {
+            const i = Math.round(ci + (rand() - 0.5) * 2 * spread), j = Math.round(cj + (rand() - 0.5) * 2 * spread);
+            if (inMap(i, j) && i < W && j < W && fn(i, j)) got++;
+        }
+    };
+    const bushOk = (i: number, j: number) => {
+        const k = at(i, j);
+        return (terrain[k] === GRASS || terrain[k] === DIRT) && !ARID.has(style[k]) && height[k] <= 6;
+    };
+    eachCell((i, j) => {
+        if (!bushOk(i, j)) return;
+        const w = woodAt(i, j);
+        const chance = w > CORE ? 0.006 : w > EDGE - 0.03 ? 0.03 : 0.003;
+        if (rand() >= chance) return;
+        // One kind per thicket (the berries all red, or all white), a few plants close together.
+        const kind = pick(bushes);
+        clump(i, j, intIn(2, 4), 2, (bi, bj) => {
+            if (!bushOk(bi, bj) || !canStand(bi, bj, 0.62, false, 0.95)) return false;
+            place(rand() < 0.75 ? kind : pick(bushes), bi, bj, false, 0.62);
+            return true;
+        });
+    });
+    // Flowering shrubs: bright clumps out in the meadows.
+    eachCell((i, j) => {
+        if (terrain[at(i, j)] !== GRASS || ARID.has(style[at(i, j)]) || woodAt(i, j) > EDGE || rand() >= 0.0022) return;
+        const kind = pick(['dbush_blue', 'dbush_orange', 'dbush_pink']);
+        clump(i, j, intIn(2, 4), 1.6, (bi, bj) => {
+            if (terrain[at(bi, bj)] !== GRASS || !canStand(bi, bj, 0.55, false, 0.9)) return false;
+            place(kind, bi, bj, false, 0.55);
+            return true;
+        });
+    });
+    // Tall grass in tufts of a few, in the open and along the woods' edges (never a carpet of it).
+    eachCell((i, j) => {
+        if (!bushOk(i, j) || rand() >= (woodAt(i, j) > CORE ? 0.002 : 0.009)) return;
+        clump(i, j, intIn(3, 6), 2.2, (bi, bj) => {
+            if (!bushOk(bi, bj) || !canStand(bi, bj, 0.42, false, 0.95)) return false;
+            place(`tallgrass${intIn(1, 4)}`, bi, bj, false, 0.42);
+            return true;
+        });
+    });
+    // Boulders: scattered on rocky ground, now and then a pair or three together elsewhere.
+    eachCell((i, j) => {
+        const k = at(i, j);
+        const t = terrain[k];
+        if (t === WATER || t === SAND || t === VOID) return;
+        const chance = t === STONE ? 0.014 : 0.002;
+        if (rand() >= chance) return;
+        clump(i, j, rand() < 0.35 ? intIn(2, 3) : 1, 1.5, (bi, bj) => {
+            const tt = terrain[at(bi, bj)];
+            if (tt === WATER || tt === SAND || !canStand(bi, bj, 0.75, true, 0.9)) return false;
+            place(rock(), bi, bj, true, 0.75);
+            return true;
+        });
+    });
     // Each land's own landmarks of nature: obsidian spires on Pyraxis's heights, crystal outcrops in
     // the Void Wastes, ruins standing in the salt, coral in Aquatica's shallows.
-    scatter(160 * S2, 3, (i, j) => { if (styleAt(i, j) === STYLE.OBSIDIAN) place('obsidian', i, j, true); }, [STONE], MAX_HEIGHT);
-    scatter(220 * S2, 2, (i, j) => { if (styleAt(i, j) === STYLE.CRYSTAL) place(pick(['crystal1', 'crystal1', 'crystal2']), i, j, true); }, [STONE], MAX_HEIGHT);
+    eachCell((i, j) => {
+        const k = at(i, j);
+        if (terrain[k] !== STONE) return;
+        if (style[k] === STYLE.OBSIDIAN && rand() < 0.03 && canStand(i, j, 1.2, true, 1.4)) place('obsidian', i, j, true, 1.2);
+        else if (style[k] === STYLE.CRYSTAL && rand() < 0.045 && canStand(i, j, 0.9, true, 1.3)) place(pick(['crystal1', 'crystal1', 'crystal2']), i, j, true, 0.9);
+    });
     for (let n = 0, tries = 0; n < Math.round(14 * S2) && tries < 2000; tries++) {
         const ci = intIn(30, W - 30), cj = intIn(30, W - 30);
-        if (!inKingdom(ci, cj, 'earth') || styleAt(ci, cj) !== STYLE.SALT || !free(ci, cj, 4)) continue;
+        if (!inKingdom(ci, cj, 'earth') || styleAt(ci, cj) !== STYLE.SALT || !free(ci, cj, 4) || !roomFor(ci, cj, 5)) continue;
         // A fallen colonnade: a ring of pillars, some broken, a stretch of wall.
         for (let a = 0; a < 8; a++) {
             const i = Math.round(ci + Math.cos(a * 0.785) * 4), j = Math.round(cj + Math.sin(a * 0.785) * 4);
-            if (free(i, j, 0) && terrain[at(i, j)] !== SAND) place(rand() < 0.45 ? 'pillar' : rand() < 0.6 ? 'pillar_broken' : 'ruinwall', i, j, true);
+            if (free(i, j, 0) && terrain[at(i, j)] !== SAND) place(rand() < 0.45 ? 'pillar' : rand() < 0.6 ? 'pillar_broken' : 'ruinwall', i, j, true, 0.7);
         }
         n++;
     }
     // The beach: driftwood, rocks and reeds (no trees or bushes); sand piles and pebbles on the ground.
-    scatter(120 * S, 3, (i, j) => place(rand() < 0.6 ? 'driftwood1' : 'driftwood2', i, j, true), [SAND], 1, 340, 0.3);
-    scatter(60 * S, 3, (i, j) => place(`rock${intIn(1, 5)}`, i, j, true), [SAND], 1);
-    scatter(260 * S, 1, (i, j) => place(`tallgrass${intIn(1, 4)}`, i, j, false), [SAND], 1, 350, 0.55);
+    scatter(120 * S, 1.2, (i, j) => place(rand() < 0.6 ? 'driftwood1' : 'driftwood2', i, j, true, 1.2), [SAND], 1, 340, 0.3);
+    scatter(60 * S, 0.8, (i, j) => place(`rock${intIn(1, 5)}`, i, j, true, 0.8), [SAND], 1);
+    scatter(260 * S, 0.42, (i, j) => place(`tallgrass${intIn(1, 4)}`, i, j, false, 0.42), [SAND], 1, 350, 0.55);
     for (let j = 0; j < N; j++) {
         for (let i = 0; i < N; i++) {
             const k = at(i, j);

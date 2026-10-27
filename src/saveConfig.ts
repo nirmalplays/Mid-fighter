@@ -109,7 +109,7 @@ export interface FighterSave {
 
 export function defaultSave(): FighterSave {
     return {
-        version: 5,
+        version: 6,
         scene: 'world',
         world: { u: WORLD_TILES / 2 + 0.5, v: WORLD_TILES / 2 + 0.5, set: false },
         tool: 'none',
@@ -154,7 +154,7 @@ export function defaultSave(): FighterSave {
 
 export const saveSystem = createSaveSystem<FighterSave>({
     key: 'bounce-lab-save',
-    version: 5,
+    version: 6,
     defaultSave,
     migrations: {
         // v2: the map grew from 256 to 384 tiles, so an old position no longer matches the land.
@@ -180,6 +180,20 @@ export const saveSystem = createSaveSystem<FighterSave>({
         // v5: the story's quest line. A game already under way keeps its campaign (Land 1 counts as done).
         5: (s, def) => {
             s.quest = { ...def.quest, done: s.kingdom !== null && s.kingdom !== undefined };
+        },
+        // v6: the continent grew from 384 to 512 tiles and everything on it spread out: an old position (and the
+        // explored map) no longer matches the land, so the hero wakes at home and the map is unexplored again.
+        6: (s, def) => {
+            s.world = { ...def.world };
+            s.explored = '';
+            // Things the story had you set down move with the land around them (those in caves are lost).
+            const q = s.quest as { placed?: { id: string; u: number; v: number }[] } | undefined;
+            if (q && Array.isArray(q.placed)) {
+                const c0 = 384 / 2, c1 = WORLD_TILES / 2, k = WORLD_TILES / 384;
+                q.placed = q.placed
+                    .filter((p) => p && Number.isFinite(p.u) && Number.isFinite(p.v) && p.u < 384 && p.v < 384)
+                    .map((p) => ({ ...p, u: c1 + (p.u - c0) * k, v: c1 + (p.v - c0) * k }));
+            }
         },
     },
     validate(s, def) {
