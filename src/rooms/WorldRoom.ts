@@ -38,6 +38,8 @@ interface Pose {
     dead: boolean;
     /** Sword held, 0-29, or -1 for the original iron sword. */
     sword: number;
+    /** How the hero is dressed (world/heroLook.ts encodeLook), relayed as-is; '' when not sent. */
+    look?: string;
 }
 
 // Client → server.
@@ -188,7 +190,7 @@ export default class WorldRoom extends GameRoom<Protocol> {
             const pose = this.poses.get(id);
             players[id] = {
                 name: other.username,
-                pose: pose ? { scene: pose.scene, u: pose.u, v: pose.v, z: pose.z, face: pose.face, anim: pose.anim, tool: pose.tool, dead: pose.dead, sword: pose.sword } : null,
+                pose: pose ? { scene: pose.scene, u: pose.u, v: pose.v, z: pose.z, face: pose.face, anim: pose.anim, tool: pose.tool, dead: pose.dead, sword: pose.sword, look: pose.look ?? '' } : null,
             };
         }
         this.sendTo(playerId, { type: 'snapshot', players });
@@ -200,7 +202,7 @@ export default class WorldRoom extends GameRoom<Protocol> {
             case 'pose': {
                 const pose = this.validate(sender.id, payload);
                 if (!pose) return;
-                this.broadcast({ type: 'pose', id: sender.id, scene: pose.scene, u: pose.u, v: pose.v, z: pose.z, face: pose.face, anim: pose.anim, tool: pose.tool, dead: pose.dead, sword: pose.sword });
+                this.broadcast({ type: 'pose', id: sender.id, scene: pose.scene, u: pose.u, v: pose.v, z: pose.z, face: pose.face, anim: pose.anim, tool: pose.tool, dead: pose.dead, sword: pose.sword, look: pose.look ?? '' });
                 break;
             }
             case 'act':
@@ -406,6 +408,7 @@ export default class WorldRoom extends GameRoom<Protocol> {
             scene, u: nu, v: nv, z: Math.min(400, Math.max(0, z)),
             face: Math.min(7, Math.max(0, Math.round(face))), anim: m.anim, tool: m.tool, dead: m.dead === true,
             sword: typeof m.sword === 'number' && Number.isInteger(m.sword) && m.sword >= -1 && m.sword < 30 ? m.sword : -1, at: now,
+            look: typeof m.look === 'string' && /^[a-z0-9.]{1,80}$/.test(m.look) ? m.look : (prev?.look ?? ''),
         };
         this.poses.set(id, clean);
         return clean;

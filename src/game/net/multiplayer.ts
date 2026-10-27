@@ -7,6 +7,7 @@
  */
 import RundotGameAPI from '@series-inc/rundot-game-sdk/api';
 import { store } from '../../state/store.ts';
+import { encodeLook, getLook } from '../world/heroLook.ts';
 
 export interface RemotePose {
     scene: 'world';
@@ -19,6 +20,8 @@ export interface RemotePose {
     dead?: boolean;
     /** Which sword (0-29) they hold, or -1 for the original iron sword. */
     sword?: number;
+    /** How their hero is dressed (world/heroLook.ts encodeLook); filled in by sendPose. */
+    look?: string;
 }
 
 /** The server's combat snapshot (see shared/sim.ts GameSim.snapshot) and when it arrived. */
@@ -96,7 +99,7 @@ function handle(msg: Msg): void {
         case 'pose': {
             const id = msg.id as string;
             if (id === room?.playerId) return;
-            ensure(id).pose = { scene: msg.scene as 'world', u: msg.u as number, v: msg.v as number, z: msg.z as number, face: msg.face as number, anim: msg.anim as string, tool: msg.tool as string, dead: msg.dead === true, sword: typeof msg.sword === 'number' ? msg.sword : -1 };
+            ensure(id).pose = { scene: msg.scene as 'world', u: msg.u as number, v: msg.v as number, z: msg.z as number, face: msg.face as number, anim: msg.anim as string, tool: msg.tool as string, dead: msg.dead === true, sword: typeof msg.sword === 'number' ? msg.sword : -1, look: typeof msg.look === 'string' ? msg.look : undefined };
             break;
         }
         case 'act': {
@@ -232,12 +235,14 @@ function sendPose(p: RemotePose): void {
     if (!room) return;
     const now = performance.now();
     if (now - lastSent < 100) return;
-    const key = `${p.scene}|${p.u.toFixed(2)}|${p.v.toFixed(2)}|${Math.round(p.z)}|${p.face}|${p.anim}|${p.tool}|${p.sword ?? -1}`;
+    // Our hero's look rides along with the pose, so the others draw us as we are dressed.
+    const look = encodeLook(getLook());
+    const key = `${p.scene}|${p.u.toFixed(2)}|${p.v.toFixed(2)}|${Math.round(p.z)}|${p.face}|${p.anim}|${p.tool}|${p.sword ?? -1}|${look}`;
     if (key === lastKey && now - lastSent < 1000) return;
     lastSent = now;
     lastKey = key;
     try {
-        room.send({ type: 'pose', ...p });
+        room.send({ type: 'pose', ...p, look });
     } catch (err) {
         console.warn('[multiplayer] send failed', err);
     }
