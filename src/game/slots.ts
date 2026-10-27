@@ -103,7 +103,7 @@ export const slots = {
         const key = `meh-slot-${id}`;
         saveSystem.setKey(key);
         saveSystem.data = defaultSave();
-        saveSystem.data.hero = { name: hero, look: { ...look } };
+        saveSystem.data.hero = { ...saveSystem.data.hero, name: hero, look: { ...look } };
         setLook(look);
         index.slots.push({ id, key, name, hero, where: 'The beginning', seconds: 0, updated: Date.now() });
         index.last = id;

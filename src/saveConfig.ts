@@ -11,6 +11,7 @@ import {
     type Bag, type Buildings, type CardId, type ItemId, type Stats,
 } from './game/survival.ts';
 import { ELEMENTS, LANDMARKS, NPCS, type Element, type NpcId } from './game/eidolon.ts';
+import { isClassId, type ClassId } from './game/classes.ts';
 import { ACC_COLORS, ACCS, DEFAULT_LOOK, HAIR_COLORS, HAIRS, OUTFITS, SKINS, type HeroLook } from './game/world/heroLook.ts';
 
 /** The story's quest line (Land 1: game/story/quest.ts). */
@@ -104,7 +105,7 @@ export interface FighterSave {
     chests: Record<string, number>;
     quest: QuestSave;
     /** The hero this journey follows: the name the player chose and their look (world/heroLook.ts). */
-    hero: { name: string; look: HeroLook };
+    hero: { name: string; look: HeroLook; cls: ClassId };
 }
 
 export function defaultSave(): FighterSave {
@@ -148,7 +149,7 @@ export function defaultSave(): FighterSave {
         stats: emptyStats(),
         chests: {},
         quest: { land: 1, main: 0, side: {}, flags: [], n: {}, lyra: 30, pressure: 0, done: false, placed: [] },
-        hero: { name: '', look: { ...DEFAULT_LOOK } },
+        hero: { name: '', look: { ...DEFAULT_LOOK }, cls: 'warrior' },
     };
 }
 
@@ -280,7 +281,8 @@ export const saveSystem = createSaveSystem<FighterSave>({
         if (typeof s.chests !== 'object' || !s.chests || Array.isArray(s.chests)) s.chests = {};
         if (s.world.u >= MAP_TILES || s.world.v >= MAP_TILES) s.world = { ...def.world };
         // The hero's name and look.
-        if (typeof s.hero !== 'object' || !s.hero) s.hero = { name: '', look: { ...DEFAULT_LOOK } };
+        if (typeof s.hero !== 'object' || !s.hero) s.hero = { name: '', look: { ...DEFAULT_LOOK }, cls: 'warrior' };
+        if (!isClassId(s.hero.cls)) s.hero.cls = 'warrior';
         if (typeof s.hero.name !== 'string') s.hero.name = '';
         s.hero.name = s.hero.name.slice(0, 20);
         if (typeof s.hero.look !== 'object' || !s.hero.look) s.hero.look = { ...DEFAULT_LOOK };
