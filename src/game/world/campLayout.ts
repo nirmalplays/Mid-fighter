@@ -88,10 +88,9 @@ export function campPieces(): CampPiece[] {
     // ---- before the gate: torches, sandbags, crates, chevaux-de-frise, a spiked ditch
     out.push(P('camp_torch', -1.42, R + 0.75, null, { fire: { lift: 88, scale: 0.6 } }));
     out.push(P('camp_torch', 1.42, R + 0.75, null, { fire: { lift: 88, scale: 0.6 } }));
-    out.push(P('camp_sandbags_u', -3.5, R + 1, 'solid', { ruin: '' }));
-    out.push(P('camp_sandbags_u', 3.5, R + 1, 'solid', { ruin: '' }));
-    out.push(P('camp_crates', -2.4, R + 1.1, 'solid', { ruin: '' }));
-    out.push(P('camp_barrels', 2.4, R + 1.1, 'solid', { ruin: '' }));
+    // (kept a cell clear of the gate towers' legs, so nothing is drawn into them)
+    out.push(P('camp_sandbags_u', -3.6, R + 1.2, 'solid', { ruin: '' }));
+    out.push(P('camp_sandbags_u', 3.6, R + 1.2, 'solid', { ruin: '' }));
     out.push(P('camp_cheval_u', -2.1, R + 2.6, 'solid'));
     out.push(P('camp_cheval_u', 2.1, R + 2.6, 'solid'));
     out.push(P('camp_cheval_v', R + 1.5, 2, 'solid'));
@@ -107,22 +106,22 @@ export function campPieces(): CampPiece[] {
     out.push(P('camp_bench_u', 0.15, -1.5, null));
     out.push(P('camp_bench_u', -0.6, 1.45, null));
     out.push(P('camp_banner', 1.25, -1.25, 'solid', { cloth: 'camp_banner_cloth', ruin: '' }));
-    // ---- where the camp's people sleep
+    // ---- where the camp's people sleep: one tent in the open back corner (the front corners are hidden by the
+    // palisade and crowded by the healer's and totem's tents)
     out.push(P('tent_cream', -4.5, -4.4, 'wall'));
-    out.push(P('tent_green', -4.5, 4.3, 'wall'));
-    out.push(P('tent_cream', 4.4, 4.3, 'wall'));
-    // ---- by the gate, inside: braziers, crates, the notice board
-    out.push(P('camp_brazier', -1.55, R - 1.3, 'solid', { fire: { lift: 52, scale: 0.75 } }));
-    out.push(P('camp_brazier', 1.55, R - 1.3, 'solid', { fire: { lift: 52, scale: 0.75 } }));
-    out.push(P('camp_board', 2.6, R - 1.2, 'solid'));
-    out.push(P('camp_crates', -2.7, R - 1.2, 'solid', { ruin: '' }));
-    // ---- water: the well and a barrel by the healer
-    out.push(P('camp_well', -4.6, -0.5, 'solid'));
-    out.push(P('camp_water', -4.6, 1.6, 'solid'));
-    // ---- the forge's corner: weapon racks; the training ground: a dummy
-    out.push(P('camp_rack_v', 4.6, -1.6, 'solid'));
-    out.push(P('camp_rack_u', 4.4, -4.6, 'solid'));
-    out.push(P('camp_dummy', 4.6, 1.3, 'solid', { ruin: '' }));
+    // ---- inside the gate: braziers flanking the way in, a cell clear of the gate towers; the notice board and
+    // stores beside the yard (not pressed against the towers)
+    out.push(P('camp_brazier', -1, R - 2, 'solid', { fire: { lift: 52, scale: 0.75 } }));
+    out.push(P('camp_brazier', 1, R - 2, 'solid', { fire: { lift: 52, scale: 0.75 } }));
+    out.push(P('camp_board', 1.6, 2.8, 'solid'));
+    out.push(P('camp_crates', -1.6, 2.8, 'solid', { ruin: '' }));
+    // ---- water: the well and a barrel by the healer, clear of the palisade
+    out.push(P('camp_well', -4, -1, 'solid'));
+    out.push(P('camp_water', -4, 1, 'solid'));
+    // ---- the forge's corner: weapon racks; the training ground: a dummy (all off the palisade and the forge's tent)
+    out.push(P('camp_rack_v', 4.4, 0, 'solid'));
+    out.push(P('camp_rack_u', 4, -4.2, 'solid'));
+    out.push(P('camp_dummy', 4, 1.6, 'solid', { ruin: '' }));
     // ---- the storehouse's stacks
     out.push(P('camp_crates', -1.7, -4.7, 'solid'));
     out.push(P('camp_barrels', 1.7, -4.7, 'solid'));

@@ -33,6 +33,12 @@ const TOUCH_RANGE = 1.1;
 const POP_MS = 420;
 /** If a pickup request is not answered (someone else got it, or it was lost), ask again after this. */
 const RETRY_MS = 1500;
+/**
+ * How far a drifting gem may stray from where it really lies (tiles). The simulation hands it over only to a
+ * player within 2.6 tiles of that spot (sim.ts PICKUP_SLACK): a gem drawn further out could chase you and
+ * cling to you, every request refused, until it expired.
+ */
+const LEASH = 2.0;
 
 /** A drop as the simulation describes it. */
 export interface ViewDrop {
@@ -145,13 +151,20 @@ export function createDropView(opts: {
                 }
                 const sinceBorn = clock - s.born;
 
-                // Gems near the player drift toward them.
+                // Gems near the player drift toward them, on a leash from where they really lie; once the player
+                // is out of reach of that spot they settle back onto it.
                 const away = Math.hypot(p.u - s.u, p.v - s.v);
+                const reach = Math.hypot(p.u - d.u, p.v - d.v);
                 const usable = p.alive && opts.wantsSkill(s.skill);
-                if (usable && s.age > POP_MS && away < MAGNET_RANGE && away > 0.05) {
+                if (usable && s.age > POP_MS && reach < MAGNET_RANGE && away > 0.05) {
                     const stepLen = Math.min(away, (MAGNET_SPEED * dtMs) / 1000);
                     s.u += ((p.u - s.u) / away) * stepLen;
                     s.v += ((p.v - s.v) / away) * stepLen;
+                    const off = Math.hypot(s.u - d.u, s.v - d.v);
+                    if (off > LEASH) {
+                        s.u = d.u + ((s.u - d.u) / off) * LEASH;
+                        s.v = d.v + ((s.v - d.v) / off) * LEASH;
+                    }
                 } else {
                     s.u += (d.u - s.u) * Math.min(1, dtMs / 120);
                     s.v += (d.v - s.v) * Math.min(1, dtMs / 120);
@@ -172,7 +185,7 @@ export function createDropView(opts: {
                 const blink = s.age > DROP_LIFE_MS - BLINK_MS && Math.floor(s.age / 180) % 2 === 0;
                 s.sprite.alpha = blink ? 0.25 : 1;
 
-                if (usable && sinceBorn > POP_MS && Math.hypot(p.u - s.u, p.v - s.v) < TOUCH_RANGE && clock - s.asked > RETRY_MS) {
+                if (usable && sinceBorn > POP_MS && reach < MAGNET_RANGE && Math.hypot(p.u - s.u, p.v - s.v) < TOUCH_RANGE && clock - s.asked > RETRY_MS) {
                     s.asked = clock;
                     opts.onTouch(d.id, s.skill);
                 }

@@ -39,6 +39,11 @@ const FRAME_MS: Record<string, number> = {
     sit: 130, getup: 110, damage: 120, die: 150,
 };
 
+/** The sheet each animation's sword poses were measured on (tools/extract-sword-poses.py PAIRS). */
+const POSE_SHEET: Record<string, string> = {
+    idle: 'idle:hold', walk: 'walk:hold', run: 'run', attack: 'attack', interact: 'interact:hold', damage: 'damage:hold', getup: 'getup:hold', sit: 'sit:hold',
+};
+
 const attackKey = (t: Tool): string =>
     t === 'sword' ? 'attack:sword' : t === 'axe' ? 'swing:axe' : t === 'pickaxe' ? 'swing:pickaxe' : t === 'hammer' ? 'swing:hammer' : 'attack';
 const useKey = (t: Tool): string => {
@@ -133,7 +138,9 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
         return key.endsWith(':sword') ? key.replace(':sword', ':hold') : key;
     };
     const resolve = (action: string, tool: Tool): Texture[][] | undefined => {
-        if (skinned(tool)) tool = 'hold';
+        // With a custom sword the run is the plain run (there is no carrying-a-tool run, and the walk would
+        // not match the sword's poses).
+        if (skinned(tool)) tool = action === 'run' ? 'none' : 'hold';
         const chain: string[] = [];
         if (tool !== 'none') {
             chain.push(`${action}:${tool}`);
@@ -188,9 +195,14 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
     xray.addChild(xrayBody);
     xray.alpha = 0.3;
     const swordSprites = [makeSwordSprite(body), makeSwordSprite(xrayBody)];
-    /** Place the custom sword for the frame being shown (or hide it when there is none). */
-    const showSword = (anim: string | null, row: number, idx: number) => {
-        const pose = skinned(tool) && anim ? SWORD_POSE[anim]?.[row]?.[idx] : null;
+    /**
+     * Place the custom sword for the frame being shown (or hide it when there is none). Its poses were measured
+     * on one sheet per animation: on any other (a fallback while that one loads) the hand is elsewhere, so the
+     * sword stays hidden rather than float beside the body.
+     */
+    const showSword = (anim: string | null, row: number, idx: number, sheet?: Texture[][]) => {
+        const posed = anim !== null && POSE_SHEET[anim] !== undefined && sheet !== undefined && sheet === sheetOf(POSE_SHEET[anim]);
+        const pose = skinned(tool) && posed ? SWORD_POSE[anim!]?.[row]?.[idx] : null;
         if (!pose) {
             for (const s of swordSprites) s.visible = false;
             return;
@@ -261,8 +273,8 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
         }
     };
 
-    const setFrame = (tex: Texture | undefined, flip: boolean, tint: number, poseAnim: string | null = null, row = 0, idx = 0) => {
-        showSword(poseAnim, row, idx);
+    const setFrame = (tex: Texture | undefined, flip: boolean, tint: number, poseAnim: string | null = null, row = 0, idx = 0, sheet?: Texture[][]) => {
+        showSword(poseAnim, row, idx, sheet);
         if (tex && tex !== shown) {
             shown = tex;
             body.texture = tex;
@@ -295,7 +307,7 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
             const idx = Math.floor(act.clock / ms);
             if (row && idx >= row.length) {
                 if (act.hold) {
-                    setFrame(row[row.length - 1], face.flip, 0xffffff, action, face.row, row.length - 1);
+                    setFrame(row[row.length - 1], face.flip, 0xffffff, action, face.row, row.length - 1, sheet);
                     mode = act.then;
                     act = null;
                     return;
@@ -304,7 +316,7 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
                 act = null;
                 clock = 0;
             } else if (row) {
-                setFrame(row[idx], face.flip, act.tint ?? 0xffffff, action, face.row, idx);
+                setFrame(row[idx], face.flip, act.tint ?? 0xffffff, action, face.row, idx, sheet);
                 return;
             }
             if (mode === 'act') return; // sheet still loading: wait on the fallback frame
@@ -321,7 +333,7 @@ export function createCharacter(onTool: (tool: Tool) => void): Character {
         const row = sheet?.[face.row];
         if (row) {
             const frame = Math.floor(clock / FRAME_MS[anim]) % row.length;
-            setFrame(row[frame], face.flip, 0xffffff, anim, face.row, frame);
+            setFrame(row[frame], face.flip, 0xffffff, anim, face.row, frame, sheet);
         }
     };
 

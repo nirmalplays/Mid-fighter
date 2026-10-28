@@ -40,6 +40,7 @@ import { createMonsterView } from './monsters.ts';
 import { createWorldSim } from './worldSim.ts';
 import { ISO_ANCHORS, ISO_FRAMES, ISO_SCALE } from './isoAtlas.ts';
 import { VISTAS } from './vistas.ts';
+import { WALL_R } from './campLayout.ts';
 import { generateWorld, GRASS, MAX_HEIGHT, SAND, STONE, VOID, WATER, type Flat } from './mapGen.ts';
 import { STYLES } from './biomes.ts';
 import { createSurvivalLayer, isTree, nearestBoss } from './survivalLayer.ts';
@@ -1543,12 +1544,22 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         syncChunks();
     });
 
-    // Tile springs: stepping on a tile dips it, then it bounces back.
+    // Tile springs: stepping on a tile dips it, then it bounces back. Not where things stand that are not drawn
+    // with a cell (a camp's palisade, tents and benches, a house, a tower, the story's props, a vista's
+    // buildings): the ground would bob up over their feet and down from under them.
     const springs = new Map<number, Spring>();
+    const still = new Uint8Array(MAP_TILES * MAP_TILES);
+    const hold = (ci: number, cj: number, r: number) => {
+        for (let j = Math.max(0, Math.floor(cj - r)); j <= Math.min(MAP_TILES - 1, Math.ceil(cj + r)); j++) {
+            for (let i = Math.max(0, Math.floor(ci - r)); i <= Math.min(MAP_TILES - 1, Math.ceil(ci + r)); i++) still[j * MAP_TILES + i] = 1;
+        }
+    };
+    for (const L of LANDMARKS) hold(L.i, L.j, L.kind === 'camp' ? WALL_R + 3 : L.r + 2);
+    for (const v of VISTAS) if (v.kind !== 'cascade') hold(v.i, v.j, v.r);
     const kick = (i: number, j: number, vy: number) => {
         if (i < 0 || j < 0 || i >= MAP_TILES || j >= MAP_TILES) return;
         const k = j * MAP_TILES + i;
-        if (map.terrain[k] === WATER) return;
+        if (map.terrain[k] === WATER || still[k]) return;
         const sp = springs.get(k) ?? { y: 0, vy: 0 };
         sp.vy += vy;
         springs.set(k, sp);
