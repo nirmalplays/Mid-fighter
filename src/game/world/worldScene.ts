@@ -38,7 +38,8 @@ import { cooldownFor, maxCharges, SPELLS } from './spells.ts';
 import { createDropView, POTION_COLOR, SKILL_COLOR, SKILL_NAMES, type DropKind, type Skill } from './drops.ts';
 import { createMonsterView } from './monsters.ts';
 import { createWorldSim } from './worldSim.ts';
-import { ISO_FRAMES, ISO_SCALE } from './isoAtlas.ts';
+import { ISO_ANCHORS, ISO_FRAMES, ISO_SCALE } from './isoAtlas.ts';
+import { VISTAS } from './vistas.ts';
 import { generateWorld, GRASS, MAX_HEIGHT, SAND, STONE, VOID, WATER, type Flat } from './mapGen.ts';
 import { STYLES } from './biomes.ts';
 import { createSurvivalLayer, isTree, nearestBoss } from './survivalLayer.ts';
@@ -93,6 +94,20 @@ const TOOL_DAMAGE: Record<string, number> = {
 /** Source px of the iso art → atlas px. Top-face centre of a 500 px tile is (250, 139); every frame is centred on x. */
 const ANCHOR_CUBE_Y = 139 * ISO_SCALE;
 const ANCHOR_TALL_Y = (500 + 139) * ISO_SCALE;
+/** Animated props: frames named `<base>_f1`, `_f2`, ... cycle (the vistas' falls, foam and windmill sails). */
+const ANIM_FRAMES = new Map<string, string[]>();
+for (const name of Object.keys(ISO_FRAMES).sort()) {
+    const m = /^(.+)_f\d+$/.exec(name);
+    if (!m) continue;
+    let list = ANIM_FRAMES.get(m[1]);
+    if (!list) ANIM_FRAMES.set(m[1], (list = []));
+    list.push(name);
+}
+/** ms per frame, by animation (the rest run at FALL_MS). */
+const FRAME_MS: Record<string, number> = { windmill: 190 };
+const FALL_MS = 95;
+/** Things that cast no shadow on the ground under them (they lie flat, hang, pour or float). */
+const NO_SHADOW = /^(tallgrass|dbush|big_|hole|ladder|skull|bones|candle|mush|l?fall_|l?foam_|float_|dragon_|wheat|pumpkin|fence_|books|stained_)/;
 
 /** Screen position of grid point (u, v). */
 const sx = (u: number, v: number) => (u - v) * TILE_DX;
@@ -138,6 +153,9 @@ interface Chunk {
     waves: Wave[];
     ripples: Ripple[];
     cells: Map<number, CellSprites>;
+    /** Props that play frames, or bob in the air. */
+    anims: { sprite: Sprite; frames: string[]; ms: number; phase: number; at: number }[];
+    bobs: { sprite: Sprite; baseY: number; phase: number }[];
 }
 
 export function createWorldScene(app: Application, stage: Stage): Scene {
@@ -162,7 +180,8 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         const tex = frame(name);
         const s = new Sprite(tex);
         const tall = tex.height > 200;
-        s.anchor.set(0.5, (tall ? ANCHOR_TALL_Y : ANCHOR_CUBE_Y) / tex.height);
+        const own = ISO_ANCHORS[name];
+        s.anchor.set(0.5, (own !== undefined ? own * ISO_SCALE : tall ? ANCHOR_TALL_Y : ANCHOR_CUBE_Y) / tex.height);
         s.position.set(Math.round(x), Math.round(y));
         return s;
     };
@@ -333,6 +352,8 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         const waves: Wave[] = [];
         const ripples: Ripple[] = [];
         const cells = new Map<number, CellSprites>();
+        const anims: Chunk['anims'] = [];
+        const bobs: Chunk['bobs'] = [];
 
         for (let dj = 0; dj < CHUNK_TILES; dj++) {
             for (let di = 0; di < CHUNK_TILES; di++) {
@@ -450,8 +471,12 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             objects.addChild(s);
             sprites.push(s);
             survival.trackProp(n, s);
+            const anim = /^(.+)_f\d+$/.exec(p.name);
+            const frames = anim && ANIM_FRAMES.get(anim[1]);
+            if (anim && frames) anims.push({ sprite: s, frames, ms: FRAME_MS[anim[1]] ?? FALL_MS, phase: (p.i * 7 + p.j * 3) % frames.length, at: -1 });
+            if (p.name.startsWith('float_')) bobs.push({ sprite: s, baseY: s.y, phase: (p.i * 1.7 + p.j * 2.3) % 6.28 });
             // A soft shadow grounds everything that stands (tall grass and flowers excepted).
-            if (!/^(tallgrass|dbush|big_|hole|ladder|skull|bones|candle|mush)/.test(p.name)) {
+            if (!NO_SHADOW.test(p.name)) {
                 const big = isTree(p.name) ? (p.name.endsWith('_s2') || p.name.startsWith('tree_bamboo') ? 0.8 : p.name.endsWith('_s3') ? 1.1 : 1.45) : p.name.startsWith('rock') ? 0.95 : 1.1;
                 const sh = new Sprite(shadowTex);
                 sh.anchor.set(0.5);
@@ -462,12 +487,12 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                 sprites.push(sh);
             }
             const cell = cells.get(k);
-            if (cell) {
+            if (cell && !p.name.startsWith('float_')) {
                 cell.sprites.push(s);
                 cell.base.push(s.y);
             }
         }
-        return { sprites, props: propIds, waves, ripples, cells };
+        return { sprites, props: propIds, waves, ripples, cells, anims, bobs };
     };
 
     const unloadChunk = (c: Chunk) => {
@@ -1382,6 +1407,19 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         fadeGfx.rect(0, 0, app.screen.width, app.screen.height).fill({ color: 0x000000, alpha: a });
         if (t >= DOOR_OUT + DOOR_HOLD + DOOR_IN) door = null;
     };
+    /** The vista the player is in (world/vistas.ts): its name comes up on arrival, the first time with some experience. */
+    let atVista: string | null = null;
+    const noteVista = () => {
+        const v = VISTAS.find((x) => Math.hypot(pu - x.i - 0.5, pv - x.j - 0.5) < x.r * (atVista === x.id ? 1.15 : 0.8));
+        if ((v?.id ?? null) === atVista) return;
+        atVista = v?.id ?? null;
+        if (!v) return;
+        banner(v.name);
+        if (progress.discover(`vista:${v.id}`)) {
+            sfx('chapter', 0.7);
+            dropView.text(player.x, player.y - 92, 'Discovered! +25 XP', 0xfde68a);
+        }
+    };
     /** Where the player is: the overworld or an interior (its music, its dark, its foes coming out). */
     const noteWhere = () => {
         const n = map.place[Math.floor(pv) * MAP_TILES + Math.floor(pu)] ?? 0;
@@ -1735,6 +1773,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         weather.update(ticker.deltaMS);
         stepDoor(ticker.deltaMS);
         noteWhere();
+        noteVista();
         {
             const st = store.get();
             const torch = buffMs.night > 0 ? TORCH_R.elixir : st.fire || st.sheltered ? TORCH_R.fire : TORCH_R.base;
@@ -2140,6 +2179,15 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                 r.sprite.alpha = 0.5 * (1 - t) * (1 - t);
                 r.sprite.y = r.baseY + Math.sin(clock / WAVE_MS + r.phase) * 2.4;
             }
+            // The vistas: falls pouring, sails turning, lanterns drifting.
+            for (const a of c.anims) {
+                const f = (Math.floor(clock / a.ms) + a.phase) % a.frames.length;
+                if (f !== a.at) {
+                    a.at = f;
+                    a.sprite.texture = frame(a.frames[f]);
+                }
+            }
+            for (const b of c.bobs) b.sprite.y = b.baseY + Math.sin(clock / 900 + b.phase) * 7;
         }
 
         joyGfx.clear();

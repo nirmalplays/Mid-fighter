@@ -110,7 +110,7 @@ export interface FighterSave {
 
 export function defaultSave(): FighterSave {
     return {
-        version: 7,
+        version: 8,
         scene: 'world',
         world: { u: WORLD_TILES / 2 + 0.5, v: WORLD_TILES / 2 + 0.5, set: false },
         tool: 'none',
@@ -155,7 +155,7 @@ export function defaultSave(): FighterSave {
 
 export const saveSystem = createSaveSystem<FighterSave>({
     key: 'bounce-lab-save',
-    version: 7,
+    version: 8,
     defaultSave,
     migrations: {
         // v2: the map grew from 256 to 384 tiles, so an old position no longer matches the land.
@@ -201,6 +201,41 @@ export const saveSystem = createSaveSystem<FighterSave>({
         7: (s, def) => {
             const w = s.world as { u?: number; v?: number } | undefined;
             if (!w || !(Number(w.u) < WORLD_TILES && Number(w.v) < WORLD_TILES)) s.world = { ...def.world };
+        },
+        // v8: the continent grew from 512 to 576 tiles by a ring of wild land round its edge: the old land (and every
+        // place on it) now lies 32 tiles further in. Positions on it and the explored map move with it; anyone saved
+        // inside a cave (the caves moved out with the edge) wakes at home.
+        8: (s, def) => {
+            const OFF = 32, OLD = 512;
+            const w = s.world as { u?: number; v?: number; set?: boolean } | undefined;
+            s.world = w && Number(w.u) < OLD && Number(w.v) < OLD ? { ...w, u: Number(w.u) + OFF, v: Number(w.v) + OFF } : { ...def.world };
+            const q = s.quest as { placed?: { id: string; u: number; v: number }[] } | undefined;
+            if (q && Array.isArray(q.placed)) {
+                q.placed = q.placed
+                    .filter((p) => p && Number.isFinite(p.u) && Number.isFinite(p.v) && p.u < OLD && p.v < OLD)
+                    .map((p) => ({ ...p, u: p.u + OFF, v: p.v + OFF }));
+            }
+            // The fog of war: one bit per 8 × 8 tiles, 64 cells across before and 72 now (shifted 4 in).
+            if (typeof s.explored === 'string' && s.explored) {
+                try {
+                    const raw = atob(s.explored);
+                    const n0 = OLD / 8, n1 = (OLD + 2 * OFF) / 8, d = OFF / 8;
+                    const bits = new Uint8Array(Math.ceil((n1 * n1) / 8));
+                    for (let y = 0; y < n0; y++) {
+                        for (let x = 0; x < n0; x++) {
+                            const a = y * n0 + x;
+                            if (!((raw.charCodeAt(a >> 3) >> (a & 7)) & 1)) continue;
+                            const b = (y + d) * n1 + x + d;
+                            bits[b >> 3] |= 1 << (b & 7);
+                        }
+                    }
+                    let out = '';
+                    for (const v of bits) out += String.fromCharCode(v);
+                    s.explored = btoa(out);
+                } catch {
+                    s.explored = '';
+                }
+            }
         },
     },
     validate(s, def) {

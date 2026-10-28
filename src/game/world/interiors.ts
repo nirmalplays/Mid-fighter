@@ -10,7 +10,7 @@
  *   'E' the way out to the overworld    'L' a ladder up to `up`   'H' a hole down (to whatever names this one as `up`)
  *   'T' torch   'l' lantern   'c' crystal   'm' glowing mushrooms   's' stalagmite   'r' rock (to mine)
  *   'x' crate   'k' scaffold  'K' mine cart  '=' rails   'p' pillar   'P' broken pillar   'B' bookshelf
- *   'o' obsidian  'b' bones   'n' candle    'C' chest   'M' foes wait here
+^ *   'o' boulder   'b' bones   'n' candle    'C' chest   'M' foes wait here
  *   'A', 'W', 'Y' (any letter not above) where the story's places sit (see `sites`).
  */
 import { MAP_TILES, WORLD_TILES } from './constants.ts';

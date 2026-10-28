@@ -3,7 +3,8 @@
  * paints its lands' biomes with them (ash flats and badlands in Pyraxis, wind-meadows and white cliffs
  * in Zephyria, beaches and coral sand in Aquatica, salt flats and crystal ground in the Void Wastes),
  * and every cave, dungeon and ruin (world/interiors.ts) its floor and walls. A style picks the cube art,
- * its tint, an overlay drawn on top now and then, and the colour on the map.
+ * its tint, an overlay drawn on top now and then, and the colour on the map. The vistas (world/vistas.ts)
+ * have a few of their own: mossy cliffs, basalt, the dragon's hide, paving and tilled fields.
  */
 
 export interface GroundStyle {
@@ -25,6 +26,8 @@ export const STYLE = {
     NONE: 0,
     // The overworld's biomes.
     ASH: 1, BADLANDS: 2, OBSIDIAN: 3, MEADOW: 4, CLIFF: 5, BEACH: 6, CORAL: 7, SALT: 8, CRYSTAL: 9, SCORCH: 10,
+    // The vistas'.
+    MOSS_CLIFF: 11, BASALT: 12, SCALES: 13, PLAZA: 14, FIELD: 15,
     // Caves, dungeons and ruins: a floor and a wall for each look.
     ASH_FLOOR: 20, ASH_WALL: 21,
     CRYPT_FLOOR: 22, CRYPT_WALL: 23,
@@ -48,6 +51,11 @@ export const STYLES: Record<number, GroundStyle> = {
     [STYLE.CORAL]: { cube: () => 'sand', tint: 0xffd8d0, overlay: { name: 'pebbles', chance: 0.12 }, map: [236, 196, 186] },
     [STYLE.SALT]: { cube: () => 'sand', tint: 0xf4f2fa, overlay: { name: 'salt', chance: 0.4 }, map: [236, 234, 242] },
     [STYLE.CRYSTAL]: { cube: (v) => (v === 3 ? 'gem_amat' : stone(v)), tint: 0x9a88b8, map: [140, 120, 170] },
+    [STYLE.MOSS_CLIFF]: { cube: stone, tint: 0xb8c4ac, overlay: { name: 'moss', chance: 0.4 }, map: [128, 140, 116] },
+    [STYLE.BASALT]: { cube: stone, tint: 0x6e5e5a, overlay: { name: 'lavacrack', chance: 0.08 }, map: [84, 68, 64] },
+    [STYLE.SCALES]: { cube: () => 'scales', tint: 0xffffff, map: [190, 84, 64] },
+    [STYLE.PLAZA]: { cube: () => 'brick', tint: 0xeee6da, overlay: { name: 'moss', chance: 0.05 }, map: [204, 196, 184] },
+    [STYLE.FIELD]: { cube: dirt, tint: 0xd8aa78, map: [176, 132, 84] },
 
     [STYLE.ASH_FLOOR]: { cube: dirt, tint: 0xa88068, overlay: { name: 'rubble', chance: 0.05 }, map: [150, 112, 90] },
     [STYLE.ASH_WALL]: { cube: (v) => (v === 3 ? 'ore_copper' : stone(v)), tint: 0x7a5a54, map: [60, 42, 40] },

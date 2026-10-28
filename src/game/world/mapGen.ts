@@ -1,10 +1,11 @@
 /**
- * Deterministic isometric map (MAP_TILES square, 384 today): terrain per cell (grass, dirt, sand,
+ * Deterministic isometric map (MAP_TILES square): terrain per cell (grass, dirt, sand,
  * rocky ground, water) plus flat decals, standing props, treasure chests and the fixed
  * places of Eidolon (game/eidolon.ts): four kingdoms with their own look (Pyraxis rocky and
  * bare, Zephyria high, Aquatica full of lakes, Terragrim thick with forest), each with a camp,
- * guardians, a warden's arena, towers and houses, and the Void Citadel in the middle. Pure data — the
- * renderer in worldScene.ts turns it into sprites a chunk at a time.
+ * guardians, a warden's arena, towers and houses, and the Void Citadel in the middle, plus the
+ * vistas composed into the wild land (world/vistas.ts). Pure data — the renderer in worldScene.ts
+ * turns it into sprites a chunk at a time.
  */
 import { MAP_TILES, WORLD_TILES } from './constants.ts';
 import { type BuildingId } from '../survival.ts';
@@ -12,6 +13,7 @@ import { layCamps } from './campLayout.ts';
 import { ELEMENTS, LANDMARKS, regionOf, type Element } from '../eidolon.ts';
 import { STYLE } from './biomes.ts';
 import { charAt, entranceCell, glowsOf, PLACED, THEMES } from './interiors.ts';
+import { layVistas } from './vistas.ts';
 
 export const GRASS = 0;
 export const DIRT = 1;
@@ -383,6 +385,14 @@ export function generateWorld(seed = 1337): WorldMap {
         }
     }
 
+    // ---- The vistas (world/vistas.ts): their cliffs, pools, fields and coils, with the land eased round them.
+    const vistas = layVistas({
+        N, terrain, height, rand, maxHeight: MAX_HEIGHT,
+        T: { GRASS, DIRT, SAND, STONE, WATER },
+        reserved: (i, j) =>
+            LANDMARKS.some((L) => Math.hypot(i - L.i, j - L.j) <= L.r + 2) || doorways.some(({ at: e }) => Math.hypot(i - e.i, j - e.j) <= 4),
+    });
+
     // ---- The lands' own ground. Pyraxis: scorched earth, ash flats, ochre badlands, obsidian heights.
     // Zephyria: wind-meadows under white cliffs. Aquatica: wide beaches, coral sand. The Void Wastes:
     // salt flats and crystal-shot rock.
@@ -391,7 +401,7 @@ export function generateWorld(seed = 1337): WorldMap {
         for (let i = 0; i < W; i++) {
             const k = at(i, j);
             const t = terrain[k];
-            if (t === WATER || t === VOID) continue;
+            if (t === WATER || t === VOID || vistas.own[k]) continue;
             const land = regionOf(i + 0.5, j + 0.5);
             const n = fbm(i * 0.018, j * 0.018, 3, 400);
             const m = vnoise(i * 0.09, j * 0.09, 410);
@@ -414,6 +424,7 @@ export function generateWorld(seed = 1337): WorldMap {
             }
         }
     }
+    for (const [k, st] of vistas.paint) style[k] = st;
     const styleAt = (i: number, j: number) => style[at(i, j)];
     const ARID = new Set<number>([STYLE.ASH, STYLE.BADLANDS, STYLE.SCORCH, STYLE.SALT, STYLE.BEACH, STYLE.CORAL]);
 
@@ -493,7 +504,7 @@ export function generateWorld(seed = 1337): WorldMap {
                 const dh = Math.abs(height[nk] - height[k]);
                 if (dh > 1) continue;
                 const wander = 3 * vnoise(ni * 0.3, nj * 0.3, 120);
-                const cost = g[k] + (diag ? 1.41 : 1) + 2.5 * dh + wander + (height[nk] >= 6 ? 4 : 0) + (terrain[nk] === SAND ? 1.5 : 0);
+                const cost = g[k] + (diag ? 1.41 : 1) + 2.5 * dh + wander + (height[nk] >= 6 ? 4 : 0) + (terrain[nk] === SAND ? 1.5 : 0) + (vistas.own[nk] ? 30 : 0);
                 if (cost < g[nk]) {
                     g[nk] = cost;
                     prev[nk] = k;
@@ -538,6 +549,8 @@ export function generateWorld(seed = 1337): WorldMap {
     }
     // A road to every landmark (to the edge of its flat ground).
     for (const L of LANDMARKS) if (L.kind !== 'citadel') waypoints.push(at(L.i, Math.min(N - 1, L.j + L.r)));
+    // And to the front of every vista.
+    waypoints.push(...vistas.gates);
 
     const nodes = [spawnCell, ...waypoints];
     const linked = new Set<number>([0]);
@@ -589,7 +602,7 @@ export function generateWorld(seed = 1337): WorldMap {
     for (let j = 0; j < N; j++) {
         for (let i = 0; i < N; i++) {
             const k = at(i, j);
-            if (road.has(k)) continue;
+            if (road.has(k) || vistas.own[k]) continue;
             const t = terrain[k];
             const r = rand();
             if (t === GRASS) {
@@ -616,6 +629,7 @@ export function generateWorld(seed = 1337): WorldMap {
     const camps = layCamps({ N, terrain, style, blocked, solid: solidAt, flats, occupied, dirt: DIRT });
     // ---- end CAMP TEAM
     const nearLandmark = (i: number, j: number, pad: number) => LANDMARKS.some((L) => Math.hypot(i - L.i, j - L.j) <= L.r + pad);
+    for (let k = 0; k < vistas.own.length; k++) if (vistas.own[k]) occupied.add(k);
     for (const { at: e } of doorways) for (let j = e.j - 3; j <= e.j + 3; j++) for (let i = e.i - 3; i <= e.i + 3; i++) if (inMap(i, j)) occupied.add(at(i, j));
 
     // Every standing thing has a footprint (a radius in tiles). Nothing is set down inside another's, so a bush
@@ -702,6 +716,10 @@ export function generateWorld(seed = 1337): WorldMap {
         solidAt[k] = 1;
     }
     const rock = () => `rock${intIn(1, 5)}`;
+    // What stands in the vistas (before the wild growth, so it keeps clear of them).
+    for (const p of vistas.props) place(p.name, p.i, p.j, p.solid, p.r);
+    for (const k of vistas.blocks) blocked[k] = 1;
+    flats.push(...vistas.flats);
 
     // ---- The lie of the land: woods, woodland edges and open meadows, from a broad noise field, so the
     // land reads as places (a forest, a clearing, a meadow) instead of an even sprinkle.
@@ -772,11 +790,11 @@ export function generateWorld(seed = 1337): WorldMap {
         const w = woodAt(i, j);
         if (rand() >= (w > CORE ? 0.2 : w > EDGE ? 0.08 : 0.03)) return;
         let name: string;
-        // Pyraxis: stands of scorched pine (the resin the story asks for), dead trees, obsidian, cacti in the badlands.
-        if (st === STYLE.ASH) name = rand() < 0.45 ? 'pine_scorched' : rand() < 0.5 ? 'deadtree' : rand() < 0.5 ? 'obsidian' : rock();
+        // Pyraxis: stands of scorched pine (the resin the story asks for), dead trees, cacti in the badlands.
+        if (st === STYLE.ASH) name = rand() < 0.5 ? 'pine_scorched' : rand() < 0.65 ? 'deadtree' : rock();
         else if (st === STYLE.BADLANDS) name = rand() < 0.45 ? 'cactus' : rand() < 0.4 ? 'pine_scorched' : rock();
         else if (st === STYLE.SCORCH) name = rand() < 0.6 ? 'pine_scorched' : rand() < 0.5 ? 'deadtree' : rand() < 0.6 ? rock() : 'stump';
-        else if (st === STYLE.SALT) name = rand() < 0.4 ? 'deadtree' : rand() < 0.5 ? 'ruinwall' : rand() < 0.5 ? 'pillar_broken' : 'crystal1';
+        else if (st === STYLE.SALT) name = rand() < 0.45 ? 'deadtree' : rand() < 0.55 ? 'ruinwall' : 'pillar_broken';
         else if (st === STYLE.BEACH || st === STYLE.CORAL) {
             if (w < EDGE && rand() < 0.6) return;
             name = 'palm';
@@ -849,14 +867,8 @@ export function generateWorld(seed = 1337): WorldMap {
             return true;
         });
     });
-    // Each land's own landmarks of nature: obsidian spires on Pyraxis's heights, crystal outcrops in
-    // the Void Wastes, ruins standing in the salt, coral in Aquatica's shallows.
-    eachCell((i, j) => {
-        const k = at(i, j);
-        if (terrain[k] !== STONE) return;
-        if (style[k] === STYLE.OBSIDIAN && rand() < 0.03 && canStand(i, j, 1.2, true, 1.4)) place('obsidian', i, j, true, 1.2);
-        else if (style[k] === STYLE.CRYSTAL && rand() < 0.045 && canStand(i, j, 0.9, true, 1.3)) place(pick(['crystal1', 'crystal1', 'crystal2']), i, j, true, 0.9);
-    });
+    // Each land's own landmarks of nature: ruins standing in the Void Wastes' salt, coral in Aquatica's shallows.
+    // (No obsidian spires or crystal clusters out in the open: they read as clutter, not as places.)
     for (let n = 0, tries = 0; n < Math.round(14 * S2) && tries < 2000; tries++) {
         const ci = intIn(30, W - 30), cj = intIn(30, W - 30);
         if (!inKingdom(ci, cj, 'earth') || styleAt(ci, cj) !== STYLE.SALT || !free(ci, cj, 4) || !roomFor(ci, cj, 5)) continue;
@@ -990,7 +1002,7 @@ export function generateWorld(seed = 1337): WorldMap {
                     case 'p': stand('pillar', i, j); break;
                     case 'P': stand('pillar_broken', i, j); break;
                     case 'B': stand('bookshelf', i, j); break;
-                    case 'o': stand('obsidian', i, j); break;
+                    case 'o': stand(`rock${intIn(1, 5)}`, i, j); break;
                     case 'b': loose(rand() < 0.5 ? 'skull' : 'bones', i, j); break;
                     case 'n': loose('candle', i, j); light(i, j, 0xffd890, 2); break;
                     case 'C': chests.push({ i, j }); blocked[at(i, j)] = 1; solidAt[at(i, j)] = 1; break;

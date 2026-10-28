@@ -88,6 +88,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import iso_extra
 sprites.update(iso_extra.make())
 import iso_camp; sprites.update(iso_camp.make())  # the kingdoms' war camps (Camp team)
+import iso_vista  # the vistas' set pieces; some name where their tile centre sits (source px from the top)
+vista, anchors = iso_vista.make()
+sprites.update(vista)
 
 scaled = {n: im.resize((round(im.width * K), round(im.height * K)), Image.LANCZOS) for n, im in sprites.items()}
 
@@ -121,4 +124,7 @@ with open("src/game/world/isoAtlas.ts", "w", encoding="utf-8", newline="\n") as 
     f.write(f"export const ISO_SCALE = {K!r};\n")
     f.write("export const ISO_FRAMES: Record<string, [number, number, number, number, number, number, number, number]> = ")
     f.write(json.dumps(frames, indent=4) + ";\n")
+    f.write("/** Frames whose tile centre is not where the usual canvases put it: source px from the top of the full frame. */\n")
+    f.write("export const ISO_ANCHORS: Record<string, number> = ")
+    f.write(json.dumps({n: round(a, 1) for n, a in sorted(anchors.items())}, indent=4) + ";\n")
 print(len(frames), "sprites,", sheet.size)
