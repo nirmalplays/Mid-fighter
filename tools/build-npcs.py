@@ -23,7 +23,8 @@ OUTLINE = np.array([52, 1, 41], dtype=np.float32)
 # Who, and how they are dressed. Colours are RGB; `hair` styles: cap, long, bun, bald, cropped, none.
 PEOPLE = {
     'lyra': dict(skin=(242, 208, 176), cloth=(47, 111, 106), hair=(138, 58, 28), style='long', band=(224, 169, 72)),
-    'orin': dict(skin=(232, 200, 168), cloth=(91, 59, 138), hair=None, style='bald', beard=(236, 232, 226), beard_size=(0.62, 0.55)),
+    # (cropped silver hair under a gold band and a trimmed grey beard: the face stays clear, not a white egg)
+    'orin': dict(skin=(226, 188, 152), cloth=(91, 59, 138), hair=(176, 178, 194), style='cropped', band=(224, 169, 72), beard=(168, 166, 180), beard_size=(0.5, 0.34)),
     'bram': dict(skin=(200, 144, 106), cloth=(120, 120, 128), hair=(86, 56, 36), style='cropped', beard=(110, 72, 44), beard_size=(0.5, 0.36), apron=(122, 74, 42)),
     'kael': dict(skin=(240, 200, 160), cloth=(58, 90, 138), hair=(214, 112, 40), style='cap', goggles=(240, 190, 80)),
     'lin': dict(skin=(230, 198, 168), cloth=(106, 176, 216), hair=(240, 240, 246), style='bun', scarf=(224, 169, 72)),
@@ -88,10 +89,12 @@ def recolor(cell, cx, cy, R, p):
     for mask, col in ((light & head, p['skin']), (light & ~head, p['cloth'])):
         for k in range(3):
             out[:, :, k] = np.where(mask, np.clip(col[k] * (0.55 + 0.45 * lum), 0, 255), out[:, :, k])
-    # The plum strap lines take a darker shade of the cloth.
-    strap = a & ~light & (r > 90) & (r < 140) & ~head
-    for k in range(3):
-        out[:, :, k] = np.where(strap, p['cloth'][k] * 0.6, out[:, :, k])
+    # The soft edge between the light art and the plum outline (and the strap lines) take the new colour too,
+    # shaded by how light they were: left alone, those pale pixels showed as white grain round every outline.
+    edge = a & ~light & (r > 90) & (r <= 170)
+    for mask, col in ((edge & head, p['skin']), (edge & ~head, p['cloth'])):
+        for k in range(3):
+            out[:, :, k] = np.where(mask, np.clip(col[k] * (0.25 + 0.6 * lum), 0, 255), out[:, :, k])
     return out
 
 

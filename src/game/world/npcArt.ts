@@ -13,6 +13,9 @@ import { dressTexture } from './heroLook.ts';
 export const NPC_ASSETS = Object.entries(NPC_SHEETS).flatMap(([who, anims]) =>
     Object.keys(anims).map((anim) => ({ alias: `npc:${who}:${anim}`, src: `images/world/npc/${who}-${anim}.png` })));
 
+/** Which sheet (tools/build-npcs.py) dresses each camp person, by their id in eidolon.ts NPCS. */
+export const NPC_ART: Record<string, string> = { theron: 'orin', varis: 'bram', lyra: 'lyra', kael: 'kael', lin: 'lin', thorne: 'thorne', nerissa: 'nerissa' };
+
 const cut = new Map<string, Texture[][]>();
 /** Frames (5 facing rows × columns) of a person's animation: 'hero' is the player's own art. */
 export function framesOf(who: string, anim: string): Texture[][] | null {

@@ -26,6 +26,7 @@ import {
 } from './SurvivalHud.tsx';
 import { PuzzlePanel, StoryHud } from './StoryPanels.tsx';
 import { CinematicOverlay } from './CinematicOverlay.tsx';
+import { useUiZoom } from './uiScale.ts';
 import { PauseMenu } from './PauseMenu.tsx';
 import { Coach, ObjectiveCard } from './Guide.tsx';
 import { DebatePanel, LoomPanel } from './StoryPuzzles.tsx';
@@ -226,6 +227,8 @@ export default function Hud() {
     const roomCode = useStore((s) => s.roomCode);
     // A cinematic owns the screen: only its letterbox and lines show.
     const cinematic = useStore((s) => s.cine !== null);
+    // A short screen lays the HUD out taller and zooms it down to fit (ui/uiScale.ts).
+    const zoom = useUiZoom();
     // The story starts with Master Orin's prologue the first time.
     useEffect(() => {
         const id = window.setTimeout(maybeShowIntro, 600);
@@ -234,7 +237,8 @@ export default function Hud() {
 
     if (cinematic) return <CinematicOverlay />;
     return (
-        <div className="pointer-events-none absolute inset-0 pt-safe-top">
+        // (a percentage size is not zoomed, so the root still fills the screen; inside it, every px is zoomed)
+        <div className="pointer-events-none absolute inset-0 pt-safe-top" style={{ zoom }}>
             {/* Top: the minimap and what is around (left), the stone buttons (right); bottom: the vitals */}
             <TopButtons />
             <StatusLine />

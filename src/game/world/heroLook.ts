@@ -247,11 +247,15 @@ function dressCells(file: string, src: CanvasImageSource & { width: number; heig
                     d[p] = c3[0] * k2;
                     d[p + 1] = c3[1] * k2;
                     d[p + 2] = c3[2] * k2;
-                } else if (r > 90 && r < 140 && !inHead) {
-                    const c3 = y - hy > hipY ? col.legs : col.cloth;
-                    d[p] = c3[0] * 0.6;
-                    d[p + 1] = c3[1] * 0.6;
-                    d[p + 2] = c3[2] * 0.6;
+                } else if (r > 90 && r <= 170) {
+                    // The soft edge between the light art and its dark outline: take the new colour too, shaded by
+                    // how light it was. (Left alone, these pale pixels showed as white grain round every outline.)
+                    const lum = (r + gg + b) / 759;
+                    const c3 = inHead ? col.skin : y - hy > hipY ? col.legs : col.cloth;
+                    const k2 = 0.25 + 0.6 * lum;
+                    d[p] = c3[0] * k2;
+                    d[p + 1] = c3[1] * k2;
+                    d[p + 2] = c3[2] * k2;
                 }
             }
         }

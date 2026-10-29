@@ -30,6 +30,8 @@ import { MAX_HEIGHT, VOID } from '../game/world/mapGen.ts';
 import { store, useStore, type AppState } from '../state/store.ts';
 import { drawIcon, ELEMENT_ICON, Ico, Sigil, type IconName } from './icons.tsx';
 import { useCompact, useHudLayout } from './HudTop.tsx';
+import { uiHeight, uiZoom } from './uiScale.ts';
+import { NPC_ART } from '../game/world/npcArt.ts';
 
 /** A boss's name and health across the bottom while one is near. */
 export function BossBar() {
@@ -536,11 +538,13 @@ function BagFlourish({ className, flip = false }: { className: string; flip?: bo
 
 // ------------------------------------------------------------------ people, places, story
 
-/** A portrait from the character art, tinted like the person in the world. */
-function Portrait({ tint, size = 72 }: { tint: string; size?: number }) {
+/** A portrait: the person's own idle art (tools/build-npcs.py; the hero's sheet for anyone without one), on their colour. */
+function Portrait({ tint, who, size = 72 }: { tint: string; who?: string | null; size?: number }) {
+    const art = who ? NPC_ART[who] : undefined;
+    const sheet = art ? `images/world/npc/${art}-idle.png` : 'images/world/char/idle.png';
     return (
         <div className="shrink-0 overflow-hidden rounded-xl" style={{ width: size, height: size, border: `3px solid ${BROWN}`, background: `radial-gradient(circle at 50% 40%, ${tint}, #3b2253)` }}>
-            <div style={{ width: '100%', height: '100%', backgroundImage: 'url(images/world/char/idle.png)', backgroundRepeat: 'no-repeat', backgroundSize: `${(1440 / 180) * size * 1.25}px ${(900 / 180) * size * 1.25}px`, backgroundPosition: `${-size * 0.3}px ${-size * 0.18}px` }} />
+            <div style={{ width: '100%', height: '100%', backgroundImage: `url(${sheet})`, backgroundRepeat: 'no-repeat', backgroundSize: `${(1440 / 180) * size * 1.25}px ${(900 / 180) * size * 1.25}px`, backgroundPosition: `${-size * 0.3}px ${-size * 0.18}px` }} />
         </div>
     );
 }
@@ -565,7 +569,7 @@ export function NpcPanel() {
     return (
         <Panel z={25} width={520} onClose={close}>
             <div className="flex items-start gap-3">
-                <Portrait tint={hex(npc.tint)} />
+                <Portrait tint={hex(npc.tint)} who={id} />
                 <div className="flex flex-1 flex-col gap-1">
                     <div className="text-[11px] font-black uppercase tracking-wide" style={{ color: BROWN_DARK }}>{npc.name} · {npc.role}</div>
                     <p className="text-[14px] font-bold leading-snug">{answer === null ? (story && id === 'lyra' ? greet : `"${greet}"`) : story && id === 'lyra' ? npc.talk[answer].a : `"${npc.talk[answer].a}"`}</p>
@@ -663,6 +667,8 @@ export function StoryDialog() {
     const toEnd = useRef(false);
     const speaker = popup?.speaker ?? 'Master Orin';
     const tint = useMemo(() => hex(NPCS.theron.tint), []);
+    // Whoever is speaking (by name), for their portrait.
+    const who = (Object.keys(NPCS) as (keyof typeof NPCS)[]).find((k) => NPCS[k].name === speaker) ?? 'theron';
     useEffect(() => {
         setPage(toEnd.current && popup ? popup.lines.length - 1 : 0);
         toEnd.current = false;
@@ -724,7 +730,7 @@ export function StoryDialog() {
     return (
         <div className="pointer-events-auto absolute inset-0 z-50 flex items-end justify-center pb-6" style={{ background: 'rgba(10,6,16,.55)' }}>
             <div className="flex w-[min(580px,94vw)] items-start gap-3 rounded-2xl p-3" style={PANEL}>
-                <Portrait tint={tint} />
+                <Portrait tint={who ? hex(NPCS[who].tint) : tint} who={who} />
                 <div className="flex flex-1 flex-col gap-1.5">
                     <div className="text-[11px] font-black uppercase tracking-wide" style={{ color: BROWN_DARK }}>{speaker} · {popup.title}</div>
                     <p className="text-[15px] font-bold leading-snug">{pages[page]}</p>
@@ -757,6 +763,7 @@ export function Hotbar4() {
     const gear = useStore((s) => s.gear.weapon);
     const [name, setName] = useState<string | null>(null);
     const timer = useRef(0);
+    const slot = lay.compact ? 48 : 50;
     const pick = (n: number) => {
         commands.emit({ type: 'slot', index: n });
         const id = hotbar[n];
@@ -779,7 +786,7 @@ export function Hotbar4() {
                             className="pointer-events-auto relative flex touch-none items-center justify-center"
                             style={{
                                 // the pack's small frames as 9-slices: stone for a slot, wood with studs for the one in hand
-                                width: lay.compact ? 48 : 50, height: lay.compact ? 48 : 50, boxSizing: 'border-box', borderStyle: 'solid', borderWidth: 8,
+                                width: slot, height: slot, boxSizing: 'border-box', borderStyle: 'solid', borderWidth: 8,
                                 borderImage: `url(images/ui/${sel ? 'slot8' : 'slot5'}.png) 4 fill / 8px stretch`, imageRendering: 'pixelated', opacity: owned ? 1 : 0.45,
                             }}
                             onPointerDown={press(() => pick(n))}
@@ -787,7 +794,8 @@ export function Hotbar4() {
                             {id ? <Icon id={id} size={32} /> : <span className="text-[10px] text-[#2f2a35]/70">hands</span>}
                             {id && !ITEMS[id].tool && <span className="absolute -right-[4px] -top-[5px] text-[11px] text-white" style={{ textShadow: '0 2px 0 #000, 0 0 2px #000' }}>{bag[id]}</span>}
                             <span className="absolute -bottom-[7px] -left-[4px] text-[10px] leading-none text-white" style={{ textShadow: '0 2px 0 #000, 0 0 2px #000' }}>{n + 1}</span>
-                            {sel && <span className="pointer-events-none absolute -inset-[15px]" style={{ backgroundImage: 'url(images/ui/corners-white.png)', backgroundSize: '240px 80px', imageRendering: 'pixelated', animation: 'corners 0.9s steps(1) infinite' }} />}
+                            {/* the brackets hug the slot: each 32 px frame at twice its size, just outside the frame's edge */}
+                            {sel && <span className="pointer-events-none absolute" style={{ inset: -(64 - slot) / 2, backgroundImage: 'url(images/ui/corners-white.png)', backgroundSize: '300% 100%', imageRendering: 'pixelated', animation: 'corners 0.9s steps(1) infinite' }} />}
                         </button>
                     );
                 })}
@@ -1129,7 +1137,7 @@ export function BigMap() {
     const view = useRef({ cu: 0, cv: 0, k: 9, follow: true });
     const drag = useRef<{ x: number; y: number } | null>(null);
     const [, bump] = useState(0);
-    const [legend, setLegend] = useState(() => window.innerHeight >= 560);
+    const [legend, setLegend] = useState(() => uiHeight() >= 560);
     const close = () => store.patch({ bigMap: false });
 
     useEffect(() => {
@@ -1200,7 +1208,9 @@ export function BigMap() {
                         const d = drag.current;
                         if (!d) return;
                         const vw = view.current;
-                        const a = ((e.clientX - d.x) * Math.SQRT2) / vw.k, b = ((e.clientY - d.y) * 2 * Math.SQRT2) / vw.k;
+                        // (the HUD may be zoomed down on a short screen: a finger's travel in its own units)
+                        const z = uiZoom();
+                        const a = ((e.clientX - d.x) * Math.SQRT2) / z / vw.k, b = ((e.clientY - d.y) * 2 * Math.SQRT2) / z / vw.k;
                         vw.cu -= (a + b) / 2;
                         vw.cv -= (b - a) / 2;
                         vw.cu = Math.max(0, Math.min(MAP_TILES, vw.cu));

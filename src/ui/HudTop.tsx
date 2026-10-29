@@ -16,14 +16,15 @@ import { settings, useSettings } from '../game/settings.ts';
 import { store, useStore, type AppState } from '../state/store.ts';
 import { PackIcon, slice } from './px.tsx';
 import { Ico, Sigil, type IconName } from './icons.tsx';
+import { uiHeight } from './uiScale.ts';
 
 const CINZEL = 'var(--font-pixel)';
 
 /** A short screen (a phone held sideways): the HUD tightens up so nothing crowds. */
 export function useCompact(): boolean {
-    const [c, setC] = useState(() => window.innerHeight < 500);
+    const [c, setC] = useState(() => uiHeight() < 500);
     useEffect(() => {
-        const on = () => setC(window.innerHeight < 500);
+        const on = () => setC(uiHeight() < 500);
         window.addEventListener('resize', on);
         return () => window.removeEventListener('resize', on);
     }, []);
@@ -37,7 +38,7 @@ export function useCompact(): boolean {
  */
 export interface HudLayout { compact: boolean; left: number; right: number }
 export function useHudLayout(): HudLayout {
-    const calc = (): HudLayout => (window.innerHeight < 560 ? { compact: true, left: 92, right: 236 } : { compact: false, left: 150, right: 300 });
+    const calc = (): HudLayout => (uiHeight() < 560 ? { compact: true, left: 92, right: 236 } : { compact: false, left: 150, right: 300 });
     const [l, setL] = useState(calc);
     useEffect(() => {
         const on = () => setL((p) => { const n = calc(); return n.compact === p.compact ? p : n; });

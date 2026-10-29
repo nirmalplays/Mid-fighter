@@ -24,14 +24,13 @@ import {
     type Element, type NpcId, type Region,
 } from '../eidolon.ts';
 import { CHAR_CELL } from './characterAtlas.ts';
-import { framesOf } from './npcArt.ts';
+import { framesOf, NPC_ART } from './npcArt.ts';
 
 /** Which dressed figure each camp person wears. */
-const NPC_ART: Record<string, string> = { theron: 'orin', varis: 'bram', lyra: 'lyra', kael: 'kael', lin: 'lin', thorne: 'thorne', nerissa: 'nerissa' };
 import { MAP_TILES, TILE_DX, TILE_DY } from './constants.ts';
 import { STONE, WATER, type WorldMap } from './mapGen.ts';
 import { FX } from './fxAtlas.ts';
-import { createCampView } from './campView.ts';
+import { CLEAR_FRONT, createCampView } from './campView.ts';
 import { WALL_R } from './campLayout.ts';
 import type { ViewMonster } from './monsters.ts';
 
@@ -147,7 +146,8 @@ export function createSurvivalLayer(o: {
     const stand = (s: Sprite, u: number, v: number) => {
         const at = ground(u, v);
         s.position.set(at.x, at.y);
-        s.zIndex = o.zFor(u, v) + 0.05;
+        // clear of the rounded tops of the ground cubes in front of it (campView.ts CLEAR_FRONT)
+        s.zIndex = o.zFor(u, v) + CLEAR_FRONT;
         o.layer.addChild(s);
         all.push(s);
         return s;
@@ -184,7 +184,7 @@ export function createSurvivalLayer(o: {
         const at = ground(c.i + 0.5, c.j + 0.5);
         // Not built yet: a pegged-out plot, a stack of logs and a sign (its name shows as you come near).
         const site = o.isoSprite('camp_site', at.x, at.y);
-        site.zIndex = o.zFor(c.i + 0.5, c.j + 0.5) + 0.04;
+        site.zIndex = o.zFor(c.i + 0.5, c.j + 0.5) + CLEAR_FRONT - 0.001;
         o.layer.addChild(site);
         all.push(site);
         const t = label('', 10);
@@ -207,7 +207,7 @@ export function createSurvivalLayer(o: {
         const flame = new Sprite(campFire[0]);
         flame.anchor.set(0.5, 0.9);
         flame.position.set(at.x, at.y - 2);
-        flame.zIndex = o.zFor(u, v) + 0.08;
+        flame.zIndex = o.zFor(u, v) + CLEAR_FRONT + 0.004; // over the fire pit (campLayout: camp_firepit)
         o.layer.addChild(flame);
         all.push(flame);
         campView.light(fire, u, v);

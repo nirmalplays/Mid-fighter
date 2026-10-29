@@ -11,6 +11,13 @@ import type { CSSProperties, ReactNode } from 'react';
 import { Cloud, Crane, LandscapeBackdrop } from '../Landscape.tsx';
 import type { SceneId } from '../../game/narration.ts';
 
+/**
+ * The four lands' colours in the prologue, one per land and far apart (the kingdoms' own sky blue and
+ * ocean blue read as one colour at this size): Pyraxis's ember, Zephyria's storm-white, Aquatica's deep
+ * sea, the Void Wastes' violet.
+ */
+const LAND_HUE: Record<Element, string> = { fire: '#ff6a3d', air: '#eef3ff', water: '#2f6fe8', earth: '#a978ff' };
+
 /** The part of each 1600 x 900 scene that always shows (the picture fits it whole); backgrounds reach far beyond. */
 const VB = '0 50 1600 800';
 /** An animation that starts `at` (0..1) of the way through a `d`-second scene. */
@@ -497,7 +504,7 @@ const FORGOTTEN = [
     { t: 'the Tide wars', x: 70, y: 50 }, { t: 'who we were', x: 44, y: 70 },
 ];
 function Aftermath({ d }: { d: number }) {
-    const isles: [number, number, string, Element][] = [[330, 520, '#ff6a3d', 'fire'], [560, 300, '#7dd3fc', 'air'], [1060, 320, '#38bdf8', 'water'], [1290, 540, '#c69c5d', 'earth']];
+    const isles: [number, number, string, Element][] = [[330, 520, LAND_HUE.fire, 'fire'], [560, 300, LAND_HUE.air, 'air'], [1060, 320, LAND_HUE.water, 'water'], [1290, 540, LAND_HUE.earth, 'earth']];
     return (
         <Camera d={d} from="translateX(2%) scale(0.98)" to="translateX(-2%) scale(1.05)" origin="50% 50%">
             <Svg>
@@ -554,9 +561,9 @@ function Aftermath({ d }: { d: number }) {
 // ---------------------------------------------------------------- 10. the jailers over the Cores
 // Three Cores with their jailers (Storm, Fire with Ignis, Frost); the Heart itself is in the citadel (the fourth vault).
 const CELLS: { x: number; core: string; eye: string; big?: boolean }[] = [
-    { x: 250, core: '#7dd3fc', eye: '#bae6fd' },
-    { x: 590, core: '#ff6a3d', eye: '#ffd06a', big: true },
-    { x: 1010, core: '#38bdf8', eye: '#a5f3fc' },
+    { x: 250, core: LAND_HUE.air, eye: '#bae6fd' },
+    { x: 590, core: LAND_HUE.fire, eye: '#ffd06a', big: true },
+    { x: 1010, core: LAND_HUE.water, eye: '#a5f3fc' },
 ];
 function Wardens({ d }: { d: number }) {
     return (
@@ -597,7 +604,7 @@ function Wardens({ d }: { d: number }) {
 
 // ---------------------------------------------------------------- 11. three hundred years: the Cores bleeding
 function Cracks({ d }: { d: number }) {
-    const isles: [number, number, string][] = [[330, 380, '#ff6a3d'], [600, 230, '#7dd3fc'], [1000, 240, '#38bdf8'], [1270, 390, '#c084fc']];
+    const isles: [number, number, string][] = [[330, 380, LAND_HUE.fire], [600, 230, LAND_HUE.air], [1000, 240, LAND_HUE.water], [1270, 390, LAND_HUE.earth]];
     return (
         <div className="absolute inset-0" style={at('cs-shake', d, 0.5, 0.12, 'linear both')}>
             <Camera d={d} from="scale(1)" to="scale(1.1)" origin="50% 70%">

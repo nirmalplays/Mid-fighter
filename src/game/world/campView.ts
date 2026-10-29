@@ -10,6 +10,14 @@
 import { Assets, Container, Sprite, Texture, type RenderLayer } from 'pixi.js';
 import { KINGDOMS, LANDMARKS, type Element } from '../eidolon.ts';
 import { campPieces, WALL_R, type CampPiece } from './campLayout.ts';
+import { TILE_DY } from './constants.ts';
+
+/**
+ * Where a standing piece sorts, past its cell's own place: the ground cubes have soft rounded tops that bulge
+ * a little over the cell behind them, so a piece drawn under its two front neighbours' cubes would have its
+ * foot covered (a bench sunk into a tile). It goes just after those cubes, still before anything on them.
+ */
+export const CLEAR_FRONT = TILE_DY - 0.295;
 
 interface Placed {
     piece: CampPiece;
@@ -94,9 +102,8 @@ export function createCampView(o: {
         const placed = pieces.map((piece, n): Placed => {
             const pu = cu + piece.du, pv = cv + piece.dv;
             const at = o.ground(pu, pv);
-            // A piece set off a cell's centre reaches into the cell in front of it: it sorts with that cell, so the
-            // ground drawn there never covers its foot (flat pieces lie under whoever stands on them).
-            const z = piece.flat ? o.zFor(pu, pv) - 0.27 : o.zFor(pu + 0.45, pv + 0.45) + 0.05;
+            // Clear of the ground in front (CLEAR_FRONT); flat pieces lie under whoever stands on them.
+            const z = piece.flat ? o.zFor(pu, pv) - 0.27 : o.zFor(pu, pv) + CLEAR_FRONT;
             const s = add(piece.name.startsWith('tent_') ? tent(piece.name, at.x, at.y) : o.isoSprite(piece.name, at.x, at.y));
             s.zIndex = z;
             const p: Placed = { piece, s, phase: n * 1.37 };

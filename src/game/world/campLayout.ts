@@ -130,6 +130,9 @@ export function campPieces(): CampPiece[] {
     return out;
 }
 
+/** How far a blocking piece's footprint reaches from its centre, in tiles (the cells whose centres it covers). */
+const FOOT = 0.72;
+
 /** The cell (offset from the centre cell) a piece at (du, dv) stands on. */
 export const cellOf = (du: number, dv: number): [number, number] => [Math.floor(du + 0.5), Math.floor(dv + 0.5)];
 
@@ -176,10 +179,17 @@ export function layCamps(m: {
         }
         for (const p of pieces) {
             if (!p.block) continue;
-            const [di, dj] = cellOf(p.du, p.dv);
-            const k = at(L.i + di, L.j + dj);
-            m.blocked[k] = 1;
-            if (p.block === 'solid') m.solid[k] = 1;
+            // A piece set between cells is drawn across them: it stops you on every cell under it, not only the
+            // one its centre rounds to (or you would walk through its other half).
+            const cells = [cellOf(p.du, p.dv)];
+            for (let dj = Math.floor(p.dv) - 1; dj <= Math.ceil(p.dv) + 1; dj++) {
+                for (let di = Math.floor(p.du) - 1; di <= Math.ceil(p.du) + 1; di++) if (Math.hypot(di - p.du, dj - p.dv) <= FOOT) cells.push([di, dj]);
+            }
+            for (const [di, dj] of cells) {
+                const k = at(L.i + di, L.j + dj);
+                m.blocked[k] = 1;
+                if (p.block === 'solid') m.solid[k] = 1;
+            }
         }
         for (const id of BUILDING_IDS) {
             const c = { el: L.el, id, i: L.i + BUILDINGS[id].at[0], j: L.j + BUILDINGS[id].at[1] };

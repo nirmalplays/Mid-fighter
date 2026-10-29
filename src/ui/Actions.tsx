@@ -15,6 +15,7 @@ import { SPELLS } from '../game/world/spells.ts';
 import { store, useStore, type ActKind } from '../state/store.ts';
 import { useHudLayout } from './HudTop.tsx';
 import { press } from './hudKit.tsx';
+import { uiHeight } from './uiScale.ts';
 import { ELEMENT_ICON, Ico, type IconName } from './icons.tsx';
 import { KeyCap, PackButton, PackIcon, slice, SwordSprite } from './px.tsx';
 
@@ -150,7 +151,7 @@ export function ActionCluster() {
     // a sideways phone has its own arc and keeps every button thumb-sized.
     const [scale, setScale] = useState(1);
     useEffect(() => {
-        const fit = () => setScale(compact ? 1 : Math.max(0.66, Math.min(1, window.innerHeight / 600)));
+        const fit = () => setScale(compact ? 1 : Math.max(0.66, Math.min(1, uiHeight() / 600)));
         fit();
         window.addEventListener('resize', fit);
         return () => window.removeEventListener('resize', fit);
