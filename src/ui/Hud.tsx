@@ -13,7 +13,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { commands, type GameCommand } from '../game/commands.ts';
 import { ActionCluster } from './Actions.tsx';
 import { Ico, type IconName } from './icons.tsx';
-import { BottomVitals, EdgeArrow, QuestTracker, StatusLine, TopButtons, WavePlaque } from './HudTop.tsx';
+import { BottomVitals, EdgeArrow, QuestTracker, StatusLine, TopButtons, useCompact, WavePlaque } from './HudTop.tsx';
 import { store, useStore } from '../state/store.ts';
 import { progress } from '../game/progress.ts';
 import { SKILL_BLURB, SKILL_CAP, upgradeCost } from '../game/skills.ts';
@@ -28,6 +28,7 @@ import {
 import { PuzzlePanel, StoryHud } from './StoryPanels.tsx';
 import { CinematicOverlay } from './CinematicOverlay.tsx';
 import { useUiZoom } from './uiScale.ts';
+import { BoonPicker, TalentPanel } from './Progression.tsx';
 import { PauseMenu } from './PauseMenu.tsx';
 import { Coach, ObjectiveCard } from './Guide.tsx';
 import { DebatePanel, LoomPanel } from './StoryPuzzles.tsx';
@@ -77,12 +78,14 @@ function FrogPill() {
 function ReviveTokens() {
     const n = useStore((s) => s.reviveTokens);
     const over = useStore((s) => s.gameOver);
+    // Beside the minimap's lower right (SurvivalHud Radar: 88 px on a phone, 138 otherwise), clear of the quest line.
+    const mini = useCompact() ? 88 : 138;
     if (over) return null;
     return (
         <button
             type="button"
             className="pointer-events-auto absolute flex items-center gap-1 rounded-xl px-2 text-[13px] font-black tabular-nums"
-            style={{ left: 12, top: 120, height: 28, background: '#fff', border: `3px solid ${BROWN}`, color: INK }}
+            style={{ left: `calc(max(12px, env(safe-area-inset-left)) + ${mini + 6}px)`, top: 10 + mini - 28, height: 28, background: '#fff', border: `3px solid ${BROWN}`, color: INK }}
             onPointerDown={(e) => { e.preventDefault(); store.patch({ reviveShop: true }); }}
         >
             <Ico name="heart" size={14} color="#e5484d" />
@@ -354,6 +357,8 @@ export default function Hud() {
             <Buffs />
 
             <ActionCluster />
+            <TalentPanel />
+            <BoonPicker />
             <PauseMenu />
 
             {/* Multiplayer: the room's code (tap to copy) and how many are in it */}

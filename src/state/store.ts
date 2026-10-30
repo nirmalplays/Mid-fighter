@@ -7,6 +7,8 @@
  * Per-frame simulation state stays inside the Pixi scene — patching the
  * store every frame re-renders React every frame.
  */
+import type { Talents } from '../game/talents.ts';
+import type { BoonId, Boons } from '../game/boons.ts';
 import { useSyncExternalStore } from 'react';
 import { defaultSpellSave, type SpellSave } from '../game/world/spells.ts';
 import { emptyBag, emptyBuildings, type Bag, type BuildingId, type Buildings, type CardId, type ItemId } from '../game/survival.ts';
@@ -159,6 +161,15 @@ export interface AppState {
     buildings: Buildings;
     level: number;
     xp: number;
+    /** The skill tree (game/talents.ts): ranks learnt, and whether its panel is open. */
+    talents: Talents;
+    talentsOpen: boolean;
+    /** This run's Surge (game/boons.ts): kills toward the next boon, the boons taken, and the three on offer (the waves hold). */
+    surge: { have: number; need: number };
+    boons: Boons;
+    boonOffer: BoonId[] | null;
+    /** The Fire Bolt: 0..1 ready (1 = ready now); -1 while it is not learnt. */
+    fireReady: number;
     /** The current story objective and how far along it is. */
     objective: { title: string; task: string; have: number; need: number; step: number; how?: string; act?: number; land?: string; sides?: { id: string; title: string; task: string }[] } | null;
     /** The side quest the player chose to follow (the marker and the arrow point at it), or null for the main story. */
@@ -295,6 +306,12 @@ let state: AppState = {
     buildings: emptyBuildings(),
     level: 1,
     xp: 0,
+    talents: {},
+    talentsOpen: false,
+    surge: { have: 0, need: 8 },
+    boons: {},
+    boonOffer: null,
+    fireReady: -1,
     objective: null,
     storyPopup: null,
     storyBack: [],

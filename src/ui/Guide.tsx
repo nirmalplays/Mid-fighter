@@ -109,11 +109,11 @@ export function Coach() {
         // Centred in the room between the movement side and the buttons, above the vitals (never over a thumb).
         <div key={tip.id} className="pointer-events-none absolute z-[12] flex items-center justify-center" style={lay.compact
             // A short screen: just above the vitals and right of the quest card, clear of the hero, the hotbar and every thumb.
-            ? { left: 'calc(12px + min(250px, 30vw) + 12px)', right: lay.right, bottom: 122 }
+            ? { left: lay.left, right: lay.right, bottom: 118 }
             : { left: lay.left, right: lay.right, bottom: 196 }}>
             <div className="flex items-center gap-2 px-3 py-1.5" style={{ background: 'rgba(8,6,14,.82)', border: '2px solid #e0a948', boxShadow: '0 0 0 2px #1a0c10', animation: 'cs-fade-up .35s ease-out both', maxWidth: 'min(640px, 100%)' }}>
                 <span className="flex gap-1">{tip.keys.map((k) => <KeyCap key={k}>{k}</KeyCap>)}</span>
-                <span className="leading-snug text-[#fff3d6]" style={{ fontFamily: 'var(--font-pixel)', fontSize: lay.compact ? 12 : 14 }}>{tip.text}</span>
+                <span className="leading-snug text-[#fff3d6]" style={{ fontFamily: 'var(--font-pixel)', fontSize: lay.compact ? 11 : 14 }}>{tip.text}</span>
             </div>
         </div>
     );

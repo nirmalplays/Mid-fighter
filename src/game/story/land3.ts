@@ -12,9 +12,9 @@ const NER = 'Scholar Nerissa';
 
 const PROPS: PropDef[] = [
     // The Rime-Shelf Outpost (the Sanctuary).
-    { id: 'a_spire', type: 'spire', site: 'camp', at: [0, -2.6] },
-    { id: 'a_altar', type: 'altar', site: 'camp', at: [-1.9, -1.4] },
-    { id: 'a_loom', type: 'loom', site: 'camp', at: [2.2, -1.8] },
+    { id: 'a_spire', type: 'spire', site: 'camp', at: [0, -3.4] },
+    { id: 'a_altar', type: 'altar', site: 'camp', at: [-2.8, -1.8] },
+    { id: 'a_loom', type: 'loom', site: 'camp', at: [2.6, -2.8] },
     { id: 'a_bath', type: 'slab', site: 'icefall', at: [0, 0], name: 'Lyra' },
     // Three frozen magma fissures, and the steam manifold to the Spire.
     ...[[-3, -1], [3, -1], [0, 3]].map(([x, y], n): PropDef => ({ id: `a_fis${n}`, type: 'fault', site: 'vents', at: [x, y], wedge: true, name: 'Frozen fissure', color: 0xff8a3d })),
@@ -108,7 +108,7 @@ const MAIN: Step[] = [
     {
         id: 'a_fortify', quest: "The Trench-Brute's Toll", act: 1,
         task: 'Set 4 Steam-Braziers and 2 Ice-Breaker Ballistas round the outpost',
-        how: 'Craft them at the bench and set them inside the Sanctuary. Braziers also keep frostbite away.',
+        how: 'Craft them at the bench and set them by the outpost\'s gate, the only way in. Braziers also keep frostbite away.',
         goal: { kind: 'place', items: { brazier_beacon: 4, ballista: 2 } }, at: 'camp',
         reward: { xp: 150 },
     },

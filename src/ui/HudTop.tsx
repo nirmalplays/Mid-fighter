@@ -17,14 +17,19 @@ import { store, useStore, type AppState } from '../state/store.ts';
 import { PackIcon, slice } from './px.tsx';
 import { Ico, Sigil, type IconName } from './icons.tsx';
 import { uiHeight } from './uiScale.ts';
+import { Badge, SurgeBar, useTalentPoints } from './Progression.tsx';
 
 const CINZEL = 'var(--font-pixel)';
 
-/** A short screen (a phone held sideways): the HUD tightens up so nothing crowds. */
+/**
+ * A short screen (a phone held sideways): the HUD gives the game the screen. One threshold for every piece
+ * (the same as useHudLayout's), so the whole HUD is either in its phone layout or not.
+ */
+export const PHONE_H = 560;
 export function useCompact(): boolean {
-    const [c, setC] = useState(() => uiHeight() < 500);
+    const [c, setC] = useState(() => uiHeight() < PHONE_H);
     useEffect(() => {
-        const on = () => setC(uiHeight() < 500);
+        const on = () => setC(uiHeight() < PHONE_H);
         window.addEventListener('resize', on);
         return () => window.removeEventListener('resize', on);
     }, []);
@@ -38,7 +43,7 @@ export function useCompact(): boolean {
  */
 export interface HudLayout { compact: boolean; left: number; right: number }
 export function useHudLayout(): HudLayout {
-    const calc = (): HudLayout => (uiHeight() < 560 ? { compact: true, left: 92, right: 236 } : { compact: false, left: 150, right: 300 });
+    const calc = (): HudLayout => (uiHeight() < PHONE_H ? { compact: true, left: 92, right: 284 } : { compact: false, left: 150, right: 300 });
     const [l, setL] = useState(calc);
     useEffect(() => {
         const on = () => setL((p) => { const n = calc(); return n.compact === p.compact ? p : n; });
@@ -109,14 +114,23 @@ export function StoneButton({ label, onPress, children, size = 44, active = fals
 export function TopButtons() {
     const s = useSettings();
     const compact = useCompact();
-    const z = 44; // (a thumb's width, however short the screen)
+    const z = compact ? 52 : 44; // (a thumb's width once the phone's HUD is zoomed down)
     const muted = !s.sound && !s.music;
+    const points = useTalentPoints();
     return (
-        <div className="absolute right-3 top-3 flex items-center gap-2 pt-safe-top" data-quiet>
-            <StoneButton size={z} label={muted ? 'Sound off (tap for on)' : 'Sound on (tap for off)'} onPress={() => settings.set({ sound: muted, music: muted })}>
-                <PixelIcon name={muted ? 'mute' : 'sound'} />
-            </StoneButton>
-            <StoneButton size={z} label="Map (M)" onPress={() => store.patch({ bigMap: true })}><PixelIcon name="map" /></StoneButton>
+        <div className="absolute top-3 flex items-center gap-2 pt-safe-top" style={{ right: 'max(12px, env(safe-area-inset-right))' }} data-quiet>
+            <div className="relative">
+                <StoneButton size={z} label={points > 0 ? `Skill tree (${points} to spend)` : 'Skill tree (T)'} active={points > 0} onPress={() => store.patch({ talentsOpen: true })}>
+                    <Ico name="star" size={22} color={points > 0 ? '#fde68a' : '#fbf7f0'} />
+                </StoneButton>
+                <Badge n={points} />
+            </div>
+            {!compact && (
+                <StoneButton size={z} label={muted ? 'Sound off (tap for on)' : 'Sound on (tap for off)'} onPress={() => settings.set({ sound: muted, music: muted })}>
+                    <PixelIcon name={muted ? 'mute' : 'sound'} />
+                </StoneButton>
+            )}
+            {!compact && <StoneButton size={z} label="Map (M)" onPress={() => store.patch({ bigMap: true })}><PixelIcon name="map" /></StoneButton>}
             <StoneButton size={z} label="Bag (B)" onPress={() => store.patch({ bagTab: 'items' })}><PixelIcon name="bag" /></StoneButton>
             <StoneButton size={z} label="Pause (Esc)" onPress={() => store.patch({ pauseMenu: true })}><PackIcon index={2} size={24} /></StoneButton>
         </div>
@@ -138,6 +152,7 @@ export function StatusLine() {
     const ss = String(sky.left % 60).padStart(2, '0');
     const night = sky.phase === 'night';
     const compact = useCompact();
+    if (compact) return null; // a phone keeps the screen for the game
     return (
         <div className="pointer-events-none absolute left-3 flex items-center gap-2 whitespace-nowrap text-[11px] font-bold text-white/90" style={{ top: compact ? 112 : 154, textShadow: SHADOW }}>
             {region && region !== 'citadel' ? <Sigil el={region} size={16} /> : <Ico name="vortex" size={14} color="#c084fc" />}
@@ -220,10 +235,18 @@ export function QuestTracker() {
     const tracked = useStore((x) => x.tracked);
     const s = { saga: { lyra, pressure, nightIn }, tracked };
     const compact = useCompact();
-    const folded = useSettings().questCollapsed;
+    const foldedSetting = useSettings().questCollapsed;
+    // On a phone it stays one line out of the way; a tap opens it for a few seconds.
+    const [peek, setPeek] = useState(false);
+    useEffect(() => {
+        if (!peek) return;
+        const id = window.setTimeout(() => setPeek(false), 8000);
+        return () => window.clearTimeout(id);
+    }, [peek]);
     if (!obj || !kingdom) return null;
+    const folded = compact ? !peek : foldedSetting;
     const f = obj.need > 0 ? Math.min(1, obj.have / obj.need) : 0;
-    const top = compact ? 130 : 176;
+    const top = compact ? 110 : 176;
     // Folded: one line (the chapter, and how far along), tap to open it again. A new objective still announces itself (ObjectiveCard).
     if (folded) {
         return (
@@ -231,7 +254,7 @@ export function QuestTracker() {
                 key={obj.step}
                 type="button"
                 onPointerDown={(e) => e.stopPropagation()}
-                onClick={() => settings.set({ questCollapsed: false })}
+                onClick={() => (compact ? setPeek(true) : settings.set({ questCollapsed: false }))}
                 aria-label={`Show the quest: ${obj.title}`}
                 aria-expanded={false}
                 className="pointer-events-auto absolute left-3 flex min-h-[40px] max-w-[min(260px,34vw)] items-center gap-1.5 rounded-lg py-1 pl-2 pr-3 text-left"
@@ -325,7 +348,7 @@ export function QuestTracker() {
         <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => settings.set({ questCollapsed: true })}
+            onClick={() => (compact ? setPeek(false) : settings.set({ questCollapsed: true }))}
             aria-label="Fold the quest away"
             aria-expanded
             title="Fold the quest away"
@@ -400,6 +423,7 @@ export function BottomVitals() {
                     <span className="absolute inset-y-0 left-0" style={{ width: `${(xp / need) * 100}%`, background: '#93c5fd' }} />
                 </span>
             </div>
+            <SurgeBar />
         </div>
     );
 }
@@ -470,7 +494,7 @@ export function WavePlaque() {
         pulse = next <= 10;
     }
     return (
-        <div className="pointer-events-none absolute left-1/2 top-2 flex items-center gap-1.5 pt-safe-top" style={{ transform: `translateX(-50%) scale(${compact ? 0.78 : 1})`, transformOrigin: '50% 0', animation: pulse ? 'eid-breathe 1s ease-in-out infinite' : undefined }}>
+        <div className="pointer-events-none absolute left-1/2 top-2 flex items-center gap-1.5 pt-safe-top" style={{ transform: `translateX(-50%) scale(${compact ? 0.62 : 1})`, transformOrigin: '50% 0', animation: pulse ? 'eid-breathe 1s ease-in-out infinite' : undefined }}>
             <Ico name="swords" size={22} color="#e5e7eb" />
             <div className="flex min-w-[170px] flex-col items-center px-4 pb-1 pt-0.5" style={{ ...slice('frame5', 2), color: ink }}>
                 <span className="text-[24px] leading-[0.95]" style={{ fontFamily: 'var(--font-relic)' }}>{title}</span>

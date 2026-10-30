@@ -763,7 +763,7 @@ export function createStoryLayer(o: {
             r.started = true;
             r.waveAt = 0;
             sfx('wave');
-            o.banner(r.id === 'night' ? 'The core bleeds red: a Core-Bleed Siege! Defend the Spire!' : 'The siege begins: defend the Spire!');
+            o.banner(r.id === 'night' ? 'The core bleeds red: a Core-Bleed Siege! Hold the gate!' : 'The siege begins: they are coming for the gate!');
         }
         r.left -= dtMs;
         const elapsed = g.secs * 1000 - r.left;
@@ -771,7 +771,8 @@ export function createStoryLayer(o: {
         while (r.waveAt < due) {
             const w = g.waves[r.waveAt++];
             const a = Math.random() * Math.PI * 2;
-            o.encounter(w.foes, camp.u + Math.cos(a) * 10, camp.v + Math.sin(a) * 10, 3 + r.land.n * 2 + (r.step.act ?? 1));
+            // They gather outside the palisade (its corners are 11.3 tiles out) and can only come in by the gate.
+            o.encounter(w.foes, camp.u + Math.cos(a) * 14, camp.v + Math.sin(a) * 14, 3 + r.land.n * 2 + (r.step.act ?? 1));
             o.banner(`Siege wave ${r.waveAt} of ${g.waves.length}`);
         }
         r.kills -= dtMs;
@@ -1260,9 +1261,10 @@ export function createStoryLayer(o: {
             const pu = u + f.du * 1.1, pv = v + f.dv * 1.1;
             const k = Math.floor(pv) * MAP_TILES + Math.floor(pu);
             if (o.map.blocked[k] === 1) return false;
-            const inCamp = LANDS.some((l) => near(campOf(l), pu, pv) <= 11);
+            // In the camp or before its gate (the siege can only come in that way).
+            const inCamp = LANDS.some((l) => near(campOf(l), pu, pv) <= 14);
             if ((TURRETS.includes(id) || id === 'ley_conduit') && !inCamp) {
-                o.say('That goes inside a Sanctuary', 0xffffff);
+                o.say('That goes at a Sanctuary: by its gate', 0xffffff);
                 return true;
             }
             if (id === 'resonant_wedge') {

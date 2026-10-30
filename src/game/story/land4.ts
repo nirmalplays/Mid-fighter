@@ -19,8 +19,8 @@ const lock = (rift: string, site: string): PropDef[] => [
 
 const PROPS: PropDef[] = [
     // The Grand Coalition Sanctuary.
-    { id: 'v_spire', type: 'spire', site: 'camp', at: [0, -2.6] },
-    { id: 'v_loom', type: 'loom', site: 'camp', at: [2.2, -1.8] },
+    { id: 'v_spire', type: 'spire', site: 'camp', at: [0, -3.4] },
+    { id: 'v_loom', type: 'loom', site: 'camp', at: [2.6, -2.8] },
     // The four Abyssal Tears.
     ...lock('r1', 'rift1'), ...lock('r2', 'rift2'), ...lock('r3', 'rift3'), ...lock('r4', 'rift4'),
     // Malakor's conservatory: the dual astrolabe.

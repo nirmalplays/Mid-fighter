@@ -12,7 +12,7 @@ import { HOTBAR_SLOTS, ITEMS } from '../survival.ts';
 
 const KEYS: Record<string, GameCommand> = {
     ' ': { type: 'attack' }, j: { type: 'attack' }, e: { type: 'use' }, f: { type: 'interact' },
-    c: { type: 'sit' }, g: { type: 'dig' }, r: { type: 'hymn' }, k: { type: 'dodge' }, l: { type: 'dodge' }, q: { type: 'skill' },
+    c: { type: 'sit' }, g: { type: 'dig' }, r: { type: 'hymn' }, k: { type: 'dodge' }, l: { type: 'dodge' }, q: { type: 'skill' }, x: { type: 'firebolt' },
     // Number keys 1-4 pick a hotbar slot. (Shift is held to sprint: see below.)
     ...Object.fromEntries(Array.from({ length: HOTBAR_SLOTS }, (_, i) => [String(i + 1), { type: 'slot', index: i } as GameCommand])),
 };
@@ -54,11 +54,17 @@ export function bindControls(character: Character): Controls {
         // Hurt costs a heart; Die empties them all. Getting up from death restores health (see tick).
         if (c.type === 'hurt' && !character.dead) store.patch({ hp: Math.max(0, store.get().hp - 2) });
         if (c.type === 'die' && !character.dead) store.patch({ hp: 0 });
+        // (casting fire and taking a boon are the player's own business: nothing to show the others as an act)
+        if (c.type === 'firebolt' || c.type === 'boon') return;
         if (c.type !== 'equip' && c.type !== 'spell') net.sendAct(c.type);
         character.command(c);
     });
     const onKey = (e: KeyboardEvent) => {
         if (e.repeat) return;
+        if (e.key.toLowerCase() === 't') {
+            store.patch({ talentsOpen: !store.get().talentsOpen });
+            return;
+        }
         const cmd = KEYS[e.key.toLowerCase()];
         if (cmd) {
             e.preventDefault();

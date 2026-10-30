@@ -42,8 +42,9 @@ export const KINDS: Record<string, KindDef> = {
     kobolt: { hp: 4, speed: 2.8, reach: 1.0, attackMs: 500, hitAt: 0.5, recoverMs: 1200, weight: 3 },
     scorpion: { hp: 10, speed: 1.6, reach: 1.2, attackMs: 700, hitAt: 0.6, recoverMs: 1700, weight: 2 },
     // The newer foes (drawn from the same art, dressed differently: see game/world/monsters.ts).
-    wizard: { hp: 7, speed: 1.7, reach: 1.0, attackMs: 760, hitAt: 0.7, recoverMs: 900, weight: 1, ranged: { range: 7, keep: 4.5, every: 2600, shot: 'bolt', speed: 5, damage: 2 } },
-    archer: { hp: 5, speed: 2.3, reach: 1.0, attackMs: 600, hitAt: 0.7, recoverMs: 700, weight: 2, ranged: { range: 8, keep: 5.5, every: 1900, shot: 'arrow', speed: 9.5, damage: 1 } },
+    // Shooters keep a little distance, but only so far (see FLEE_MS): run them down and they stand and fight.
+    wizard: { hp: 7, speed: 1.7, reach: 1.0, attackMs: 760, hitAt: 0.7, recoverMs: 900, weight: 1, ranged: { range: 7, keep: 3.5, every: 2800, shot: 'bolt', speed: 4.6, damage: 2 } },
+    archer: { hp: 5, speed: 2.3, reach: 1.0, attackMs: 600, hitAt: 0.7, recoverMs: 800, weight: 2, ranged: { range: 7, keep: 3.5, every: 2400, shot: 'arrow', speed: 7, damage: 1 } },
     brute: { hp: 26, speed: 1.35, reach: 1.45, attackMs: 950, hitAt: 0.6, recoverMs: 1800, weight: 1, dmgMul: 2, knock: 0.25 },
     wraith: { hp: 4, speed: 3.9, reach: 1.0, attackMs: 420, hitAt: 0.5, recoverMs: 1000, weight: 2 },
     bomber: { hp: 3, speed: 3.1, reach: 1.15, attackMs: 750, hitAt: 1, recoverMs: 0, weight: 2, explode: { r: 1.9, damage: 3 } },
@@ -207,6 +208,14 @@ const DIST_MAX = 16;
 const PICKUP_SLACK = 2.6;
 /** Most monsters alive at once, so phones keep up. */
 export const MAX_ALIVE = 60;
+/**
+ * How long (ms) a shooter may keep backing away from a player who closes in, before it stands its ground;
+ * it gets its legs back slowly while it is not running. (Endless kiting made archers impossible to catch.)
+ */
+const FLEE_MS = 1400;
+/** A shooter backs away at this share of its speed, and never faster than this many tiles a second. */
+const FLEE_SPEED = 0.55;
+const FLEE_MAX = 1.8;
 
 /** Which colour variant of each monster fights in wave n (0 = first, 1 = second, 2 = third). */
 export function tierOf(n: number): number {
@@ -235,9 +244,11 @@ export function waveSpec(n: number, players = 1, night = 0) {
     return {
         count: Math.min(100, Math.round((4 + 3 * (n - 1) + Math.floor(n * n / 12)) * (1 + 0.6 * extra) * (1 + 0.5 * night))),
         kinds,
-        hpMul: Math.pow(1.25, n - 1) * (1 + 0.25 * extra),
-        speedMul: Math.min(1.8, 1 + 0.06 * (n - 1)) * (1 + 0.15 * night),
-        damage: n >= 15 ? 4 : n >= 9 ? 3 : n >= 4 ? 2 : 1,
+        // Tougher a step at a time (it was x1.25 a wave, which outran any hero by wave 10); the hero's levels,
+        // skill tree and the run's boons are what keep a long fight winnable.
+        hpMul: (1 + 0.18 * (n - 1)) * (1 + 0.25 * extra),
+        speedMul: Math.min(1.45, 1 + 0.04 * (n - 1)) * (1 + 0.12 * night),
+        damage: n >= 20 ? 4 : n >= 12 ? 3 : n >= 5 ? 2 : 1,
     };
 }
 
@@ -261,6 +272,11 @@ export interface SimEnv {
     night?(): number;
     /** Every player is reading a story page or talking: the waves hold their breath meanwhile. */
     calm?(): boolean;
+    /**
+     * Where to head first on the way from one spot to another, when the straight line is walled (a camp's
+     * palisade: round to its gate), or null to go straight.
+     */
+    via?(fromU: number, fromV: number, toU: number, toV: number): { u: number; v: number } | null;
 }
 
 /** A shot in flight (a wizard's bolt, an archer's arrow): tiles, tiles per second, ms left. */
@@ -303,6 +319,8 @@ export interface SimMonster {
     called: boolean;
     /** Ms until a shooter may shoot again. */
     shotT: number;
+    /** Ms a shooter may still spend backing away (FLEE_MS). */
+    flee: number;
     /** Share of each blow that gets through (a boss's ward: 1 = none). */
     ward: number;
     /** A boss's spread of shots: how often, how many, ms until the next. */
@@ -620,6 +638,7 @@ export class GameSim {
             speedMul: mods.speedMul, damage: Math.round(mods.damage * (def.dmgMul ?? 1)), ku: 0, kv: 0, hit: false,
             side: this.env.rand() < 0.5 ? 1 : -1, tier: tierOf(this.wave),
             boss: 0, reachMul: 1, slamMs: 0, slamT: 0, called: false, ward: 1, volleyMs: 0, volleyN: 0, volleyT: 0, shotT: def.ranged ? def.ranged.every * (0.4 + this.env.rand() * 0.6) : 0,
+            flee: FLEE_MS,
         };
         this.monsters.set(m.id, m);
         return m;
@@ -787,8 +806,10 @@ export class GameSim {
         const du = target.u - m.u;
         const dv = target.v - m.v;
         const dist = best;
+        // Walled off from its target (a camp's palisade): it goes round by the way in first.
+        const via = m.state === 'chase' ? this.env.via?.(m.u, m.v, target.u, target.v) ?? null : null;
         // Shooters keep their distance and fire when they have a clear line and their bow (or staff) is ready.
-        if (def.ranged && m.state === 'chase' && !m.boss) {
+        if (def.ranged && m.state === 'chase' && !m.boss && !via) {
             const r = def.ranged;
             m.shotT -= dtMs;
             if (dist <= r.range && dist >= 1.4 && m.shotT <= 0) {
@@ -798,24 +819,28 @@ export class GameSim {
                 m.shotT = r.every * (0.85 + this.env.rand() * 0.3);
                 return;
             }
-            if (dist < r.keep) {
-                // Too close: back away (sideways if blocked).
-                const k = (def.speed * m.speedMul * 0.8 * dt) / Math.max(dist, 0.01);
+            if (dist < r.keep && m.flee > 0) {
+                // Too close: back away (sideways if blocked), but only for a moment: then it stands and fights.
+                m.flee -= dtMs;
+                const k = (Math.min(FLEE_MAX, def.speed * Math.min(1.2, m.speedMul) * FLEE_SPEED) * dt) / Math.max(dist, 0.01);
                 if (!this.step(m, -du * k, -dv * k)) this.step(m, -dv * k * m.side, du * k * m.side);
                 return;
             }
-            if (dist <= r.range) return; // in range, waiting for the next shot
+            m.flee = Math.min(FLEE_MS, m.flee + dtMs * 0.25);
+            if (dist <= r.range && dist >= r.keep) return; // in range, waiting for the next shot
+            // Cornered (out of legs) or closed in: it fights hand to hand like anyone else.
         }
         if (m.state === 'chase') {
-            if (dist < def.reach * m.reachMul) {
+            if (dist < def.reach * m.reachMul && !via) {
                 m.state = 'attack';
                 m.t = 0;
                 m.hit = false;
             } else {
-                const k = (def.speed * m.speedMul * dt) / dist;
-                let moved = this.step(m, du * k, dv * k);
+                const goU = via ? via.u - m.u : du, goV = via ? via.v - m.v : dv;
+                const k = (def.speed * m.speedMul * dt) / Math.max(0.01, Math.hypot(goU, goV));
+                let moved = this.step(m, goU * k, goV * k);
                 // Blocked: sidestep around whatever is in the way.
-                if (!moved) moved = this.step(m, -dv * k * m.side, du * k * m.side);
+                if (!moved) moved = this.step(m, -goV * k * m.side, goU * k * m.side);
                 if (!moved) m.side = m.side === 1 ? -1 : 1;
             }
         } else if (m.state === 'attack' && def.explode && !m.boss) {
@@ -827,7 +852,8 @@ export class GameSim {
                 m.state = 'dying';
                 m.t = 0;
             }
-        } else if (m.state === 'attack' && def.ranged && !m.boss) {
+        } else if (m.state === 'attack' && def.ranged && !m.boss && dist >= 1.6) {
+            // (cornered, at arm's length, a shooter swings its bow or staff instead: the plain attack below)
             // Let fly at the moment of the cast, aimed where the target stands.
             if (!m.hit && m.t >= def.attackMs * def.hitAt) {
                 m.hit = true;

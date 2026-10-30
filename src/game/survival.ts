@@ -103,7 +103,7 @@ export const ITEMS: Record<ItemId, ItemDef> = {
     stasis_draught: { name: 'Brimstone Lucid Draught', icon: 'ico:flask:#f97316', blurb: 'Holds the Amnesia Mist out of a mind for a while. Give it to Lyra', keep: true },
     filter_draught: { name: 'Filter Draught', icon: 'ico:flask:#a3e635', blurb: 'Drink it to breathe sulfur fog for five minutes', usable: true, keep: true },
     solstice_tablet: { name: 'Solstice Tablet', icon: 'ico:scroll:#fde68a', blurb: 'A pre-Shattering star tablet, saved from the smelter', keep: true },
-    ballista: { name: 'Spring-Ballista', icon: 'ico:swords:#d6b37a', blurb: 'Set it down in the Sanctuary: it shoots the nearest foe', placeable: true, keep: true },
+    ballista: { name: 'Spring-Ballista', icon: 'ico:swords:#d6b37a', blurb: 'Set it down by a Sanctuary\'s gate: it shoots the nearest foe', placeable: true, keep: true },
     flame_turret: { name: 'Hydraulic Flame Turret', icon: 'ico:flame:#f97316', blurb: 'Set it down: it scorches everything close around it', placeable: true, keep: true },
     catapult: { name: 'Hydraulic Catapult', icon: 'ico:rock:#c4b5a0', blurb: 'Set it down: it hurls stone into the thick of a siege', placeable: true, keep: true },
     lichen: { name: 'Luminescent Lichen', icon: 'ico:leaf:#a3e635', blurb: 'Glows on the rocks of Pyraxis. Fifteen make a Filter Draught' },
@@ -331,11 +331,11 @@ export interface BuildingDef {
     blurb: (level: number) => string;
 }
 export const BUILDINGS: Record<BuildingId, BuildingDef> = {
-    healer: { name: "Healer's tent", art: 'tent_cream', at: [-3, 3], blurb: (l) => (l === 0 ? 'Build it to heal over time and rest' : `Heal 1 every ${regenEvery(l).toFixed(1)}s (x3 by a lit fire)`) },
-    forge: { name: 'Forge', art: 'tent_red', at: [3, -3], blurb: (l) => `Weapon damage +${l * 12}% · gear tier ${l >= 4 ? 3 : l >= 2 ? 2 : 1} unlocked` },
-    alchemy: { name: 'Alchemy tent', art: 'tent_blue', at: [-3, -3], blurb: (l) => `Unlocks potions (${Math.min(l, 4)}/4 recipes) · potions +${l * 15}% stronger` },
-    totem: { name: 'Arcane totem', art: 'tent_green', at: [3, 3], blurb: (l) => `${cardSlots(l)} card slots · cards +${l * 5}% stronger · ${l > 0 ? 'gem fusing open' : 'fuses gems once built'}` },
-    store: { name: 'Storehouse', art: 'tent_yellow', at: [0, -5], blurb: (l) => `Keep ${Math.round(keepShare(l) * 100)}% of materials and ${Math.round(gemKeep(l) * 100)}% of gems when you fall` },
+    healer: { name: "Healer's tent", art: 'tent_cream', at: [-4, 4], blurb: (l) => (l === 0 ? 'Build it to heal over time and rest' : `Heal 1 every ${regenEvery(l).toFixed(1)}s (x3 by a lit fire)`) },
+    forge: { name: 'Forge', art: 'tent_red', at: [4, -4], blurb: (l) => `Weapon damage +${l * 12}% · gear tier ${l >= 4 ? 3 : l >= 2 ? 2 : 1} unlocked` },
+    alchemy: { name: 'Alchemy tent', art: 'tent_blue', at: [-4, -4], blurb: (l) => `Unlocks potions (${Math.min(l, 4)}/4 recipes) · potions +${l * 15}% stronger` },
+    totem: { name: 'Arcane totem', art: 'tent_green', at: [4, 4], blurb: (l) => `${cardSlots(l)} card slots · cards +${l * 5}% stronger · ${l > 0 ? 'gem fusing open' : 'fuses gems once built'}` },
+    store: { name: 'Storehouse', art: 'tent_yellow', at: [0, -6], blurb: (l) => `Keep ${Math.round(keepShare(l) * 100)}% of materials and ${Math.round(gemKeep(l) * 100)}% of gems when you fall` },
 };
 export const BUILDING_IDS = Object.keys(BUILDINGS) as BuildingId[];
 export type Buildings = Record<BuildingId, number>;
@@ -357,7 +357,8 @@ export function buildCost(level: number): Partial<Bag> {
     return c;
 }
 /** Tiles from a camp centre that count as "in camp" (building, faster healing, the fire). */
-export const CAMP_RADIUS = 8;
+/** The sanctuary ring round a camp's centre: just outside its palisade's corners (campLayout WALL_R 8). */
+export const CAMP_RADIUS = 12;
 
 // ---------------------------------------------------------------- survival meters
 
@@ -434,8 +435,8 @@ export function rollCard(rand: () => number, luck = 0): CardId {
 
 /** XP from level `level` to the next. No cap. */
 export const xpToNext = (level: number): number => Math.round(25 * Math.pow(1.16, level - 1) + 12 * level);
-/** Max health from the player level: +1 every 3 levels. */
-export const levelHp = (level: number): number => Math.floor((level - 1) / 3);
+/** Max health from the player level: +2 a level (the bar grows as you do). */
+export const levelHp = (level: number): number => 2 * (level - 1);
 /** Damage from the player level: +3% a level. */
 export const levelDamage = (level: number): number => 0.03 * (level - 1);
 

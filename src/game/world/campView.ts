@@ -143,7 +143,7 @@ export function createCampView(o: {
         });
         // Smoke over an overrun camp: from its tents and a few broken stretches of wall.
         const smoke: CampDraw['smoke'] = [];
-        const vents: [number, number][] = [[-3, 3], [3, -3], [-3, -3], [0, -5], [WALL_R, 2], [-2, -WALL_R], [-WALL_R, 1], [2, WALL_R]];
+        const vents: [number, number][] = [[-4, 4], [4, -4], [-4, -4], [0, -6], [WALL_R, 2], [-2, -WALL_R], [-WALL_R, 1], [2, WALL_R]];
         for (const [du, dv] of vents) {
             for (let k = 0; k < 3; k++) {
                 const s = add(new Sprite(soft));

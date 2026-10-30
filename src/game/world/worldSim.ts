@@ -12,6 +12,7 @@ import type { WorldMap } from './mapGen.ts';
 import type { ViewDrop } from './drops.ts';
 import type { ViewMonster } from './monsters.ts';
 import { MAP_TILES } from './constants.ts';
+import { campVia, campWallCells } from './campLayout.ts';
 
 
 export interface WorldView {
@@ -97,6 +98,8 @@ export function createWorldSim(opts: {
 }): WorldSim {
     const { map } = opts;
     const heightAt = (i: number, j: number) => map.height[j * MAP_TILES + i];
+    // The camps' palisades: monsters never climb them (they come round to the gate: campVia).
+    const walls = campWallCells(MAP_TILES);
 
     const local = new GameSim(
         {
@@ -110,8 +113,10 @@ export function createWorldSim(opts: {
                 const tj = Math.floor(tv);
                 if (ti < 1 || tj < 1 || ti >= MAP_TILES - 1 || tj >= MAP_TILES - 1) return false;
                 if (map.terrain[tj * MAP_TILES + ti] >= 4) return false; // water, and the void between the interiors
+                if (walls.has(tj * MAP_TILES + ti)) return false;
                 return Math.abs(heightAt(ti, tj) - heightAt(Math.floor(fu), Math.floor(fv))) <= 1;
             },
+            via: campVia,
             canStand: (u, v) => {
                 if (opts.noGo?.(u, v)) return false;
                 const i = Math.floor(u);

@@ -12,9 +12,9 @@ const LIN = 'Artificer Lin';
 
 const PROPS: PropDef[] = [
     // Cloud-Watch Aerie (the Sanctuary): the struck Spire, Lyra's corner, the Strata-Loom.
-    { id: 'z_spire', type: 'spire', site: 'camp', at: [0, -2.6] },
-    { id: 'z_altar', type: 'altar', site: 'camp', at: [-1.9, -1.4] },
-    { id: 'z_loom', type: 'loom', site: 'camp', at: [2.2, -1.8] },
+    { id: 'z_spire', type: 'spire', site: 'camp', at: [0, -3.4] },
+    { id: 'z_altar', type: 'altar', site: 'camp', at: [-2.8, -1.8] },
+    { id: 'z_loom', type: 'loom', site: 'camp', at: [2.6, -2.8] },
     // The Sky-Bridge: where Lyra waits as you come across.
     { id: 'z_palanquin', type: 'slab', site: 'bridge', at: [0, 0], name: 'Lyra' },
     // Gale-Spider Ravine: stone web-anchors.

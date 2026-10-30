@@ -60,6 +60,8 @@ import { CYCLE_MS, NIGHT_START, nowSky, setSkyOffset } from '../../shared/daynig
 import { mapRef, radar } from './mapRef.ts';
 import { CAMP_RADIUS, CARDS, CRIT, DODGE_MS, FOOD, ITEMS, METER_DRAIN, METER_GAIN, METER_MAX, SPRINT_MUL, STAMINA_COST, STAMINA_MAX, TORCH_R, type ItemId } from '../survival.ts';
 import { ELEMENTS, KINGDOMS, LANDMARKS, MIMIC_CODE } from '../eidolon.ts';
+import { FIREBOLT, rankOf, type Talents } from '../talents.ts';
+import { BOON, offerBoons, surgeNeed, type BoonId, type Boons } from '../boons.ts';
 
 /** Walking speed in screen px / s (vertical movement is halved by the 2:1 view). */
 /** Every camp's centre and its kingdom (its sanctuary ring keeps monsters out while the land is free). */
@@ -654,6 +656,20 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     let buffShown = '';
     // Card, gear, gem, building, level and kingdom powers (progress.power()), refreshed a few times a second.
     let power = progress.power();
+    // The skill tree (game/talents.ts), refreshed with the powers.
+    let tal: Talents = progress.talents();
+    // This run's Surge boons (game/boons.ts): they last until you fall (a new run starts a new scene).
+    const boons: Boons = {};
+    const B = (id: BoonId) => boons[id] ?? 0;
+    let surge = 0;
+    let boonsTaken = 0;
+    /** Ms until the Fire Bolt is ready, and until the boons' own strikes come round. */
+    let fireCd = 0;
+    let ringT = 0, orbitT = 0, barrageT = 0;
+    let fireShown = -2;
+    /** Sprinting by pushing the joystick to its edge (a phone has no Shift key). */
+    let sprintNow = false;
+    store.patch({ talents: { ...tal }, boons: {}, boonOffer: null, surge: { have: 0, need: surgeNeed(0) }, fireReady: -1 });
     let phoenixUsed = false;
     let regenAcc = 0;
     let swings = 0;
@@ -803,6 +819,23 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                 }
                 sfx('kill');
                 charge(METER_GAIN.kill);
+                // The Surge: enough kills and the waves hold while you choose a boon.
+                if (!store.get().boonOffer) {
+                    surge++;
+                    const need = surgeNeed(boonsTaken);
+                    if (surge >= need) {
+                        const offer = offerBoons(boons, store.get().hp < store.get().maxHp);
+                        if (offer.length) {
+                            store.patch({ boonOffer: offer });
+                            sfx('card');
+                        } else surge = need;
+                    }
+                    store.patch({ surge: { have: Math.min(surge, need), need } });
+                }
+                if (B('vamp') > 0 && Math.random() < [0, 0.3, 0.45, 0.6][B('vamp')] && store.get().hp < store.get().maxHp) {
+                    store.patch({ hp: Math.min(store.get().maxHp, store.get().hp + 1) });
+                    dropView.text(player.x + 24, player.y - 64, '+1', 0xfb7185);
+                }
                 // A Mimic's hoard spills out where it died (only the one who killed it drops it, so it is not doubled).
                 if (boss === MIMIC_CODE) {
                     const m = sim.view().monsters.find((x) => x.boss === MIMIC_CODE);
@@ -1053,7 +1086,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         fx.push({ s, name, t: 0, life: o.life });
     };
     /** Thrown spells still in the air: the blast happens where they land. */
-    const flying: { s: Sprite; fu: number; fv: number; tu: number; tv: number; t: number; flight: number; dmg: number; radius: number; facing: number }[] = [];
+    const flying: { s: Sprite; fu: number; fv: number; tu: number; tv: number; t: number; flight: number; dmg: number; radius: number; facing: number; bolt?: boolean; burn?: number }[] = [];
     const spellDamage = (base: number) =>
         Math.max(1, Math.round(base * power.spellDamage * (buffMs.blue > 0 ? 1.5 : 1) * (buffMs.black > 0 ? 2 : 1)));
     const spellCooldown = (i: number) => Math.round(cooldownFor(SPELLS[i], store.get().spells.cooldown[i]) * power.spellCooldown);
@@ -1117,6 +1150,54 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         charges[index] -= 1;
         if (recharge[index] <= 0) recharge[index] = spellCooldown(index);
     };
+    /** The nearest living foes within reach, those ahead of you first. */
+    const foesAhead = (range: number, n: number): { u: number; v: number }[] => {
+        const aim = (character.facing * Math.PI) / 4;
+        const scored: { u: number; v: number; s: number }[] = [];
+        for (const m of sim.view().monsters) {
+            if (m.state === 'dying') continue;
+            const d = Math.hypot(m.u - pu, m.v - pv);
+            if (d > range) continue;
+            let diff = Math.abs(Math.atan2(((m.u - pu) + (m.v - pv)) * 62, ((m.u - pu) - (m.v - pv)) * 62) - aim);
+            if (diff > Math.PI) diff = Math.PI * 2 - diff;
+            scored.push({ u: m.u, v: m.v, s: d + (diff > 1.3 ? 6 : 0) });
+        }
+        return scored.sort((a, b) => a.s - b.s).slice(0, n);
+    };
+    /** Damage from every source that adds to a blow or a bolt (potions, Rage, the Fury boon). */
+    const boost = () => (buffMs.blue > 0 ? 1.5 : 1) * (buffMs.black > 0 ? 2 : 1) * (1 + 0.15 * B('fury'));
+    /**
+     * Fire: a bolt at the nearest foe ahead (two with Twin Flames), hotter with Searing, bursting with
+     * Pyroblast. `auto` is the Spitfire boon's own bolt (it needs no talent and only flies at a foe).
+     */
+    const castFire = (auto: boolean): boolean => {
+        if (character.dead) return false;
+        const sear = rankOf(tal, 'searing');
+        const twin = !auto && rankOf(tal, 'twin') > 0;
+        const pyro = rankOf(tal, 'pyro') > 0;
+        let targets = foesAhead(FIREBOLT.range, twin ? 2 : 1);
+        if (!targets.length) {
+            if (auto) return false;
+            const a = (character.facing * Math.PI) / 4;
+            targets = [{ u: pu + ((Math.cos(a) + Math.sin(a)) / Math.SQRT2) * 6, v: pv + ((Math.sin(a) - Math.cos(a)) / Math.SQRT2) * 6 }];
+        }
+        const dmg = Math.max(1, Math.round(FIREBOLT.damage * power.spellDamage * (1 + 0.3 * sear) * boost()));
+        for (const t of targets) {
+            const s = new Sprite(fxFrame('fireball', 0));
+            s.anchor.set(0.5, 0.75);
+            s.scale.set(0.5);
+            s.zIndex = 1e5;
+            objects.addChild(s);
+            const dist = Math.hypot(t.u - pu, t.v - pv);
+            flying.push({
+                s, fu: pu, fv: pv, tu: t.u, tv: t.v, t: 0, flight: Math.max(140, (dist / 17) * 1000), dmg, radius: pyro ? FIREBOLT.burst : 0.9,
+                facing: character.facing, bolt: true, burn: sear > 0 ? Math.max(1, Math.round(dmg * 0.15 * sear)) : 0,
+            });
+        }
+        synth('mine');
+        return true;
+    };
+    const fireCooldown = () => (rankOf(tal, 'twin') > 0 ? FIREBOLT.twinCooldownMs : FIREBOLT.cooldownMs);
     // The sword's crescent slash (the frog pack's "Slash 3"): 9 frames, one colour row per sword.
     const slashSheet = Assets.get<Texture>('slashes');
     slashSheet.source.scaleMode = 'nearest';
@@ -1506,6 +1587,20 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         if (cinematic) return;
         if ((c.type === 'attack' || c.type === 'use') && !wasLocked && character.locked && !character.dead && character.tool === 'sword') slashAt();
         if (c.type === 'spell') castSpell(c.index);
+        if (c.type === 'firebolt' && rankOf(tal, 'firebolt') > 0 && fireCd <= 0 && !busy() && castFire(false)) fireCd = fireCooldown();
+        if (c.type === 'boon') {
+            const offer = store.get().boonOffer;
+            const id = c.id as BoonId;
+            if (!offer || !offer.includes(id)) return;
+            if (id === 'mend') store.patch({ hp: store.get().maxHp });
+            else boons[id] = B(id) + 1;
+            boonsTaken++;
+            surge = 0;
+            store.patch({ boonOffer: null, boons: { ...boons }, surge: { have: 0, need: surgeNeed(boonsTaken) } });
+            banner(`${BOON[id].name}${id !== 'mend' && B(id) > 1 ? ` x${B(id)}` : ''}!`);
+            playFx('heal', pu, pv, { scale: 1.6, life: 900, lift: 50 });
+            sfx('levelup');
+        }
         if (c.type === 'item') useItem(c.id as ItemId);
         // Use: gather, talk, climb, open, challenge or visit, if something is in reach.
         // Use beside a fallen teammate helps them up.
@@ -1624,13 +1719,16 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         // Actions, sitting and death hold the character in place.
         const walk = character.locked || roll || cinematic || door ? { x: 0, y: 0 } : dir;
         const moving = Math.hypot(dir.x, dir.y) > 0.2 && !character.locked && !roll;
-        const sprinting = store.get().sprint && moving && tired <= 0 && stamina > 1;
+        // Sprint: Shift on a keyboard, or the joystick pushed right out to its rim on a touch screen.
+        const deflect = input.joystick() ? Math.hypot(raw.x, raw.y) : 0;
+        const sprinting = (store.get().sprint || deflect > 0.9) && moving && tired <= 0 && stamina > 1;
+        sprintNow = sprinting && deflect > 0;
         if (sprinting) {
             stamina = Math.max(0, stamina - (dt * STAMINA_COST.sprint * (power.dodgeCost < STAMINA_COST.dodge ? 0.7 : 1) * (buffMs.yellow > 0 ? 0.6 : 1)));
             staminaIdle = 0;
             if (stamina <= 0) tired = 1300;
         }
-        const speed = SPEED_PX * power.speed * (sprinting ? SPRINT_MUL : 1) * (story?.speedMul() ?? 1);
+        const speed = SPEED_PX * power.speed * (1 + 0.08 * B('haste')) * (sprinting ? SPRINT_MUL : 1) * (story?.speedMul() ?? 1);
         const X = walk.x * speed * dt;
         const Y = walk.y * speed * 0.5 * dt;
         const du = (X / TILE_DX + Y / TILE_DY) / 2;
@@ -1927,7 +2025,9 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                 f.s.destroy();
                 flying.splice(i, 1);
                 sim.strike(f.tu, f.tv, f.facing, f.dmg, f.radius);
-                playFx('explosion', f.tu, f.tv, { scale: 2.6, life: 900, anchorY: 0.8 });
+                playFx('explosion', f.tu, f.tv, { scale: f.bolt ? 0.9 + f.radius * 0.6 : 2.6, life: f.bolt ? 600 : 900, anchorY: 0.8 });
+                // Searing: the fire keeps burning where it struck.
+                if (f.burn) for (let n = 1; n <= 3; n++) burns.push({ t: 500 * n, u: f.tu, v: f.tv, dmg: f.burn });
             }
         }
         for (let i = fx.length - 1; i >= 0; i--) {
@@ -1941,6 +2041,23 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             }
         }
         for (const c in buffMs) buffMs[c] = Math.max(0, buffMs[c] - ticker.deltaMS);
+        fireCd = Math.max(0, fireCd - ticker.deltaMS);
+        // The boons that strike on their own, while something is close enough to strike.
+        if (!character.dead && (B('ring') || B('orbit') || B('barrage'))) {
+            const near = (r: number) => sim.view().monsters.some((m) => m.state !== 'dying' && Math.hypot(m.u - pu, m.v - pv) < r);
+            const base = 3 * power.damage * boost();
+            if (B('ring') && (ringT -= ticker.deltaMS) <= 0 && near(2.6)) {
+                ringT = [0, 3000, 2400, 1800][B('ring')];
+                sim.strike(pu, pv, character.facing, Math.max(1, Math.round(base * 0.6)), 2.4);
+                playFx('explosion', pu, pv, { scale: 2.4, squash: 0.5, life: 500, anchorY: 0.6 });
+            }
+            if (B('orbit') && (orbitT -= ticker.deltaMS) <= 0 && near(1.9)) {
+                orbitT = [0, 1000, 500, 333][B('orbit')];
+                sim.strike(pu, pv, character.facing, Math.max(1, Math.round(base * 0.35)), 1.7);
+                playFx('sparkle', pu, pv, { scale: 1.8, squash: 0.55, life: 300 });
+            }
+            if (B('barrage') && (barrageT -= ticker.deltaMS) <= 0) barrageT = castFire(true) ? [0, 2400, 1900, 1400][B('barrage')] : 300;
+        }
         const buffNow = Object.keys(buffMs).filter((c) => buffMs[c] > 0).map((c) => `${c}:${Math.ceil(buffMs[c] / 1000)}`).join(',');
         if (buffNow !== buffShown) {
             buffShown = buffNow;
@@ -1950,7 +2067,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             strikes[i] -= ticker.deltaMS;
             if (strikes[i] <= 0) {
                 strikes.splice(i, 1);
-                const mul = power.damage * (buffMs.blue > 0 ? 1.5 : 1) * (buffMs.black > 0 ? 2 : 1) * (tired > 0 ? 0.5 : 1);
+                const mul = power.damage * boost() * (1 + 0.12 * rankOf(tal, 'edge')) * (tired > 0 ? 0.5 : 1);
                 const base = (TOOL_DAMAGE[character.tool] ?? 1) * (character.tool === 'sword' ? power.weapon : 1);
                 // A monster in reach can take a critical hit.
                 const faced = (() => {
@@ -1958,23 +2075,45 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                     const u = pu + (Math.cos(a) + Math.sin(a)) / Math.SQRT2, v = pv + (Math.sin(a) - Math.cos(a)) / Math.SQRT2;
                     return sim.view().monsters.some((m) => m.state !== 'dying' && Math.hypot(m.u - u, m.v - v) < 1.4);
                 })();
-                const crit = faced && Math.random() < CRIT.chance;
+                const crit = faced && Math.random() < CRIT.chance + 0.08 * B('crit');
                 const dmg = Math.max(1, Math.round(base * mul * (crit ? CRIT.mul : 1) * (story?.swingMul(pu, pv, sim.view().monsters) ?? 1)));
                 sim.strike(pu, pv, character.facing, dmg);
                 story?.swing(pu, pv, character.facing, character.tool);
                 // Runic Fracture: the fourth blow of an unbroken string bursts around the blade.
                 if (faced) {
-                    combo = clock - comboAt < 1300 ? combo + 1 : 1;
+                    // Combo Master: the string lasts longer, and (rank 2) bursts every third blow.
+                    const cm = rankOf(tal, 'combo');
+                    combo = clock - comboAt < (cm >= 1 ? 2000 : 1300) ? combo + 1 : 1;
                     comboAt = clock;
-                    if (combo % 4 === 0) {
+                    if (combo % (cm >= 2 ? 3 : 4) === 0) {
                         const ra = (character.facing * Math.PI) / 4;
                         const ru = pu + (Math.cos(ra) + Math.sin(ra)) / Math.SQRT2, rv = pv + (Math.sin(ra) - Math.cos(ra)) / Math.SQRT2;
-                        sim.strike(ru, rv, character.facing, Math.max(2, Math.round(dmg * 1.5)), 2.2);
-                        playFx('frost', ru, rv, { scale: 2.6, squash: 0.55, life: 500 });
-                        playFx('boltburst', ru, rv, { scale: 2.2, life: 450, lift: 20 });
-                        dropView.text(player.x, player.y - 120, 'Runic Fracture!', 0x7dd3fc);
+                        if (rankOf(tal, 'whirl') > 0) {
+                            // Whirlwind: the burst spins all round you, twice as hard, and throws them back.
+                            sim.strike(pu, pv, character.facing, Math.max(3, Math.round(dmg * 3)), 2.8);
+                            playFx('frost', pu, pv, { scale: 3.2, squash: 0.55, life: 550 });
+                            playFx('sparkle', pu, pv, { scale: 3, squash: 0.55, life: 600 });
+                            dropView.text(player.x, player.y - 120, 'Whirlwind!', 0xfca5a5);
+                            shakeMs = 200;
+                        } else {
+                            sim.strike(ru, rv, character.facing, Math.max(2, Math.round(dmg * 1.5)), 2.2);
+                            playFx('frost', ru, rv, { scale: 2.6, squash: 0.55, life: 500 });
+                            playFx('boltburst', ru, rv, { scale: 2.2, life: 450, lift: 20 });
+                            dropView.text(player.x, player.y - 120, 'Runic Fracture!', 0x7dd3fc);
+                        }
                         story?.fracture(ru, rv, sim.view().monsters);
                         synth('mine');
+                    }
+                    // Chain Spark: the blow arcs on to the next foe along.
+                    if (B('chain') > 0) {
+                        const ca = (character.facing * Math.PI) / 4;
+                        const hu = pu + (Math.cos(ca) + Math.sin(ca)) / Math.SQRT2, hv = pv + (Math.sin(ca) - Math.cos(ca)) / Math.SQRT2;
+                        const next = sim.view().monsters.filter((m) => m.state !== 'dying' && Math.hypot(m.u - hu, m.v - hv) > 1.2 && Math.hypot(m.u - hu, m.v - hv) < 4.5)
+                            .sort((a, b) => Math.hypot(a.u - hu, a.v - hv) - Math.hypot(b.u - hu, b.v - hv))[0];
+                        if (next) {
+                            sim.strike(next.u, next.v, character.facing, Math.max(1, Math.round(dmg * 0.4 * B('chain'))), 0.7);
+                            playFx('bolt', next.u, next.v, { scale: 1.6, life: 380, anchorY: 0.92 });
+                        }
                     }
                 }
                 if (crit) {
@@ -2071,6 +2210,12 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         if (hudClock <= 0) {
             hudClock = 150;
             power = progress.power();
+            tal = progress.talents();
+            const fr = rankOf(tal, 'firebolt') > 0 ? Math.round((1 - fireCd / fireCooldown()) * 10) / 10 : -1;
+            if (fr !== fireShown) {
+                fireShown = fr;
+                store.patch({ fireReady: fr });
+            }
             sky = nowSky();
             const sk = `${sky.phase}/${Math.round(sky.dark * 20)}/${sky.left}`;
             if (sk !== skyShown) {
@@ -2108,7 +2253,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                 const s = store.get();
                 // Waves also hold until the story's first Sanctuary stands, and through a cinematic.
                 const held = !!story?.holdWaves();
-                calmNow = !!s.storyPopup || !!s.npc || !!s.puzzle || s.loom || s.debate || !!s.cine || held || here > 0;
+                calmNow = !!s.storyPopup || !!s.npc || !!s.puzzle || s.loom || s.debate || !!s.cine || !!s.boonOffer || held || here > 0;
                 if (s.wavesHeld !== held) store.patch({ wavesHeld: held });
                 const sieging = !!story?.sieging();
                 const safeNow = s.inCamp && !sieging;
@@ -2233,8 +2378,9 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         joyGfx.clear();
         const j = input.joystick();
         if (j) {
-            joyGfx.circle(j.ox, j.oy, JOY_RADIUS).stroke({ width: 2, color: 0xffffff, alpha: 0.35 });
-            joyGfx.circle(j.kx, j.ky, 20).fill({ color: 0xffffff, alpha: 0.4 });
+            // The rim lights up gold while the push sprints.
+            joyGfx.circle(j.ox, j.oy, JOY_RADIUS).stroke({ width: sprintNow ? 4 : 2, color: sprintNow ? 0xfde047 : 0xffffff, alpha: sprintNow ? 0.85 : 0.35 });
+            joyGfx.circle(j.kx, j.ky, 20).fill({ color: sprintNow ? 0xfde047 : 0xffffff, alpha: sprintNow ? 0.65 : 0.4 });
         }
     };
     app.ticker.add(tick);

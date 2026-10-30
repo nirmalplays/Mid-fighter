@@ -165,7 +165,7 @@ export const LANDMARKS: Landmark[] = (() => {
             const p = spot(e, d, side);
             out.push({ kind, el: e, n, i: p.i, j: p.j, r, id: `${kind}:${e}:${n}` });
         };
-        add('camp', 0, 70, 0, 10); // r 10: the walled war camp (world/campLayout.ts) and the barricades before its gate
+        add('camp', 0, 70, 0, 12); // r 12: the walled war camp (world/campLayout.ts) and the barricades before its gate
         add('guard', 1, 94, -28, 3);
         add('guard', 2, 94, 28, 3);
         add('guard', 3, 112, 0, 3);
@@ -293,7 +293,7 @@ export interface Npc {
 }
 export const NPCS: Record<NpcId, Npc> = {
     theron: {
-        name: 'Master Orin', role: 'Guild apothecary', at: [1.6, 1.4], tint: 0xd8c8ff,
+        name: 'Master Orin', role: 'Guild apothecary', at: [2.6, 1.6], tint: 0xd8c8ff,
         greet: 'Keep to the light of the Spire, child. The Mist cannot follow you here.',
         talk: [
             { q: 'What happened to Lyra?', a: 'Ignis did not want her body, child. It drank the Memory Pillar, and her memories with it. She is whole, and she is empty. Her memories sit unmelted in the beast’s belly. Crack it open before the Mist fills the space they left, and we can pour them back.' },
@@ -303,7 +303,7 @@ export const NPCS: Record<NpcId, Npc> = {
         ],
     },
     varis: {
-        name: 'Bram', role: 'Blacksmith', at: [2.6, -1.6], tint: 0xffc89a,
+        name: 'Bram', role: 'Blacksmith', at: [3.2, -1.4], tint: 0xffc89a,
         greet: 'I know my name. I know my trade. My hands still shake at the anvil.',
         talk: [
             { q: 'Can you improve my gear?', a: 'Bring me ore, and the forge hot. The Mist took twenty years of my life, but iron remembers what I forgot. I can raise the forge, and with it your blade.' },
@@ -312,14 +312,14 @@ export const NPCS: Record<NpcId, Npc> = {
         ],
     },
     lyra: {
-        name: 'Lyra', role: 'Your partner, who does not remember you', at: [-1.9, -1.4], tint: 0xb6f2b0,
+        name: 'Lyra', role: 'Your partner, who does not remember you', at: [-2.8, -1.8], tint: 0xb6f2b0,
         greet: 'She does not look at you.',
         talk: [
             { q: 'Sit with her a while.', a: 'You sit beside her. She lets you, politely, the way you let a stranger share a bench. You tell her about the cedar tree, the first chisel, the northern meadows. She listens as if it were a story about somebody else.' },
         ],
     },
     kael: {
-        name: 'Kael', role: "Tarek's apprentice", at: [-2.6, 1.8], tint: 0x9ad0ff,
+        name: 'Kael', role: "Tarek's apprentice", at: [-2.8, 2.2], tint: 0x9ad0ff,
         greet: 'I owe you my life. Ask me anything about the old machines.',
         talk: [
             { q: 'Tell me about Goliath Tarek.', a: 'The Grand Mason. Malakor bound him into a golem of magma and brass to hold the Siphon Trench shut. My grandfather drafted the chassis; Tarek built in a secret quench, in case the magic ever drove him mad.' },
@@ -327,7 +327,7 @@ export const NPCS: Record<NpcId, Npc> = {
         ],
     },
     lin: {
-        name: 'Artificer Lin', role: 'Master sky-weaver', at: [1.6, 1.4], tint: 0xc4f1ff,
+        name: 'Artificer Lin', role: 'Master sky-weaver', at: [2.6, 1.6], tint: 0xc4f1ff,
         greet: 'Mind the gusts, Archaeologist. The Aerie holds, for now.',
         talk: [
             { q: 'What happened to Zephyria?', a: 'Vael reversed the Atmospheric Turbines. They were built to filter the Mist out of the sky; now they grind it into Storm-Miasma. Turn them back, and the islands breathe again.' },
@@ -336,7 +336,7 @@ export const NPCS: Record<NpcId, Npc> = {
         ],
     },
     thorne: {
-        name: 'Captain Thorne', role: 'Zephyr-Captain, sky-scout', at: [2.6, -1.6], tint: 0xfde68a,
+        name: 'Captain Thorne', role: 'Zephyr-Captain, sky-scout', at: [3.2, -1.4], tint: 0xfde68a,
         greet: 'Wind from the west today. Good flying weather, if you have wings.',
         talk: [
             { q: 'Where is Elena?', a: 'My navigator. My wife. I was flying her the charts when I came down. I keep the voice-crystal in my coat. One day I will be brave enough to play it.' },
@@ -344,7 +344,7 @@ export const NPCS: Record<NpcId, Npc> = {
         ],
     },
     nerissa: {
-        name: 'Scholar Nerissa', role: 'Scholar-diver of Thalassia', at: [1.6, 1.4], tint: 0x99f6e4,
+        name: 'Scholar Nerissa', role: 'Scholar-diver of Thalassia', at: [2.6, 1.6], tint: 0x99f6e4,
         greet: 'I remember the night the sea froze. I remember everything. It is a heavy gift.',
         talk: [
             { q: 'What happened to Admiral Kaelis?', a: 'He led an armada to stop Malakor on the night of the Shattering. Malakor froze the ocean with him at the bottom of it. His grief became Hydros.' },

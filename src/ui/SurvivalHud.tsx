@@ -1089,7 +1089,7 @@ function paintMap(ctx: CanvasRenderingContext2D, v: MapView): void {
 export function Radar() {
     const ref = useRef<HTMLCanvasElement>(null);
     const on = useSettings().radar;
-    const z = useCompact() ? 96 : 138;
+    const z = useCompact() ? 88 : 138;
     useEffect(() => {
         if (!on) return;
         let raf = 0;
@@ -1111,8 +1111,8 @@ export function Radar() {
         <button
             type="button"
             aria-label="Open the map"
-            className="pointer-events-auto absolute left-3 rounded-full transition-transform hover:scale-[1.03] active:scale-95"
-            style={{ top: 10, width: z, height: z, padding: 0, border: '4px solid #2f2a35', boxShadow: '0 0 0 3px #9a948e, 0 0 0 5px #2f2a35, 0 4px 0 5px rgba(0,0,0,.35)', background: '#120c16' }}
+            className="pointer-events-auto absolute rounded-full transition-transform hover:scale-[1.03] active:scale-95"
+            style={{ left: 'max(12px, env(safe-area-inset-left))', top: 10, width: z, height: z, padding: 0, border: '4px solid #2f2a35', boxShadow: '0 0 0 3px #9a948e, 0 0 0 5px #2f2a35, 0 4px 0 5px rgba(0,0,0,.35)', background: '#120c16' }}
             onClick={() => store.patch({ bigMap: true })}
         >
             <canvas ref={ref} width={264} height={264} className="h-full w-full rounded-full" />

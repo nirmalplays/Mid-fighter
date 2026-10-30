@@ -17,6 +17,10 @@ export type GameCommand =
     | { type: 'sword'; delta: number }
     /** Cast a spell (an index into SPELLS in world/spells.ts) */
     | { type: 'spell'; index: number }
+    /** Cast the Fire Bolt (learnt in the skill tree: game/talents.ts) */
+    | { type: 'firebolt' }
+    /** Take one of the Surge boons on offer (game/boons.ts) */
+    | { type: 'boon'; id: string }
     /** Drink or eat something from the bag (an ItemId in game/survival.ts) */
     | { type: 'item'; id: string };
 

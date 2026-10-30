@@ -27,6 +27,7 @@ import {
     type Element, type NpcId, type Region,
 } from './eidolon.ts';
 import type { FighterSave } from '../saveConfig.ts';
+import { canLearn, rankOf, TALENT, type TalentId, type Talents } from './talents.ts';
 import { npcIdOf, quest, STORY_NPC } from './story/quest.ts';
 
 /** Card level from the copies found: 1 copy is level 1, 1+2 copies level 2, 1+2+3 level 3, ... */
@@ -70,7 +71,7 @@ const powersOf = (d: FighterSave | null | undefined): Element[] => (d?.kingdom ?
 const maxHpOf = (d: FighterSave): number => {
     const giant = d.equipped.includes('giant') ? Math.round(2 * cardScale(levelFromCopies(d.cards.giant ?? 0), d.buildings.totem)) : 0;
     const sock = (id: ItemId) => d.sockets.filter((x) => x === id).length;
-    return 6 + 2 * d.skills.vitality + levelHp(d.level) + giant + (powersOf(d).includes('earth') ? 4 : 0) + 2 * sock('gem2_vitality') + 5 * sock('gem3_vitality');
+    return 6 + 2 * d.skills.vitality + levelHp(d.level) + 4 * rankOf(d.talents, 'tough') + giant + (powersOf(d).includes('earth') ? 4 : 0) + 2 * sock('gem2_vitality') + 5 * sock('gem3_vitality');
 };
 
 // ---- fog of war: the map is FOG_N × FOG_N cells of FOG_CELL tiles, one bit each.
@@ -322,7 +323,7 @@ export const progress = {
         }
         store.patch({
             bag: { ...d.bag }, cards: { ...d.cards }, equipped: [...d.equipped], buildings: { ...d.buildings },
-            level: d.level, xp: d.xp, maxHp: maxHpOf(d), hp: Math.min(store.get().hp, maxHpOf(d)),
+            level: d.level, xp: d.xp, maxHp: maxHpOf(d), hp: Math.min(store.get().hp, maxHpOf(d)), talents: { ...d.talents },
             kingdom: d.kingdom, wardens: [...d.wardens], guards: [...d.guards], malakor: d.malakor,
             gear: { ...d.gear }, sockets: [...d.sockets], towers: [...d.towers],
             hotbar: [...d.hotbar], held: d.held, durability: { ...d.durability }, backpack: d.backpack,
@@ -349,11 +350,13 @@ export const progress = {
         const has = (e: Element) => el.includes(e);
         const sock = (id: ItemId) => d.sockets.filter((x) => x === id).length;
         const held = relicOf(d.gear.relic);
+        const tal = (id: TalentId) => rankOf(d.talents, id);
         const damage = (1 + 0.15 * d.skills.attack) * (1 + 0.12 * d.buildings.forge) * (1 + levelDamage(d.level)) * (1 + 0.1 * card('ember'))
             * (has('fire') ? 1.2 : 1) * (1 + 0.1 * sock('gem2_attack') + 0.2 * sock('gem3_attack'));
         // Healing over time adds up from every source (rates add, so convert to points per second).
         const rate = (every: number) => (Number.isFinite(every) && every > 0 ? 1 / every : 0);
-        const perSec = rate(regenEvery(d.buildings.healer)) + (card('troll') > 0 ? rate(10 / card('troll')) : 0) + (has('water') ? 1 / 9 : 0) + (sock('gem3_vitality') > 0 ? 1 / 8 : 0);
+        const perSec = rate(regenEvery(d.buildings.healer)) + (card('troll') > 0 ? rate(10 / card('troll')) : 0) + (has('water') ? 1 / 9 : 0) + (sock('gem3_vitality') > 0 ? 1 / 8 : 0)
+            + (tal('second') > 0 ? 1 / (tal('second') >= 2 ? 4 : 6) : 0);
         return {
             damage,
             weapon: held ? relicMul(this.tierOf(held.el), held.n) : WEAPONS[d.gear.weapon].mul,
@@ -361,7 +364,7 @@ export const progress = {
             spellCooldown: 1,
             block: Math.min(0.75, 0.07 * d.skills.defence + 0.06 * card('stoneskin') + (has('earth') ? 0.1 : 0) + 0.06 * sock('gem2_defence') + 0.15 * sock('gem3_defence')),
             armor: ARMORS[d.gear.armor].guard,
-            speed: (1 + 0.05 * d.skills.speed) * (1 + 0.08 * card('tailwind')) * (has('air') ? 1.15 : 1) * (1 + 0.06 * sock('gem2_speed') + 0.15 * sock('gem3_speed')),
+            speed: (1 + 0.05 * d.skills.speed) * (1 + 0.08 * tal('fleet')) * (1 + 0.08 * card('tailwind')) * (has('air') ? 1.15 : 1) * (1 + 0.06 * sock('gem2_speed') + 0.15 * sock('gem3_speed')),
             maxHp: maxHpOf(d),
             regenEvery: perSec > 0 ? 1 / perSec : Infinity,
             xp: 1 + 0.2 * card('owl'),
@@ -371,10 +374,36 @@ export const progress = {
             storm: lv('storm') > 0 ? stormEvery(lv('storm')) : 0,
             potion: (1 + 0.15 * d.buildings.alchemy) * (1 + 0.4 * card('alchemist')) * (has('water') ? 1.25 : 1),
             phoenix: lv('phoenix') > 0 ? Math.min(1, 0.4 + 0.1 * lv('phoenix')) : 0,
-            dodgeCost: Math.round(STAMINA_COST.dodge * (has('air') ? 0.7 : 1) * (sock('gem3_speed') > 0 ? 0.6 : 1)),
+            dodgeCost: Math.round(STAMINA_COST.dodge * (has('air') ? 0.7 : 1) * (sock('gem3_speed') > 0 ? 0.6 : 1) * (1 - 0.15 * tal('fleet'))),
             infernal: sock('gem3_attack') > 0,
             infusion: held ? held.el : d.gear.infusion,
         };
+    },
+
+    /** The skill tree's ranks (game/talents.ts). */
+    talents(): Talents {
+        return saveSystem.data?.talents ?? {};
+    },
+    /** Learn the next rank of a talent with a skill point (false if it cannot be learnt yet). */
+    learnTalent(id: TalentId): boolean {
+        const d = saveSystem.data;
+        if (!d || !canLearn(d.talents, d.level, id)) return false;
+        d.talents = { ...d.talents, [id]: rankOf(d.talents, id) + 1 };
+        const maxHp = maxHpOf(d);
+        store.patch({ talents: { ...d.talents }, maxHp, ...(id === 'tough' ? { hp: Math.min(maxHp, store.get().hp + 4) } : {}) });
+        sfx('levelup');
+        store.patch({ banner: { text: `${TALENT[id].name} ${rankOf(d.talents, id) > 1 ? `rank ${rankOf(d.talents, id)}` : 'learnt'}!`, id: Date.now() } });
+        saveSystem.save();
+        return true;
+    },
+    /** Take every point back to spend again (free: try another build). */
+    resetTalents(): void {
+        const d = saveSystem.data;
+        if (!d) return;
+        d.talents = {};
+        const maxHp = maxHpOf(d);
+        store.patch({ talents: {}, maxHp, hp: Math.min(store.get().hp, maxHp) });
+        saveSystem.save();
     },
 
     has(cost: Partial<Bag>): boolean {
@@ -592,7 +621,7 @@ export const progress = {
         if (ups > 0) {
             sfx('levelup');
             const maxHp = maxHpOf(d);
-            store.patch({ level: d.level, xp: d.xp, maxHp, hp: maxHp, banner: { text: `Level ${d.level}! Fully healed`, id: Date.now() } });
+            store.patch({ level: d.level, xp: d.xp, maxHp, hp: maxHp, banner: { text: `Level ${d.level}! +${2 * ups} max health and ${ups > 1 ? `${ups} skill points` : 'a skill point'} (the ★ button)`, id: Date.now() } });
             saveSystem.save();
             this.checkStory();
         } else {

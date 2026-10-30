@@ -12,6 +12,7 @@ import {
 } from './game/survival.ts';
 import { ELEMENTS, LANDMARKS, NPCS, type Element, type NpcId } from './game/eidolon.ts';
 import { isClassId, type ClassId } from './game/classes.ts';
+import { TALENTS, type Talents } from './game/talents.ts';
 import { ACC_COLORS, ACCS, DEFAULT_LOOK, HAIR_COLORS, HAIRS, OUTFITS, SKINS, type HeroLook } from './game/world/heroLook.ts';
 
 /** The story's quest line (Land 1: game/story/quest.ts). */
@@ -106,6 +107,8 @@ export interface FighterSave {
     quest: QuestSave;
     /** The hero this journey follows: the name the player chose and their look (world/heroLook.ts). */
     hero: { name: string; look: HeroLook; cls: ClassId };
+    /** The skill tree: ranks learnt (game/talents.ts), a point for every level. */
+    talents: Talents;
 }
 
 export function defaultSave(): FighterSave {
@@ -150,6 +153,7 @@ export function defaultSave(): FighterSave {
         chests: {},
         quest: { land: 1, main: 0, side: {}, flags: [], n: {}, lyra: 30, pressure: 0, done: false, placed: [] },
         hero: { name: '', look: { ...DEFAULT_LOOK }, cls: 'warrior' },
+        talents: {},
     };
 }
 
@@ -326,6 +330,9 @@ export const saveSystem = createSaveSystem<FighterSave>({
         if (!isClassId(s.hero.cls)) s.hero.cls = 'warrior';
         if (typeof s.hero.name !== 'string') s.hero.name = '';
         s.hero.name = s.hero.name.slice(0, 20);
+        // The skill tree: known talents with whole ranks in range (anything else is dropped).
+        const tal = (typeof s.talents === 'object' && s.talents ? s.talents : {}) as Record<string, unknown>;
+        s.talents = Object.fromEntries(TALENTS.map((t) => [t.id, Math.max(0, Math.min(t.max, Math.floor(Number(tal[t.id]) || 0)))]).filter(([, r]) => (r as number) > 0));
         if (typeof s.hero.look !== 'object' || !s.hero.look) s.hero.look = { ...DEFAULT_LOOK };
         fillMissing(s.hero.look, DEFAULT_LOOK);
         const lk = s.hero.look;

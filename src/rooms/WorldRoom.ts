@@ -17,6 +17,7 @@ import { DROP_KINDS, GameSim, LOOT_MAX, type SimEvent } from '../shared/sim.ts';
 import { nowSky } from '../shared/daynight.ts';
 import { LANDMARKS } from '../game/eidolon.ts';
 import { CAMP_RADIUS } from '../game/survival.ts';
+import { campVia, campWallCells } from '../game/world/campLayout.ts';
 
 /** Every camp's centre (their sanctuary rings keep monsters out). */
 const CAMPS = LANDMARKS.filter((l) => l.kind === 'camp').map((l) => ({ u: l.i + 0.5, v: l.j + 0.5 }));
@@ -120,6 +121,8 @@ export default class WorldRoom extends GameRoom<Protocol> {
         this.map = map;
         const blocked = map.blocked;
         const heightAt = (i: number, j: number) => map.height[j * MAP_TILES + i];
+        // The camps' palisades stop monsters; they come round to the gate (campVia).
+        const walls = campWallCells(MAP_TILES);
         const meta = (this.config.metadata ?? {}) as { waveEverySec?: number; firstWaveSec?: number; swordMul?: number; potionMul?: number };
         this.sim = new GameSim(
             {
@@ -139,8 +142,10 @@ export default class WorldRoom extends GameRoom<Protocol> {
                     if (ti < 1 || tj < 1 || ti >= MAP_TILES - 1 || tj >= MAP_TILES - 1) return false;
                     // (water and the void between the interiors)
                     if (map.terrain[tj * MAP_TILES + ti] >= WATER) return false;
+                    if (walls.has(tj * MAP_TILES + ti)) return false;
                     return Math.abs(heightAt(ti, tj) - heightAt(Math.floor(fu), Math.floor(fv))) <= 1;
                 },
+                via: campVia,
                 canStand: (u, v) => {
                     if (this.noGo(u, v)) return false;
                     const i = Math.floor(u);

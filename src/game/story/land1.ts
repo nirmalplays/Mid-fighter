@@ -21,8 +21,8 @@ const PROPS: PropDef[] = [
     { id: 'q_ruin1', type: 'ruin', site: 'quarry', at: [-3.5, -2.5] },
     { id: 'q_ruin2', type: 'ruin', site: 'quarry', at: [3.2, -3] },
     // The Ruined Watchtower of Oakhaven (the Sanctuary): the Memory Spire and Lyra's altar.
-    { id: 'spire', type: 'spire', site: 'camp', at: [0, -2.6] },
-    { id: 'altar', type: 'altar', site: 'camp', at: [-1.9, -1.4] },
+    { id: 'spire', type: 'spire', site: 'camp', at: [0, -3.4] },
+    { id: 'altar', type: 'altar', site: 'camp', at: [-2.8, -1.8] },
     // The Sunken Village of Oakhaven: Orin's alembic in the burned bathhouse.
     { id: 'o_alembic', type: 'alembic', site: 'oakhaven', at: [2.5, -2] },
     { id: 'o_ruin1', type: 'ruin', site: 'oakhaven', at: [1.2, -3] },
@@ -175,9 +175,9 @@ const MAIN: Step[] = [
     {
         id: 'fortify', quest: 'The Night the Earth Breathed', act: 1,
         task: 'Fortify the Watchtower: 2 barricades, a spike trap and a ballista',
-        how: 'Dusk is coming, and with it the first Core-Bleed Siege. Craft them at the bench (Bag › Craft), put them in your hotbar and set them down inside the Sanctuary, across the paths in.',
+        how: 'Dusk is coming, and with it the first Core-Bleed Siege. The palisade holds: they can only come in by the gate. Craft them at the bench (Bag › Craft), put them in your hotbar and set them down at the gate, across the way in.',
         goal: { kind: 'place', items: { barricade: 2, trap_spike: 1, ballista: 1 } }, at: 'camp',
-        intro: [say(ORIN, 'The Night the Earth Breathed', 'Feel that? The ground is breathing. When the sky reddens the core vents, and the Wave Demons come for the memories stored in the Spire.', 'Wall the paths. Trap the choke points. They will come tonight.')],
+        intro: [say(ORIN, 'The Night the Earth Breathed', 'Feel that? The ground is breathing. When the sky reddens the core vents, and the Wave Demons come for the memories stored in the Spire.', 'The walls will hold. The gate will not, on its own. Barricade it, trap the way in. They will come tonight.')],
         reward: { xp: 60 },
     },
     {
@@ -269,7 +269,7 @@ const MAIN: Step[] = [
     {
         id: 'bloodmoon', quest: 'The Blood Moon Siege', act: 3,
         task: 'Arm the Sanctuary: set down a flame turret and a catapult',
-        how: "Tarek's fall shook the mantle. A Blood Moon siege is coming. Build a Hydraulic Flame Turret and a Catapult at the bench (Tarek's Piston Core powers them) and set them inside the Sanctuary.",
+        how: "Tarek's fall shook the mantle. A Blood Moon siege is coming. Build a Hydraulic Flame Turret and a Catapult at the bench (Tarek's Piston Core powers them) and set them by the Sanctuary's gate, where the siege must come in.",
         goal: { kind: 'place', items: { flame_turret: 1, catapult: 1 } }, at: 'camp',
         intro: [say(ORIN, 'Blood Moon', 'Did you feel the mountain shift? Breaking Tarek\'s lock opened the Molten Archive... and woke everything beneath it.', 'The moon is turning red. They will come at the Spire from every side, and some will burrow under the very floor Lyra lies on.')],
         reward: { xp: 60 },

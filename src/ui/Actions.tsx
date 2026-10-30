@@ -1,9 +1,10 @@
 /**
  * The game controls, all cut from the UI Asset Pack's buttons (stone, and wood for Attack), with
  * pixel icons, a small name under each and its key in the corner. Laid out like Genshin's:
- *   bottom right: Attack (large) in the corner, Skill to its left, Spells above-left, Dodge above,
- *   Heal further left; every button has clear space around it, nothing touches.
- *   bottom left: Run, on the movement side.
+ *   bottom right: Attack (large) in the corner, Fire beside it (once the Fire Bolt is learnt), Dodge above,
+ *   Spells above-left, Skill and Heal further left; every button has clear space around it, nothing touches.
+ *   There is no Run button: pushing the joystick out to its rim sprints (its ring turns gold), the way
+ *   phone games do it; on a keyboard, hold Shift.
  *   beside the player: what E does here (Talk, Build, Chop...), only when something is in reach.
  * The cluster scales down on short screens so it never runs into the panels above it.
  */
@@ -43,6 +44,18 @@ function SkillControl({ size }: { size: number }) {
         <Control size={size} name={ready ? 'Ready!' : `${k.skill.name.split(' ')[0]} ${meter}%`} keyHint="Q" label={`${k.skill.name} (${meter}%)`} glow={ready ? k.css : undefined} onPress={() => commands.emit({ type: 'skill' })}>
             <Ico name={ELEMENT_ICON[kingdom]} size={size * 0.56} color={k.css} />
             {!ready && <span className="pointer-events-none absolute inset-x-[6px] top-[6px] bg-black/55" style={{ height: `calc((100% - 14px) * ${1 - meter / 100})` }} />}
+        </Control>
+    );
+}
+
+/** The Fire Bolt (skill tree): darkens from the top while it recharges (key X). */
+function FireControl({ size }: { size: number }) {
+    const ready = useStore((s) => s.fireReady);
+    if (ready < 0) return <div style={{ width: size }} />;
+    return (
+        <Control size={size} name="Fire" keyHint="X" label="Fire Bolt" glow={ready >= 1 ? '#fb923c' : undefined} onPress={() => commands.emit({ type: 'firebolt' })}>
+            <Ico name="flame" size={size * 0.56} color="#fb923c" />
+            {ready < 1 && <span className="pointer-events-none absolute inset-x-[6px] top-[6px] bg-black/55" style={{ height: `calc((100% - 14px) * ${1 - ready})` }} />}
         </Control>
     );
 }
@@ -120,26 +133,30 @@ function ActionPrompt() {
 }
 
 /** The cluster's layout: each control's centre as (left, up) from the screen's bottom-right corner, and its size. */
-type Spot = Record<'attack' | 'skill' | 'spells' | 'dodge' | 'heal', { r: number; b: number; s: number }>;
+type Spot = Record<'attack' | 'fire' | 'skill' | 'spells' | 'dodge' | 'heal', { r: number; b: number; s: number }>;
 const SPOT: Spot = {
     attack: { r: 70, b: 76, s: 84 },
-    skill: { r: 172, b: 56, s: 62 },
-    spells: { r: 156, b: 160, s: 54 },
+    fire: { r: 176, b: 58, s: 60 },
     dodge: { r: 64, b: 182, s: 54 },
-    heal: { r: 262, b: 50, s: 52 },
+    spells: { r: 150, b: 162, s: 50 },
+    skill: { r: 262, b: 52, s: 54 },
+    heal: { r: 236, b: 140, s: 48 },
 };
-/** A phone held sideways: the Attack button in the thumb's corner, the others in an arc round it, none under 46 px. */
+/**
+ * A phone held sideways: Attack in the thumb's corner, Fire right beside it, the rest in an arc round them.
+ * Sized for the zoomed-down phone HUD (ui/uiScale.ts): even the smallest is a thumb's width on the glass.
+ */
 const SPOT_COMPACT: Spot = {
-    attack: { r: 54, b: 58, s: 78 },
-    dodge: { r: 54, b: 144, s: 54 },
-    spells: { r: 130, b: 122, s: 52 },
-    skill: { r: 136, b: 48, s: 54 },
-    heal: { r: 198, b: 96, s: 50 },
+    attack: { r: 58, b: 62, s: 88 },
+    fire: { r: 150, b: 50, s: 64 },
+    dodge: { r: 58, b: 160, s: 60 },
+    spells: { r: 136, b: 136, s: 56 },
+    skill: { r: 232, b: 44, s: 56 },
+    heal: { r: 216, b: 118, s: 56 },
 };
 const place = (spot: Spot, k: keyof Spot): CSSProperties => ({ position: 'absolute', right: spot[k].r - spot[k].s / 2, bottom: spot[k].b - spot[k].s / 2 - 8 });
 
 export function ActionCluster() {
-    const sprint = useStore((s) => s.sprint);
     const stamina = useStore((s) => s.stamina);
     const spells = useStore((s) => s.spells);
     const spellState = useStore((s) => s.spellState);
@@ -160,11 +177,11 @@ export function ActionCluster() {
     const box = (k: keyof Spot, node: ReactNode) => <div style={place(spot, k)}>{node}</div>;
     return (
         <>
-            <div className="pointer-events-none absolute bottom-0 right-0 pb-safe-bottom pr-1" data-quiet>
-                <div className="relative" style={{ width: compact ? 232 : 310, height: compact ? 190 : 240, transform: `scale(${scale})`, transformOrigin: '100% 100%' }}>
+            <div className="pointer-events-none absolute bottom-0 right-0 pb-safe-bottom" style={{ paddingRight: 'max(4px, env(safe-area-inset-right))' }} data-quiet>
+                <div className="relative" style={{ width: compact ? 272 : 310, height: compact ? 214 : 240, transform: `scale(${scale})`, transformOrigin: '100% 100%' }}>
                     {/* the spells, opened from their button */}
                     {more && (
-                        <div className="pointer-events-auto absolute flex items-end gap-3 px-3 pb-3 pt-2" style={{ ...slice('frame5', 2), right: compact ? 6 : 40, bottom: compact ? 182 : 222 }}>
+                        <div className="pointer-events-auto absolute flex items-end gap-3 px-3 pb-3 pt-2" style={{ ...slice('frame5', 2), right: compact ? 6 : 40, bottom: compact ? 206 : 222 }}>
                             {!anyUnlocked && <span className="max-w-[200px] text-center text-[12px] text-[#2f2a35]">No spells yet. Find the frog to unlock one.</span>}
                             {SPELLS.map((sp, i) => {
                                 if (!spells.unlocked[i]) return null;
@@ -183,6 +200,7 @@ export function ActionCluster() {
                             <SwordSprite index={swordIdx >= 0 ? swordIdx : 13} size={56} />
                         </Control>
                     ))}
+                    {box('fire', <FireControl size={spot.fire.s} />)}
                     {box('skill', <SkillControl size={spot.skill.s} />)}
                     {box('spells', (
                         <Control size={spot.spells.s} name="Spells" label="Spells" glow={more ? '#c4b5fd' : undefined} onPress={() => setMore((m) => !m)}>
@@ -196,12 +214,6 @@ export function ActionCluster() {
                     ))}
                     {box('heal', <HealControl size={spot.heal.s} />)}
                 </div>
-            </div>
-            {/* Run, on the movement side */}
-            <div className="pointer-events-none absolute bottom-2 pb-safe-bottom" style={{ left: 'max(12px, env(safe-area-inset-left))' }} data-quiet>
-                <Control size={compact ? 54 : 50} name={sprint ? 'Running' : 'Run'} keyHint="Shift" label="Sprint" glow={sprint ? '#fde047' : undefined} variant={sprint ? 'wood' : 'stone'} onPress={() => store.patch({ sprint: !store.get().sprint })}>
-                    <PackIcon index={3} size={26} />
-                </Control>
             </div>
             <ActionPrompt />
         </>
