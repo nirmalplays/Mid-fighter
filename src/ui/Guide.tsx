@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { sfx } from '../game/audio.ts';
 import { quest } from '../game/story/quest.ts';
+import { learnable } from '../game/talents.ts';
 import { store, useStore } from '../state/store.ts';
 import { KeyCap } from './px.tsx';
 import { useHudLayout } from './HudTop.tsx';
@@ -55,7 +56,9 @@ function pick(s: ReturnType<typeof store.get>, moved: number, seen: Set<string>)
         { id: 'gather', keys: ['3', 'E'], text: 'Pickaxe is on 3, axe on 2. Walk up to a rock or a tree and press E', touch: 'Pickaxe is slot 3, axe slot 2 (tap them). Walk up to a rock or a tree and tap the button beside you', when: step === 'gather' },
         { id: 'bag', keys: ['B'], text: 'Your bag: items, crafting, camp building and the map', touch: 'Your bag (top right): items, crafting, camp building and the map', when: step === 'gather' && (o?.have ?? 0) >= 3 },
         { id: 'spire', keys: ['E'], text: 'Press E at the cracked Memory Spire', touch: 'Tap the button beside you at the cracked Memory Spire', when: step === 'seal' },
-        { id: 'waves', keys: ['K'], text: 'Waves come five at a time. Beat them for a 90-second respite. Inside a Sanctuary’s stone ring nothing can reach you', touch: 'Waves come five at a time. Beat them for a 90-second respite. Inside a Sanctuary’s stone ring nothing can reach you', when: s.fighting && s.wave > 0 && !s.wavesHeld },
+        { id: 'waves', keys: ['K'], text: 'Waves come five at a time. Beat them for a short respite. Inside a Sanctuary’s palisade nothing can reach you', touch: 'Waves come five at a time. Beat them for a short respite. Inside a Sanctuary’s palisade nothing can reach you', when: s.fighting && s.wave > 0 && !s.wavesHeld },
+        { id: 'sprint', keys: ['Shift'], text: 'Hold Shift to sprint (it costs stamina)', touch: 'To sprint, push your thumb past the stick’s ring and hold (the outer ring glows gold). Inside the ring you walk', when: moved > 5 && moved < 80 && !s.danger },
+        { id: 'talents', keys: ['T'], text: 'You can learn a skill: open the skill tree (★) here at camp', touch: 'You can learn a skill: tap ★ (top right) here at camp', when: s.inCamp && learnable(s.talents, s.level, s.bag) > 0 },
         { id: 'roll', keys: ['K', 'L'], text: 'Roll: you cannot be hit mid-roll', touch: 'Tap Dodge to roll: you cannot be hit mid-roll', when: s.danger && s.hp < s.maxHp },
         { id: 'heal', keys: ['H'], text: 'Drink a healing draught', touch: 'Tap Heal to drink a healing draught', when: s.hp > 0 && s.hp <= s.maxHp * 0.4 && s.bag.potion_red > 0 },
         { id: 'respite', keys: ['B'], text: 'Respite! Build (Bag › Camp), craft and brew before the next onslaught', touch: 'Respite! Open your bag (top right) to build, craft and brew before the next onslaught', when: !s.fighting && s.wave > 0 },
@@ -109,7 +112,7 @@ export function Coach() {
         // Centred in the room between the movement side and the buttons, above the vitals (never over a thumb).
         <div key={tip.id} className="pointer-events-none absolute z-[12] flex items-center justify-center" style={lay.compact
             // A short screen: just above the vitals and right of the quest card, clear of the hero, the hotbar and every thumb.
-            ? { left: lay.left, right: lay.right, bottom: 118 }
+            ? { left: lay.left, right: lay.right, bottom: 142 } // (above the vitals: the health bar is never hidden)
             : { left: lay.left, right: lay.right, bottom: 196 }}>
             <div className="flex items-center gap-2 px-3 py-1.5" style={{ background: 'rgba(8,6,14,.82)', border: '2px solid #e0a948', boxShadow: '0 0 0 2px #1a0c10', animation: 'cs-fade-up .35s ease-out both', maxWidth: 'min(640px, 100%)' }}>
                 <span className="flex gap-1">{tip.keys.map((k) => <KeyCap key={k}>{k}</KeyCap>)}</span>

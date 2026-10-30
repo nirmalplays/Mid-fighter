@@ -418,6 +418,47 @@ function MapTab() {
     );
 }
 
+/**
+ * The quests under way: the main story's step, and every side quest (they start on their own as you meet
+ * people and finish steps; nothing to accept). Follow one to turn the marker and the edge arrow toward it.
+ */
+function QuestList() {
+    const obj = useStore((s) => s.objective);
+    const tracked = useStore((s) => s.tracked);
+    if (!obj) return null;
+    const sides = obj.sides ?? [];
+    const follow = (id: string | null) => store.patch({ tracked: id });
+    return (
+        <div className="flex flex-col gap-1.5">
+            <div className="text-[12px] font-black" style={{ color: BROWN_DARK }}>Quests</div>
+            <div className="flex items-start gap-2 rounded-xl px-2 py-1.5" style={{ ...ROW, outline: tracked === null ? '2px solid #e0a948' : undefined }}>
+                <div className="flex flex-1 flex-col leading-tight">
+                    <span className="text-[10px] font-black uppercase" style={{ color: '#b45309' }}>Main story · {obj.title}</span>
+                    <span className="text-[13px] font-black">{obj.task}{obj.need > 1 ? ` · ${obj.have}/${obj.need}` : ''}</span>
+                    {obj.how && <span className="text-[11px] font-bold" style={{ color: BROWN_DARK }}>{obj.how}</span>}
+                </div>
+                {tracked === null ? <span className="shrink-0 px-1 text-[11px] font-black" style={{ color: '#15803d' }}>Following</span> : <Btn color="#fff" onPress={() => follow(null)}>Follow</Btn>}
+            </div>
+            {sides.map((x) => {
+                const on = tracked === x.id;
+                return (
+                    <div key={x.id} className="flex items-start gap-2 rounded-xl px-2 py-1.5" style={{ ...ROW, outline: on ? '2px solid #e0a948' : undefined }}>
+                        <div className="flex flex-1 flex-col leading-tight">
+                            <span className="text-[10px] font-black uppercase" style={{ color: '#7c3aed' }}>Side quest · {x.title}</span>
+                            <span className="text-[13px] font-black">{x.task}</span>
+                            {x.how && <span className="text-[11px] font-bold" style={{ color: BROWN_DARK }}>{x.how}</span>}
+                        </div>
+                        <Btn color={on ? '#fde68a' : '#7ee081'} onPress={() => follow(on ? null : x.id)}>{on ? 'Following' : 'Follow'}</Btn>
+                    </div>
+                );
+            })}
+            {sides.length === 0 && (
+                <div className="text-[11px] font-bold" style={{ color: BROWN_DARK }}>No side quests yet. They open on their own as you help the people of your camp (a banner says so): nothing to accept.</div>
+            )}
+        </div>
+    );
+}
+
 function StoryTab() {
     const obj = useStore((s) => s.objective);
     const kingdom = useStore((s) => s.kingdom);
@@ -428,6 +469,7 @@ function StoryTab() {
     const order = kingdom ? progress.order() : null;
     return (
         <div className="flex flex-col gap-2">
+            <QuestList />
             <div className="rounded-xl px-2 py-1.5" style={ROW}>
                 <div className="text-[11px] font-black uppercase" style={{ color: BROWN_DARK }}>{step < CHAPTER_COUNT ? `Chapter ${step + 1} of ${CHAPTER_COUNT}` : 'Endless echoes'}</div>
                 <div className="text-[16px] font-black">{obj?.title}</div>
@@ -495,7 +537,8 @@ export function BagPanel() {
                 {/* the page */}
                 <div className="flex min-w-0 flex-1 flex-col gap-2">
                     <div className="flex items-start justify-between gap-2">
-                        <div className="leading-none">
+                        {/* (clear of the gold flourish curling over the top left corner) */}
+                        <div className="pl-5 leading-none">
                             <div className="text-[min(40px,7vh)] leading-none [@media(max-height:500px)]:text-[26px]" style={{ fontFamily: 'var(--font-relic)', color: '#e9b95a', textShadow: '0 2px 0 #1a0f08' }}>{t.title}</div>
                             <div className="mt-1 text-[12px] font-semibold tracking-[0.18em] text-[#c9b08a]" style={{ fontFamily: 'var(--font-pixel)' }}>{t.label}</div>
                         </div>
@@ -763,7 +806,7 @@ export function Hotbar4() {
     const gear = useStore((s) => s.gear.weapon);
     const [name, setName] = useState<string | null>(null);
     const timer = useRef(0);
-    const slot = lay.compact ? 48 : 50;
+    const slot = lay.compact ? 56 : 50; // (a phone's zoomed-down HUD: still a thumb's width on the glass)
     const pick = (n: number) => {
         commands.emit({ type: 'slot', index: n });
         const id = hotbar[n];
@@ -791,7 +834,7 @@ export function Hotbar4() {
                             }}
                             onPointerDown={press(() => pick(n))}
                         >
-                            {id ? <Icon id={id} size={32} /> : <span className="text-[10px] text-[#2f2a35]/70">hands</span>}
+                            {id && <Icon id={id} size={32} />}
                             {id && !ITEMS[id].tool && <span className="absolute -right-[4px] -top-[5px] text-[11px] text-white" style={{ textShadow: '0 2px 0 #000, 0 0 2px #000' }}>{bag[id]}</span>}
                             <span className="absolute -bottom-[7px] -left-[4px] text-[10px] leading-none text-white" style={{ textShadow: '0 2px 0 #000, 0 0 2px #000' }}>{n + 1}</span>
                             {/* the brackets hug the slot: each 32 px frame at twice its size, just outside the frame's edge */}

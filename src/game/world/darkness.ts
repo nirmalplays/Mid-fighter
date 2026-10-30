@@ -48,14 +48,14 @@ export function createDarkness(app: Application, above: Container): Darkness {
             sightNow += (clearPx - sightNow) * 0.08;
             // The texture is clear to 55% of its radius; a torch flickers a little.
             const flicker = 1 + 0.025 * Math.sin(clock / 70) + 0.015 * Math.sin(clock / 23);
-            const size = ((sightNow * 2) / 0.55) * flicker;
+            // On whole pixels, the dark round the torch's square is one frame with that square cut out of it: no
+            // two see-through layers overlap anywhere (overlaps showed as dark seams across the screen).
+            const size = Math.round(((sightNow * 2) / 0.55) * flicker);
+            const x0 = Math.round(W / 2 - size / 2), y0 = Math.round(H / 2 - size / 2);
             hole.width = hole.height = size;
-            hole.position.set(W / 2, H / 2);
+            hole.position.set(x0 + size / 2, y0 + size / 2);
             hole.alpha = 0.94 * dark;
-            const x0 = W / 2 - size / 2, y0 = H / 2 - size / 2;
-            const col = { color: 0x060816, alpha: 0.94 * dark };
-            if (x0 > 0) edge.rect(0, 0, x0 + 1, H).fill(col).rect(W - x0 - 1, 0, x0 + 1, H).fill(col);
-            if (y0 > 0) edge.rect(x0, 0, size, y0 + 1).fill(col).rect(x0, H - y0 - 1, size, y0 + 1).fill(col);
+            if (x0 > 0 || y0 > 0) edge.rect(0, 0, W, H).fill({ color: 0x060816, alpha: 0.94 * dark }).rect(x0, y0, size, size).cut();
         },
         destroy() {
             root.destroy({ children: true });

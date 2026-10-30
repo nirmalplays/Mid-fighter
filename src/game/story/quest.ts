@@ -249,6 +249,13 @@ export const quest = {
         this.publish();
     },
 
+    /** A side quest finished (every step done). */
+    sideDone(id: string): boolean {
+        const q = data();
+        const s = LANDS.flatMap((l) => l.sides).find((x) => x.id === id);
+        return !!q && !!s && (q.side[id] ?? -1) >= s.steps.length;
+    },
+
     checkOnce(q: QuestSave, d: NonNullable<typeof saveSystem.data>): void {
         const openSides = () => {
             for (const l of LANDS.slice(0, q.land)) {
@@ -293,7 +300,13 @@ export const quest = {
                     sfx('fanfare');
                 } else sfx(side === null ? 'chapter' : 'levelup', side === null ? 1 : 0.7);
                 if (next?.intro) pages.push(...next.intro);
-                if (side !== null && !next) store.patch({ banner: { text: `Side quest complete: ${land.sides.find((s) => s.id === side)!.title}`, id: Date.now() } });
+                if (side !== null && !next) {
+                    store.patch({ banner: { text: `Side quest complete: ${land.sides.find((s) => s.id === side)!.title}`, id: Date.now() } });
+                    // Its work done, the tracker goes back to the story.
+                    if (store.get().tracked === side) store.patch({ tracked: null });
+                }
+                // The next main step needs a side quest first: follow that, so the marker leads where the way opens.
+                if (side === null && next?.via && !this.sideDone(next.via)) store.patch({ tracked: next.via });
                 store.tell(...pages.map(named));
                 break;
             }
@@ -375,7 +388,7 @@ export const quest = {
         const main = live.find((l) => l.side === null)?.step;
         if (!main) return;
         const p = this.goalProgress(main);
-        const sides = live.filter((l) => l.side !== null).map((l) => ({ id: l.side!, title: l.land.sides.find((s) => s.id === l.side)!.title, task: l.step.task }));
+        const sides = live.filter((l) => l.side !== null).map((l) => ({ id: l.side!, title: l.land.sides.find((s) => s.id === l.side)!.title, task: l.step.task, how: l.step.how.replace(/\{hero\}/g, heroName()) }));
         const next = { title: main.quest, task: main.task, have: Math.min(p.have, p.need), need: p.need, step: q.land * 100 + q.main, how: main.how.replace(/\{hero\}/g, heroName()), act: main.act, land: this.land().title, sides };
         const cur = store.get().objective;
         if (JSON.stringify(cur) !== JSON.stringify(next)) store.patch({ objective: next });

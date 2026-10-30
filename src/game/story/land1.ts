@@ -23,6 +23,8 @@ const PROPS: PropDef[] = [
     // The Ruined Watchtower of Oakhaven (the Sanctuary): the Memory Spire and Lyra's altar.
     { id: 'spire', type: 'spire', site: 'camp', at: [0, -3.4] },
     { id: 'altar', type: 'altar', site: 'camp', at: [-2.8, -1.8] },
+    // The Strata-Loom (the Archaeologist's Workbench), where the champions' relics are mended in Act 4.
+    { id: 'loom', type: 'loom', site: 'camp', at: [2.6, -2.8] },
     // The Sunken Village of Oakhaven: Orin's alembic in the burned bathhouse.
     { id: 'o_alembic', type: 'alembic', site: 'oakhaven', at: [2.5, -2] },
     { id: 'o_ruin1', type: 'ruin', site: 'oakhaven', at: [1.2, -3] },
@@ -191,8 +193,8 @@ const MAIN: Step[] = [
     {
         id: 'ridge', quest: 'The Night the Earth Breathed', act: 1,
         task: 'Shatter the three tether nodes of the slag barrier',
-        how: 'Climb to the Scorched Ridge Pass. Only a Slag-Breaker edge can cut the tether nodes: Bram can forge one if you find his hammer.',
-        goal: { kind: 'break', props: ['r_t1', 'r_t2', 'r_t3'] }, at: 'ridge',
+        how: "Only a Slag-Breaker edge cuts the tether nodes (an ordinary blade bounces off). Get it first: do Bram's side quest, The Blacksmith's Forgotten Hammer (talk to Bram in camp). Then climb to the Scorched Ridge Pass and break all three.",
+        goal: { kind: 'break', props: ['r_t1', 'r_t2', 'r_t3'] }, at: 'ridge', via: 'hammer',
         intro: [say(ORIN, 'The Champions',
             'The road to the mountain is walled with slag, held up by three tether nodes. Break them, and something will come to stop you.',
             'Malakor left champions over every road to the Fire Core. Three hundred years ago they were Pyraxis’s own: a knight, a mason, a priestess. They knelt to him. What is left of them wears fire for skin.')],

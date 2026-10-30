@@ -2,7 +2,9 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './ui/App.tsx';
 import { store } from './state/store.ts';
+import RundotGameAPI from '@series-inc/rundot-game-sdk/api';
 import { initSdk, registerLifecycles } from './sdk/runSdk.ts';
+import { backStep } from './ui/back.ts';
 import { warmAssets } from './assets/preload.ts';
 import { progress } from './game/progress.ts';
 import { hostPause } from './game/audio.ts';
@@ -95,14 +97,52 @@ async function boot() {
     //    onQuit firing, and never fire fresh SDK RPCs (e.g. scheduling
     //    notifications) from onSleep/onQuit — a hard close kills the runtime
     //    before they land.
+    // A phone call, a notification pulled down, a switch to another app: the game stops and comes back on
+    // the pause screen (never straight into a fight), and the save is written while it is away.
+    const interrupted = () => {
+        const s = store.get();
+        // (a cinematic has no pause screen to show: the host's pause holds it instead)
+        if (s.phase === 'playing' && !s.gameOver && !s.cine) store.patch({ pauseMenu: true });
+        void saveSystem.flush();
+    };
+    document.addEventListener('visibilitychange', () => { if (document.hidden) interrupted(); });
+    // While in the world the screen stays lit (a story page or a quiet walk has no touches to keep it awake).
+    // The lock drops whenever the page is hidden, so it is asked for again on the way back.
+    let wake: { release(): Promise<void> } | null = null;
+    let asking = false;
+    const keepAwake = () => {
+        const want = store.get().phase === 'playing' && !document.hidden;
+        const api = (navigator as Navigator & { wakeLock?: { request(t: 'screen'): Promise<{ release(): Promise<void> }> } }).wakeLock;
+        if (want && !wake && !asking && api) {
+            asking = true;
+            api.request('screen')
+                .then((w) => {
+                    wake = w;
+                    (w as unknown as EventTarget).addEventListener?.('release', () => { wake = null; });
+                })
+                .catch(() => {})
+                .finally(() => { asking = false; });
+        } else if (!want && wake) {
+            void wake.release().catch(() => {});
+            wake = null;
+        }
+    };
+    store.subscribe(keepAwake);
+    document.addEventListener('visibilitychange', keepAwake);
+    window.addEventListener('pagehide', () => void saveSystem.flush());
     registerLifecycles({
         onPause: () => {
+            interrupted();
             store.patch({ paused: true });
             hostPause(true);
         },
         onResume: () => {
             store.patch({ paused: false });
             hostPause(false);
+        },
+        // Android's Back steps back through the game's own screens; only on the title screen does it leave.
+        onBackButton: () => {
+            if (!backStep()) void RundotGameAPI.requestPopOrQuit().catch(() => {});
         },
         // The save system's own lifecycle flush (attachLifecycleFlush above) covers sleep and quit.
         onSleep: async () => {},

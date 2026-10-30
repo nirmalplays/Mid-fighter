@@ -6,15 +6,22 @@ export interface Input {
     read(): { x: number; y: number };
     /** Joystick state for drawing: origin and knob in CSS px, or null when idle. */
     joystick(): { ox: number; oy: number; kx: number; ky: number } | null;
+    /** How far the finger is from where it touched down, in joystick radii (it can go past 1: a sprint push). 0 when idle. */
+    reach(): number;
     destroy(): void;
 }
 
 export const JOY_RADIUS = 56;
+/** Sprint on a touch screen: push the finger past the ring to this many radii (and hold a moment); ease back inside LET to walk. */
+export const SPRINT_PUSH = 1.6;
+export const SPRINT_LET = 1.35;
 
 export function createInput(canvas: HTMLCanvasElement): Input {
     const keys = new Set<string>();
     let pid: number | null = null;
     let ox = 0, oy = 0, kx = 0, ky = 0;
+    /** The finger's own distance from the touch-down point (the knob stops at the ring; the finger need not). */
+    let raw = 0;
 
     const local = (e: PointerEvent) => {
         const r = canvas.getBoundingClientRect();
@@ -26,6 +33,7 @@ export function createInput(canvas: HTMLCanvasElement): Input {
         const p = local(e);
         ox = kx = p.x;
         oy = ky = p.y;
+        raw = 0;
         try { canvas.setPointerCapture(pid); } catch { /* not capturable */ }
     };
     const move = (e: PointerEvent) => {
@@ -33,12 +41,16 @@ export function createInput(canvas: HTMLCanvasElement): Input {
         const p = local(e);
         const dx = p.x - ox, dy = p.y - oy;
         const d = Math.hypot(dx, dy);
+        raw = d;
         const k = d > JOY_RADIUS ? JOY_RADIUS / d : 1;
         kx = ox + dx * k;
         ky = oy + dy * k;
     };
     const up = (e: PointerEvent) => {
-        if (e.pointerId === pid) pid = null;
+        if (e.pointerId === pid) {
+            pid = null;
+            raw = 0;
+        }
     };
     const keyDown = (e: KeyboardEvent) => { keys.add(e.key.toLowerCase()); };
     const keyUp = (e: KeyboardEvent) => { keys.delete(e.key.toLowerCase()); };
@@ -65,6 +77,7 @@ export function createInput(canvas: HTMLCanvasElement): Input {
             return m > 1 ? { x: x / m, y: y / m } : { x, y };
         },
         joystick: () => (pid === null ? null : { ox, oy, kx, ky }),
+        reach: () => (pid === null ? 0 : raw / JOY_RADIUS),
         destroy() {
             canvas.removeEventListener('pointerdown', down);
             canvas.removeEventListener('pointermove', move);

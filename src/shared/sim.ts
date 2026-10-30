@@ -224,7 +224,7 @@ export function tierOf(n: number): number {
 
 /** The gap (ms) after a wave has finished coming in before the next: short in the first onslaught, a little longer later. */
 export function waveGap(n: number, rand: () => number): number {
-    return n <= 5 ? 2000 + rand() * 3000 : 3000 + rand() * 3000;
+    return n <= 5 ? 1500 + rand() * 2000 : 2000 + rand() * 2500;
 }
 /** How many waves an onslaught has before the respite: always five. */
 export const ONSLAUGHT = 5;

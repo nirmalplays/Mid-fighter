@@ -1099,7 +1099,8 @@ export function createSurvivalLayer(o: {
                 revealClock = 600;
                 progress.reveal(u, v, 13);
             }
-            const inCamp = campMarks.some((c) => open(c.L.el!) && Math.hypot(u - c.u, v - c.v) <= CAMP_RADIUS);
+            // In camp means inside its palisade (or in its gateway): out by the stakes you are fair game.
+            const inCamp = campMarks.some((c) => open(c.L.el!) && Math.abs(u - c.u) < WALL_R + 0.5 && Math.abs(v - c.v) < WALL_R + (v > c.v ? 1.5 : 0.5));
             const fire = (inCamp && !raining) || s.house !== null || s.sheltered;
 
             // What Use would do right now.

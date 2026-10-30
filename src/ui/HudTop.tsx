@@ -2,8 +2,8 @@
  * The clean HUD (after Genshin's): little on screen, every piece where the eye expects it.
  *   Top left: the minimap (SurvivalHud.tsx Radar), one quiet line under it (where you are, the
  *   weather, the time of day), then the quest tracker: what to do now, how, how far.
- *   Top right: a short row of the UI Asset Pack's stone buttons (sound, map, bag, pause) with
- *   pixel icons in the pack's own style.
+ *   Top right: a short row of the UI Asset Pack's stone buttons (the skill tree, sound, map, bag, pause) with
+ *   pixel icons in the pack's own style; a phone keeps only the skill tree, the bag and pause.
  *   Bottom centre: health on the pack's pixel bar, level and experience, stamina, and the three
  *   needs (hunger, thirst, rest) as small gauges.
  *   Screen edge: an arrow toward the objective when it is off screen.
@@ -17,7 +17,7 @@ import { store, useStore, type AppState } from '../state/store.ts';
 import { PackIcon, slice } from './px.tsx';
 import { Ico, Sigil, type IconName } from './icons.tsx';
 import { uiHeight } from './uiScale.ts';
-import { Badge, SurgeBar, useTalentPoints } from './Progression.tsx';
+import { Badge, SurgeBar, useTalentPoints, useTalentsReady } from './Progression.tsx';
 
 const CINZEL = 'var(--font-pixel)';
 
@@ -36,7 +36,7 @@ export function useCompact(): boolean {
     return c;
 }
 /**
- * How the bottom row is shared out: the Run button and the movement side on the left, the action
+ * How the bottom row is shared out: the movement side (the joystick's thumb) on the left, the action
  * buttons on the right, the vitals and hotbar in the room between (they are centred in it, never
  * under a thumb). A phone held sideways (under 560 px tall) gets a tighter set, laid out for thumbs:
  * every button at least 46 px, nothing shrunk below that.
@@ -110,20 +110,22 @@ export function StoneButton({ label, onPress, children, size = 44, active = fals
     );
 }
 
-/** Top right: sound, the big map, the bag, pause. */
+/** Top right: the skill tree, sound, the big map, the bag, pause (a phone: the skill tree, the bag, pause). */
 export function TopButtons() {
     const s = useSettings();
     const compact = useCompact();
     const z = compact ? 52 : 44; // (a thumb's width once the phone's HUD is zoomed down)
     const muted = !s.sound && !s.music;
     const points = useTalentPoints();
+    // The badge only calls when something can really be learnt (a point and its materials): a bare point is no news.
+    const ready = useTalentsReady();
     return (
         <div className="absolute top-3 flex items-center gap-2 pt-safe-top" style={{ right: 'max(12px, env(safe-area-inset-right))' }} data-quiet>
             <div className="relative">
-                <StoneButton size={z} label={points > 0 ? `Skill tree (${points} to spend)` : 'Skill tree (T)'} active={points > 0} onPress={() => store.patch({ talentsOpen: true })}>
-                    <Ico name="star" size={22} color={points > 0 ? '#fde68a' : '#fbf7f0'} />
+                <StoneButton size={z} label={ready > 0 ? `Skill tree (${ready} ready to learn)` : points > 0 ? `Skill tree (${points} point${points > 1 ? 's' : ''}: gather materials)` : 'Skill tree (T)'} active={ready > 0} onPress={() => store.patch({ talentsOpen: true })}>
+                    <Ico name="star" size={22} color={ready > 0 ? '#fde68a' : '#fbf7f0'} />
                 </StoneButton>
-                <Badge n={points} />
+                <Badge n={ready} />
             </div>
             {!compact && (
                 <StoneButton size={z} label={muted ? 'Sound off (tap for on)' : 'Sound on (tap for off)'} onPress={() => settings.set({ sound: muted, music: muted })}>
@@ -245,6 +247,8 @@ export function QuestTracker() {
     }, [peek]);
     if (!obj || !kingdom) return null;
     const folded = compact ? !peek : foldedSetting;
+    // A side quest being followed is what the one-line card shows.
+    const followed = obj.sides?.find((x) => x.id === tracked) ?? null;
     const f = obj.need > 0 ? Math.min(1, obj.have / obj.need) : 0;
     const top = compact ? 110 : 176;
     // Folded: one line (the chapter, and how far along), tap to open it again. A new objective still announces itself (ObjectiveCard).
@@ -260,8 +264,8 @@ export function QuestTracker() {
                 className="pointer-events-auto absolute left-3 flex min-h-[40px] max-w-[min(260px,34vw)] items-center gap-1.5 rounded-lg py-1 pl-2 pr-3 text-left"
                 style={{ top, background: 'rgba(8,6,14,.62)', border: '1px solid rgba(224,169,72,.45)', textShadow: SHADOW, animation: 'cs-fade-up .3s ease-out both' }}
             >
-                <Ico name="scroll" size={14} color="#ffd98a" />
-                <span className="truncate text-[12px] font-black text-[#ffd98a]">{obj.task}</span>
+                <Ico name="scroll" size={14} color={followed ? '#c4b5fd' : '#ffd98a'} />
+                <span className="truncate text-[12px] font-black" style={{ color: followed ? '#ddd6fe' : '#ffd98a' }}>{followed ? `Side · ${followed.task}` : obj.task}</span>
                 {obj.need > 1 && <span className="shrink-0 text-[11px] font-black tabular-nums text-[#ffd98a]">{Math.min(obj.have, obj.need)}/{obj.need}</span>}
                 <span className="shrink-0 text-[14px] leading-none text-white/70" aria-hidden="true">▾</span>
             </button>
@@ -314,9 +318,9 @@ export function QuestTracker() {
             {!compact && s.saga.nightIn !== null && s.saga.nightIn <= 10 && (
                 <span className="text-[11px] font-semibold text-[#fca5a5]">{s.saga.nightIn === 0 ? 'Core-Bleed Siege at the Sanctuary!' : `Core-Bleed Siege in ${s.saga.nightIn} min`}</span>
             )}
-            {!compact && obj.sides && obj.sides.length > 0 && (
+            {obj.sides && obj.sides.length > 0 && (
                 <span className="mt-1 flex flex-col gap-0.5">
-                    {obj.sides.slice(0, compact ? 1 : 3).map((x) => {
+                    {obj.sides.slice(0, compact ? 2 : 3).map((x) => {
                         // Tap a side quest to follow it (the marker and the arrow point at it); tap again for the main story.
                         const on = s.tracked === x.id;
                         return (

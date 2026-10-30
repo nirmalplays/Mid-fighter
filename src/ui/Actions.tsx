@@ -3,8 +3,10 @@
  * pixel icons, a small name under each and its key in the corner. Laid out like Genshin's:
  *   bottom right: Attack (large) in the corner, Fire beside it (once the Fire Bolt is learnt), Dodge above,
  *   Spells above-left, Skill and Heal further left; every button has clear space around it, nothing touches.
- *   There is no Run button: pushing the joystick out to its rim sprints (its ring turns gold), the way
- *   phone games do it; on a keyboard, hold Shift.
+ *   A button shows only once it does something: Spells after the frog teaches one, Heal while there is
+ *   something to heal with, Fire once the Fire Bolt is learnt.
+ *   There is no Run button: inside the joystick's ring you walk (as fast as you push); push past it to the
+ *   faint outer ring and hold to sprint (it glows gold). On a keyboard, hold Shift.
  *   beside the player: what E does here (Talk, Build, Chop...), only when something is in reach.
  * The cluster scales down on short screens so it never runs into the panels above it.
  */
@@ -41,7 +43,7 @@ function SkillControl({ size }: { size: number }) {
     const k = KINGDOMS[kingdom];
     const ready = meter >= 100;
     return (
-        <Control size={size} name={ready ? 'Ready!' : `${k.skill.name.split(' ')[0]} ${meter}%`} keyHint="Q" label={`${k.skill.name} (${meter}%)`} glow={ready ? k.css : undefined} onPress={() => commands.emit({ type: 'skill' })}>
+        <Control size={size} name={ready ? 'Ready!' : `${k.skill.name.split(' ').slice(-1)[0]} ${meter}%`} keyHint="Q" label={`${k.skill.name} (${meter}%)`} glow={ready ? k.css : undefined} onPress={() => commands.emit({ type: 'skill' })}>
             <Ico name={ELEMENT_ICON[kingdom]} size={size * 0.56} color={k.css} />
             {!ready && <span className="pointer-events-none absolute inset-x-[6px] top-[6px] bg-black/55" style={{ height: `calc((100% - 14px) * ${1 - meter / 100})` }} />}
         </Control>
@@ -75,10 +77,12 @@ function HealControl({ size }: { size: number }) {
         window.addEventListener('keydown', on);
         return () => window.removeEventListener('keydown', on);
     });
+    // Nothing to heal with: no button (it comes back with the first potion, meal or berries).
+    if (!id) return <div style={{ width: size }} />;
     return (
-        <Control size={size} name="Heal" keyHint="H" label="Heal" dim={!id} onPress={() => id && commands.emit({ type: 'item', id })}>
+        <Control size={size} name="Heal" keyHint="H" label="Heal" onPress={() => id && commands.emit({ type: 'item', id })}>
             <Ico name="flask" size={size * 0.56} color="#ef4444" />
-            <span className="pointer-events-none absolute bottom-[3px] right-[5px] text-[12px] leading-none text-white" style={{ textShadow: SHADOW }}>{id ? bag[id] : 0}</span>
+            <span className="pointer-events-none absolute bottom-[3px] right-[5px] text-[12px] leading-none text-white" style={{ textShadow: SHADOW }}>{bag[id]}</span>
         </Control>
     );
 }
@@ -182,7 +186,6 @@ export function ActionCluster() {
                     {/* the spells, opened from their button */}
                     {more && (
                         <div className="pointer-events-auto absolute flex items-end gap-3 px-3 pb-3 pt-2" style={{ ...slice('frame5', 2), right: compact ? 6 : 40, bottom: compact ? 206 : 222 }}>
-                            {!anyUnlocked && <span className="max-w-[200px] text-center text-[12px] text-[#2f2a35]">No spells yet. Find the frog to unlock one.</span>}
                             {SPELLS.map((sp, i) => {
                                 if (!spells.unlocked[i]) return null;
                                 const st = spellState[i];
@@ -202,7 +205,7 @@ export function ActionCluster() {
                     ))}
                     {box('fire', <FireControl size={spot.fire.s} />)}
                     {box('skill', <SkillControl size={spot.skill.s} />)}
-                    {box('spells', (
+                    {anyUnlocked && box('spells', (
                         <Control size={spot.spells.s} name="Spells" label="Spells" glow={more ? '#c4b5fd' : undefined} onPress={() => setMore((m) => !m)}>
                             <Ico name="star" size={30} color="#c4b5fd" />
                         </Control>

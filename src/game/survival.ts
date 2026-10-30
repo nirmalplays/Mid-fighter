@@ -344,8 +344,9 @@ export const emptyBuildings = (): Buildings => ({ healer: 0, forge: 0, alchemy: 
 /** Seconds per point of healing from the healer's tent (level 0: none). */
 export const regenEvery = (level: number): number => (level <= 0 ? Infinity : 14 / (1 + 0.35 * (level - 1)));
 export const cardSlots = (totem: number): number => Math.min(6, 1 + Math.floor((totem + 1) / 2));
-export const keepShare = (store: number): number => Math.min(0.9, 0.25 + 0.1 * store);
-export const gemKeep = (store: number): number => Math.min(0.75, 0.08 * store);
+// (a fall costs, but never most of an evening's gathering: half the materials stay even without a Storehouse)
+export const keepShare = (store: number): number => Math.min(0.9, 0.5 + 0.08 * store);
+export const gemKeep = (store: number): number => Math.min(0.75, 0.25 + 0.07 * store);
 
 /** What the next level of a building costs. Climbs ~45% a level, and asks for rarer stuff as it goes. */
 export function buildCost(level: number): Partial<Bag> {

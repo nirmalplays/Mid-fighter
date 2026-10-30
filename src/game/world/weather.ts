@@ -117,15 +117,14 @@ export function createWeather(app: Application, opts: {
             fog.visible = kind === 'fog' && amount > 0;
             fogEdge.clear();
             if (fog.visible) {
-                const size = Math.max(W, H) * 1.05;
-                fog.position.set(W / 2, H / 2);
+                const size = Math.round(Math.max(W, H) * 1.05);
+                const x0 = Math.round(W / 2 - size / 2), y0 = Math.round(H / 2 - size / 2);
+                fog.position.set(x0 + size / 2, y0 + size / 2);
                 fog.width = fog.height = size;
                 fog.alpha = amount;
-                // Cover past the gradient's square so wide screens are fogged edge to edge.
-                const x0 = W / 2 - size / 2, y0 = H / 2 - size / 2;
-                const col = { color: 0xc8cdd7, alpha: 0.97 * amount };
-                if (x0 > 0) fogEdge.rect(0, 0, x0 + 1, H).fill(col).rect(W - x0 - 1, 0, x0 + 1, H).fill(col);
-                if (y0 > 0) fogEdge.rect(0, 0, W, y0 + 1).fill(col).rect(0, H - y0 - 1, W, y0 + 1).fill(col);
+                // Cover past the gradient's square so wide screens are fogged edge to edge: one frame with the
+                // square cut out, on whole pixels (overlapping strips showed as seams).
+                if (x0 > 0 || y0 > 0) fogEdge.rect(0, 0, W, H).fill({ color: 0xc8cdd7, alpha: 0.97 * amount }).rect(x0, y0, size, size).cut();
             }
 
             // Storms: lightning now and then.

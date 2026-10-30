@@ -283,6 +283,7 @@ export function KingdomOrbit({ mode, onClose }: { mode: Mode; onClose?: () => vo
             else if (ev.key === 'ArrowLeft') setLocked(ELEMENTS[(n + 3) % 4]);
             else if (ev.key === 'Enter' && state.current.locked) enter(state.current.locked);
             else if (ev.key === 'Escape') {
+                ev.preventDefault();
                 if (state.current.locked) setLocked(null);
                 else onClose?.();
             }

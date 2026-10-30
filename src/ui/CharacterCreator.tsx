@@ -378,7 +378,6 @@ export function CharacterCreator({ onBack }: { onBack: () => void }) {
     const [facing, setFacing] = useState(7);
     const [name, setName] = useState('');
     const [journey, setJourney] = useState('');
-    const [nudge, setNudge] = useState(0);
     const [busy, setBusy] = useState(false);
     const nameRef = useRef<HTMLInputElement>(null);
     const idleImgs = useImages([sheetSrc('idle')]);
@@ -406,14 +405,11 @@ export function CharacterCreator({ onBack }: { onBack: () => void }) {
     };
     const begin = async () => {
         if (busy) return;
-        if (!heroName) {
-            setNudge((n) => n + 1);
-            nameRef.current?.focus();
-            return;
-        }
+        // No name typed: a phone keyboard is a chore, so the hero takes a fitting one (it shows on the button first).
+        const hero = heroName || pick(NAMES[cls]);
         setBusy(true);
         sfx('start');
-        await slots.create(journey.trim().slice(0, 32) || `${heroName}'s Journey`, heroName, look, cls);
+        await slots.create(journey.trim().slice(0, 32) || `${hero}'s Journey`, hero, look, cls);
         store.patch({ phase: 'intro' });
     };
     const next = () => (step < 2 ? go(step + 1) : void begin());
@@ -627,7 +623,7 @@ export function CharacterCreator({ onBack }: { onBack: () => void }) {
             <div className="pan-y flex min-h-0 min-w-0 flex-[1_1_56%] flex-col gap-3 overflow-y-auto rounded-[6px] p-3 sm:p-4" style={panelStyle}>
                 <label className="flex flex-col gap-1.5">
                     <span className="text-[13px] tracking-[0.2em] text-[#d8c89a]">HERO NAME</span>
-                    <div className="flex gap-2" key={nudge} style={nudge ? { animation: 'cc-nudge .35s' } : undefined}>
+                    <div className="flex gap-2">
                         <input ref={nameRef} value={name} onChange={(e) => setName(e.target.value.replace(/[^\p{L}\p{N} '\-]/gu, '').slice(0, 16))}
                             placeholder={`${C.name} name`} maxLength={16} spellCheck={false} autoComplete="off" enterKeyHint="go" aria-required="true"
                             className={input} style={{ ...slice('btn2-pressed', 3), color: '#2f2a35' }} />
@@ -653,7 +649,7 @@ export function CharacterCreator({ onBack }: { onBack: () => void }) {
                     <p className="text-[12.5px] leading-snug text-white/50 [@media(max-height:420px)]:hidden">{describe(look)}</p>
                 </div>
                 <button type="button" onClick={() => void begin()} disabled={busy} className="mt-auto min-h-[48px] shrink-0 px-6 text-[20px] disabled:opacity-50" style={btn3}>
-                    {heroName ? `Begin as ${heroName}` : 'Name your hero to begin'}
+                    {heroName ? `Begin as ${heroName}` : 'Begin (a name is chosen for you)'}
                 </button>
                 <p className="-mt-1 text-center text-[12px] text-white/40">Your other journeys stay saved.</p>
             </div>
@@ -662,7 +658,6 @@ export function CharacterCreator({ onBack }: { onBack: () => void }) {
 
     return (
         <div className="absolute inset-0 z-20 flex flex-col" style={{ background: `radial-gradient(ellipse at 30% 45%, ${show.dark}cc, rgba(2,6,4,.94) 72%)`, animation: 'menu-in .4s ease-out both', transition: 'background .4s' }}>
-            <style>{'@keyframes cc-nudge{0%,100%{transform:none}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}'}</style>
             <div className="mx-auto flex h-full w-full max-w-[1180px] min-h-0 flex-col">
                 {header}
                 {step === 0 ? classStep : step === 1 ? lookStep : nameStep}
@@ -694,7 +689,7 @@ export function JourneyList({ onBack, onLoaded }: { onBack: () => void; onLoaded
     const [confirm, setConfirm] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     useEffect(() => {
-        const on = (e: KeyboardEvent) => { if (e.key === 'Escape' && !editing) onBack(); };
+        const on = (e: KeyboardEvent) => { if (e.key === 'Escape' && !editing) { e.preventDefault(); onBack(); } };
         window.addEventListener('keydown', on);
         return () => window.removeEventListener('keydown', on);
     });

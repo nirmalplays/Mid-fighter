@@ -86,6 +86,13 @@ button, input, textarea, select { font-family: inherit; }
    Title screen (ui/Celestial.tsx): floating islands, Malakor breathing in the
    fog, rising embers and sparks.
 --------------------------------------------------------------------------- */
+/* The low-health rim (ui/Hud.tsx LowHealth): a heartbeat. */
+@keyframes low-hp {
+    0%, 100% { opacity: 0.35; }
+    18% { opacity: 1; }
+    36% { opacity: 0.55; }
+    50% { opacity: 0.9; }
+}
 @keyframes eid-float {
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-12px); }

@@ -10,6 +10,7 @@
 import type { Talents } from '../game/talents.ts';
 import type { BoonId, Boons } from '../game/boons.ts';
 import { useSyncExternalStore } from 'react';
+import { TOUCH, touchWords } from './touchText.ts';
 import { defaultSpellSave, type SpellSave } from '../game/world/spells.ts';
 import { emptyBag, emptyBuildings, type Bag, type BuildingId, type Buildings, type CardId, type ItemId } from '../game/survival.ts';
 import type { Element, NpcId, Region } from '../game/eidolon.ts';
@@ -76,6 +77,8 @@ export interface GameOverInfo {
     rank: number | null;
     /** Why the leaderboard did not take the score, if it did not. */
     note: string | null;
+    /** What the fall cost: materials and gems left behind. */
+    lost?: { items: number; gems: number };
     top: { rank: number; name: string; score: number; wave: number; me: boolean }[];
 }
 
@@ -171,7 +174,7 @@ export interface AppState {
     /** The Fire Bolt: 0..1 ready (1 = ready now); -1 while it is not learnt. */
     fireReady: number;
     /** The current story objective and how far along it is. */
-    objective: { title: string; task: string; have: number; need: number; step: number; how?: string; act?: number; land?: string; sides?: { id: string; title: string; task: string }[] } | null;
+    objective: { title: string; task: string; have: number; need: number; step: number; how?: string; act?: number; land?: string; sides?: { id: string; title: string; task: string; how?: string }[] } | null;
     /** The side quest the player chose to follow (the marker and the arrow point at it), or null for the main story. */
     tracked: string | null;
     /** A story dialog waiting to be read (the world keeps going behind it, but bites are held off). */
@@ -392,6 +395,7 @@ export const store = {
     },
     /** Shallow-merge a partial update and notify React subscribers. */
     patch(partial: Partial<AppState>): void {
+        if (TOUCH) partial = forTouch(partial);
         state = { ...state, ...partial };
         for (const l of listeners) l();
     },
@@ -400,6 +404,26 @@ export const store = {
         return () => listeners.delete(l);
     },
 };
+
+/** The words a player reads, put in a thumb's terms on a touch screen (state/touchText.ts). */
+function forTouch(p: Partial<AppState>): Partial<AppState> {
+    if (!('banner' in p || 'storyPopup' in p || 'storyQueue' in p || 'objective' in p || 'hint' in p)) return p;
+    // (a page already in a thumb's terms comes back as itself, so the story log still knows it)
+    const page = (x: StoryPopup): StoryPopup => {
+        const lines = x.lines.map(touchWords);
+        return lines.every((l, i) => l === x.lines[i]) ? x : { ...x, lines };
+    };
+    const out = { ...p };
+    if (p.banner) out.banner = { ...p.banner, text: touchWords(p.banner.text) };
+    if (p.storyPopup) out.storyPopup = page(p.storyPopup);
+    if (p.storyQueue) out.storyQueue = p.storyQueue.map(page);
+    if (p.hint) out.hint = touchWords(p.hint);
+    if (p.objective) {
+        const o = p.objective;
+        out.objective = { ...o, task: touchWords(o.task), how: o.how && touchWords(o.how), sides: o.sides?.map((x) => ({ ...x, task: touchWords(x.task), how: x.how && touchWords(x.how) })) };
+    }
+    return out;
+}
 
 /**
  * React hook. IMPORTANT: the selector must return a primitive or a stable

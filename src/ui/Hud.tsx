@@ -60,6 +60,24 @@ const SKILL_CHIPS: { key: Skill; color: string; label: string }[] = [
 
 
 /** A visiting frog while it is around: an arrow to it, distance and seconds left. */
+/**
+ * Low health, felt at the edge of sight: a red rim that beats like a heart (faster the closer to falling).
+ * A phone player's eyes are on the fight, not the bar, so the danger comes to them.
+ */
+function LowHealth() {
+    const hp = useStore((s) => s.hp);
+    const maxHp = useStore((s) => s.maxHp);
+    const share = maxHp > 0 ? hp / maxHp : 1;
+    if (hp <= 0 || share > 0.34) return null;
+    const beat = share <= 0.17 ? 0.7 : 1.1;
+    return (
+        <div
+            className="pointer-events-none absolute inset-0"
+            style={{ background: 'radial-gradient(ellipse at center, transparent 42%, rgba(150,0,20,.5) 75%, rgba(120,0,16,.85) 100%)', boxShadow: 'inset 0 0 40px 10px rgba(200,10,30,.7)', animation: `low-hp ${beat}s ease-in-out infinite` }}
+        />
+    );
+}
+
 function FrogPill() {
     const aim = useStore((s) => s.frogAim);
     if (!aim) return null;
@@ -254,19 +272,26 @@ function UpgradePanel() {
 }
 
 /** A message that fades after a couple of seconds (wave starts, pickups). */
+/**
+ * A short message at the top (a wave, a pickup, what a boss is doing and what to do about it). It wraps in
+ * the middle of the screen, clear of the quest tracker and the buttons, and stays up long enough to be read.
+ */
 function Banner() {
     const banner = useStore((s) => s.banner);
+    const compact = useCompact();
     const [shown, setShown] = useState<string | null>(null);
     useEffect(() => {
         if (!banner) return;
         setShown(banner.text);
-        const id = window.setTimeout(() => setShown(null), 2400);
+        // About the time it takes to read it: a word count's worth, from 2.4 s up to 6 s.
+        const ms = Math.min(6000, Math.max(2400, 900 + banner.text.split(/\s+/).length * 330));
+        const id = window.setTimeout(() => setShown(null), ms);
         return () => window.clearTimeout(id);
     }, [banner]);
     return (
         <div
-            className="pointer-events-none absolute left-1/2 -translate-x-1/2 whitespace-nowrap text-center text-xl font-black text-white transition-opacity duration-500"
-            style={{ top: 110, opacity: shown ? 1 : 0, textShadow: '0 2px 0 #1a0c10, 0 0 8px #1a0c10, 2px 0 0 #1a0c10, -2px 0 0 #1a0c10' }}
+            className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-balance text-center font-black leading-tight text-white transition-opacity duration-500"
+            style={{ top: compact ? 132 : 110, width: compact ? 'min(470px, 62%)' : 'min(620px, 70%)', fontSize: compact ? 18 : 20, opacity: shown ? 1 : 0, textShadow: '0 2px 0 #1a0c10, 0 0 8px #1a0c10, 2px 0 0 #1a0c10, -2px 0 0 #1a0c10' }}
         >
             {shown ?? ''}
         </div>
@@ -322,6 +347,7 @@ export default function Hud() {
     return (
         // (a percentage size is not zoomed, so the root still fills the screen; inside it, every px is zoomed)
         <div className="pointer-events-none absolute inset-0 pt-safe-top" style={{ zoom }}>
+            <LowHealth />
             {/* Top: the minimap and what is around (left), the stone buttons (right); bottom: the vitals */}
             <TopButtons />
             <StatusLine />

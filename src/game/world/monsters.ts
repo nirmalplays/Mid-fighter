@@ -178,7 +178,8 @@ export function createMonsterView(opts: {
     levelH: number;
     player: () => { u: number; v: number };
     /** A monster was hit, fell, or just arrived (the scene plays the effect). */
-    onFx?: (what: 'hurt' | 'die' | 'spawn', u: number, v: number, big: boolean) => void;
+    /** `lost`: the health a hurt (or the finishing blow) took. */
+    onFx?: (what: 'hurt' | 'die' | 'spawn', u: number, v: number, big: boolean, lost?: number) => void;
 }): MonsterView {
     // Sheets load in the background; a monster is drawn once its kind's sheets are in.
     const frames = new Map<string, Texture[][]>();
@@ -270,13 +271,14 @@ export function createMonsterView(opts: {
                     s.v += (m.v - s.v) * k;
                 }
                 s.walking = m.state === 'chase' && Math.hypot(s.u - prevU, s.v - prevV) / Math.max(dt, 0.001) > 0.35;
+                const lost = s.hp - m.hp;
                 if (m.hp < s.hp) {
                     s.flash = 150;
-                    if (m.state !== 'dying') opts.onFx?.('hurt', s.u, s.v, s.big > 1);
+                    if (m.state !== 'dying') opts.onFx?.('hurt', s.u, s.v, s.big > 1, lost);
                 }
                 s.hp = m.hp;
                 if (m.state !== s.state) {
-                    if (m.state === 'dying') opts.onFx?.('die', s.u, s.v, s.big > 1);
+                    if (m.state === 'dying') opts.onFx?.('die', s.u, s.v, s.big > 1, Math.max(0, lost));
                     s.state = m.state;
                     s.t = m.t;
                 } else {

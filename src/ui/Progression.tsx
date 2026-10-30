@@ -6,9 +6,9 @@
 import { commands } from '../game/commands.ts';
 import { progress } from '../game/progress.ts';
 import { BOON } from '../game/boons.ts';
-import { BRANCHES, canLearn, rankOf, spentOf, TALENTS, talentPoints, TALENT } from '../game/talents.ts';
+import { BRANCHES, costFor, learnable, levelFor, rankOf, RESET_COST, spentOf, TALENTS, talentPoints, TALENT, whyNot } from '../game/talents.ts';
 import { store, useStore } from '../state/store.ts';
-import { BROWN, BROWN_DARK, Btn, Panel, press, ROW } from './hudKit.tsx';
+import { BROWN, BROWN_DARK, Btn, Cost, Panel, press, ROW } from './hudKit.tsx';
 import { Ico, type IconName } from './icons.tsx';
 
 /** Skill points still to spend. */
@@ -17,14 +17,27 @@ export function useTalentPoints(): number {
     const talents = useStore((s) => s.talents);
     return Math.max(0, talentPoints(level) - spentOf(talents));
 }
+/** Talents that can take a rank right now (bar being at camp): the skill tree's badge counts these, not bare points. */
+export function useTalentsReady(): number {
+    const level = useStore((s) => s.level);
+    const talents = useStore((s) => s.talents);
+    const bag = useStore((s) => s.bag);
+    return learnable(talents, level, bag);
+}
 
-/** The skill tree: three branches side by side, each talent with its ranks and what the next one does. */
+/**
+ * The skill tree: three branches side by side, each talent with its ranks, what the next one does, the level
+ * it asks, and the materials it takes (what you have against what it needs). Learnt at camp.
+ */
 export function TalentPanel() {
     const open = useStore((s) => s.talentsOpen);
     const talents = useStore((s) => s.talents);
     const level = useStore((s) => s.level);
+    const bag = useStore((s) => s.bag);
+    const inCamp = useStore((s) => s.inCamp);
     const points = useTalentPoints();
     if (!open) return null;
+    const have = (c: Partial<typeof bag>) => (Object.keys(c) as (keyof typeof bag)[]).every((k) => bag[k] >= (c[k] ?? 0));
     const close = () => store.patch({ talentsOpen: false });
     return (
         <Panel z={30} width={640} onClose={close}>
@@ -32,11 +45,12 @@ export function TalentPanel() {
                 <div className="flex flex-col leading-tight">
                     <span className="text-[18px] font-black">Skill tree</span>
                     <span className="text-[12px] font-bold" style={{ color: BROWN_DARK }}>
-                        {points > 0 ? `${points} point${points > 1 ? 's' : ''} to spend` : 'A new point every level'} · Level {level}
+                        {points > 0 ? `${points} point${points > 1 ? 's' : ''} to spend` : 'A point every two levels'} · Level {level} · {inCamp ? 'At camp: you can learn here' : 'Learn at camp (by the fire)'}
                     </span>
+                    <span className="text-[11px] font-bold" style={{ color: BROWN_DARK }}>Each rank takes a point, a level, and materials from the world: hunt, mine and gather for them.</span>
                 </div>
                 <div className="flex gap-1.5">
-                    {spentOf(talents) > 0 && <Btn color="#fff" onPress={() => progress.resetTalents()}>Reset</Btn>}
+                    {spentOf(talents) > 0 && <Btn color="#fff" disabled={!inCamp || !have(RESET_COST)} onPress={() => progress.resetTalents()}>Reset ({RESET_COST.gold} gold)</Btn>}
                     <Btn color="#fff" onPress={close}>Close</Btn>
                 </div>
             </div>
@@ -46,9 +60,10 @@ export function TalentPanel() {
                         <div className="rounded-md px-2 py-0.5 text-center text-[13px] font-black uppercase tracking-wide" style={{ background: b.color, border: `2px solid ${BROWN}` }}>{b.name}</div>
                         {TALENTS.filter((t) => t.branch === b.id).map((t) => {
                             const r = rankOf(talents, t.id);
-                            const can = canLearn(talents, level, t.id);
+                            const why = whyNot(talents, level, t.id, inCamp, have);
                             const locked = !!t.needs && rankOf(talents, t.needs) < 1;
                             const maxed = r >= t.max;
+                            const short = !maxed && !locked && level < levelFor(talents, t.id);
                             return (
                                 <div key={t.id} className="flex flex-col gap-1 rounded-xl p-1.5" style={{ ...ROW, opacity: locked ? 0.55 : 1, background: r > 0 ? 'rgba(255,255,255,.8)' : ROW.background }}>
                                     <div className="flex items-center gap-1.5">
@@ -61,7 +76,14 @@ export function TalentPanel() {
                                     <span className="text-[11px] font-bold leading-snug" style={{ color: BROWN_DARK }}>
                                         {locked ? `Needs ${TALENT[t.needs!].name}` : maxed ? t.blurb(t.max - 1) : t.blurb(r)}
                                     </span>
-                                    {!maxed && <Btn disabled={!can} onPress={() => progress.learnTalent(t.id)}>{r > 0 ? 'Rank up' : 'Learn'}</Btn>}
+                                    {!maxed && !locked && (
+                                        <>
+                                            <span className="text-[10px] font-black uppercase" style={{ color: short ? '#b91c1c' : '#15803d' }}>Level {levelFor(talents, t.id)}{short ? ` (you are ${level})` : ''}</span>
+                                            <Cost cost={costFor(talents, t.id)} bag={bag} />
+                                            {why && why !== 'Mastered' && <span className="text-[10px] font-black" style={{ color: '#b45309' }}>{why}</span>}
+                                        </>
+                                    )}
+                                    {!maxed && <Btn disabled={why !== null} onPress={() => progress.learnTalent(t.id)}>{r > 0 ? 'Rank up' : 'Learn'}</Btn>}
                                 </div>
                             );
                         })}

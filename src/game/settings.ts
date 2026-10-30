@@ -23,8 +23,14 @@ export interface Settings {
     musicVolume: number;
     /** The quest tracker folded down to one line (tap it to open it again). */
     questCollapsed: boolean;
+    /** A buzz in the hand on hits, kills and levels (game/haptics.ts). */
+    haptics: boolean;
+    /** The screen shakes on heavy blows (off for anyone it unsettles). */
+    shake: boolean;
+    /** An attack turns you to the nearest foe in reach (a tap on a phone has no aim of its own). */
+    aimAssist: boolean;
 }
-const DEFAULTS: Settings = { weatherFx: true, night: 'normal', hints: true, radar: true, sound: true, volume: 0.7, music: true, musicVolume: 0.45, questCollapsed: false };
+const DEFAULTS: Settings = { weatherFx: true, night: 'normal', hints: true, radar: true, sound: true, volume: 0.7, music: true, musicVolume: 0.45, questCollapsed: false, haptics: true, shake: true, aimAssist: true };
 const KEY = 'meh-fighter-settings';
 
 let current: Settings = { ...DEFAULTS };

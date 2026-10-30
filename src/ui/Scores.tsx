@@ -41,7 +41,10 @@ export function TopScores() {
     return <ScoreTable rows={rows ?? []} loading={rows === null} />;
 }
 
-/** Shown over the world when the player has died: how the run went, rank, top 10, Play again. */
+/**
+ * Shown over the world when the player has fallen. The story is not over (you wake at camp, the quest where
+ * you left it), so it says that first, and what the fall cost; then how the run went, the rank and the top 10.
+ */
 export function GameOver() {
     const info = useStore((s) => s.gameOver);
     if (!info) return null;
@@ -50,7 +53,11 @@ export function GameOver() {
     return (
         <div className="pointer-events-auto absolute inset-0 z-30 flex items-center justify-center" style={{ background: 'rgba(10,6,16,.7)' }}>
             <PxPanel frame={6} className="flex max-h-[96%] w-[min(520px,92vw)] flex-col gap-1.5 px-4 py-3">
-                <h2 className="text-center text-3xl font-black leading-none" style={{ color: '#fff3d6', textShadow: '0 3px 0 #3b2412' }}>Game Over</h2>
+                <h2 className="text-center text-3xl font-black leading-none" style={{ color: '#fff3d6', textShadow: '0 3px 0 #3b2412' }}>You fell</h2>
+                <p className="text-center text-[13px] font-black leading-snug" style={{ color: INK }}>
+                    You wake at camp; your quest waits where you left it.
+                    {info.lost && (info.lost.items > 0 || info.lost.gems > 0) ? ` Left behind: ${info.lost.items} materials${info.lost.gems > 0 ? ` and ${info.lost.gems} gems` : ''} (a bigger Storehouse keeps more).` : ''}
+                </p>
                 <div className="flex items-end justify-center gap-5 font-black tabular-nums" style={{ color: INK }}>
                     <div className="text-center leading-none"><div className="text-3xl">{info.score}</div><div className="text-[11px] opacity-70">SCORE</div></div>
                     <div className="text-center leading-none"><div className="text-xl">{info.wave}</div><div className="text-[11px] opacity-70">WAVE</div></div>
@@ -68,7 +75,7 @@ export function GameOver() {
                         Revive tokens
                     </PxButton>
                     <PxButton className="flex-1" style={{ minHeight: 46 }} icon={ICON.play} onClick={() => { sfx('start'); store.patch({ gameOver: null, runId: store.get().runId + 1 }); }}>
-                        Play again
+                        Wake at camp
                     </PxButton>
                     <PxButton className="flex-1" style={{ minHeight: 46 }} variant="white" icon={ICON.back} onClick={() => store.patch({ gameOver: null, phase: 'menu' })}>
                         Menu

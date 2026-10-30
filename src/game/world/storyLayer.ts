@@ -1197,7 +1197,7 @@ export function createStoryLayer(o: {
                     continue;
                 }
                 if (t === 'tether' && !quest.has('slag_edge')) {
-                    if (clock - p.shake > 1500) o.say("Your edge bounces off. Bram's Slag-Breaker could cut it", 0xffd0a0);
+                    if (clock - p.shake > 1500) o.say("Your edge bounces off! Do Bram's side quest (The Blacksmith's Forgotten Hammer) for the Slag-Breaker", 0xffd0a0);
                     p.shake = clock;
                     continue;
                 }
@@ -1868,6 +1868,11 @@ export function createStoryLayer(o: {
         if (g.kind === 'break' || g.kind === 'strikes') {
             const left = g.props.map((pid) => byId.get(pid)).find((p) => p && !quest.has(`broke:${p.def.id}`));
             if (left) return { u: left.u, v: left.v, label: `${label} · ${left.def.name ?? PROP_NAME[left.def.type] ?? 'here'}` };
+        }
+        // Someone to talk to (or forge with): their camp.
+        if (g.kind === 'talk' || g.kind === 'forge') {
+            const camp = layer.npcCamp(npcOf(g.npc));
+            return { ...(camp ? campOf(LANDS.find((x) => x.el === camp)) : campOf(l.land)), label: `${label} · ${g.kind === 'forge' ? 'the forge' : 'Talk'}` };
         }
         const at = (l.step as { at?: string }).at;
         if (at?.startsWith('prop:')) {

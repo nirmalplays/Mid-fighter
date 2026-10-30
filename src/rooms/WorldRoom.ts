@@ -172,8 +172,8 @@ export default class WorldRoom extends GameRoom<Protocol> {
             },
             {
                 // The breather after a wave is cleared (talk, forge, brew, set traps).
-                everyMs: (meta.waveEverySec ?? 90) * 1000,
-                firstMs: (meta.firstWaveSec ?? 20) * 1000,
+                everyMs: (meta.waveEverySec ?? 35) * 1000,
+                firstMs: (meta.firstWaveSec ?? 12) * 1000,
                 swordMul: meta.swordMul ?? 1,
                 potionMul: meta.potionMul ?? 1,
             },

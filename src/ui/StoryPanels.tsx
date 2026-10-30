@@ -10,7 +10,7 @@ import { sfx } from '../game/audio.ts';
 import { quest } from '../game/story/quest.ts';
 import { store, useStore, type PuzzleId } from '../state/store.ts';
 import { Ico } from './icons.tsx';
-import { KeyCap, PackButton, PxButton, PxPanel } from './px.tsx';
+import { KeyCap, PackButton, PxButton, PxPanel, slice } from './px.tsx';
 import { ALL_PUZZLES } from '../game/story/lands.ts';
 import { DataPuzzle } from './StoryPuzzles.tsx';
 import { useHudLayout } from './HudTop.tsx';
@@ -387,7 +387,12 @@ export function StoryHud() {
             {saga.zones && (
                 <div className="pointer-events-none absolute left-1/2 z-[6] flex -translate-x-1/2 flex-col items-center gap-0.5" style={{ top: 132 }}>
                     <span className="flex gap-1">{['Left limb', 'Right limb', 'Torso cage', 'Core anchor'].map((z, n) => <span key={z} title={z} style={{ width: 22, height: 8, background: n < saga.zones!.broken ? '#f59e0b' : 'rgba(0,0,0,.55)', outline: '2px solid #1a0c10' }} />)}</span>
-                    {saga.zones.mount && <span className="flex items-center gap-1 text-[13px] font-black text-[#fde68a]" style={{ textShadow: '0 1px 3px #000' }}>Staggered! <KeyCap>F</KeyCap> Grapple-mount</span>}
+                    {/* a button as well as a key: a phone has no F */}
+                    {saga.zones.mount && (
+                        <button type="button" className="pointer-events-auto flex min-h-[44px] items-center gap-1.5 px-3 text-[14px] font-black text-[#fff3d6]" style={{ ...slice('btn3-normal', 2), textShadow: '0 2px 0 #3b2412', animation: 'act-in .15s ease-out both' }} onPointerDown={(e) => { e.preventDefault(); commands.emit({ type: 'interact' }); }}>
+                            Staggered! <KeyCap>F</KeyCap> Grapple-mount
+                        </button>
+                    )}
                 </div>
             )}
             {saga.wedges > 0 && (

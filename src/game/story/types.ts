@@ -104,6 +104,8 @@ export interface Step {
     goal: Goal;
     /** What the marker points at: a site, a prop, or someone. */
     at?: string;
+    /** A side quest this step cannot be done without (its reward opens the way): the tracker follows it first. */
+    via?: string;
     /** Story told as the step begins, and as it ends. */
     intro?: StoryPopup[];
     outro?: StoryPopup[];

@@ -69,6 +69,9 @@ export function SettingsPanel({ onBack }: { onBack: () => void }) {
             <Toggle label="Music" on={s.music} set={(v) => settings.set({ music: v })} />
             <label className={row}>Music volume<input type="range" min={0} max={1} step={0.05} value={s.musicVolume} onChange={(e) => settings.set({ musicVolume: Number(e.target.value) })} className="h-8 w-44 cursor-pointer accent-[#8a5a2a]" /></label>
             <Toggle label="Sound effects" on={s.sound} set={(v) => settings.set({ sound: v })} />
+            <Toggle label="Vibration" on={s.haptics} set={(v) => settings.set({ haptics: v })} />
+            <Toggle label="Screen shake" on={s.shake} set={(v) => settings.set({ shake: v })} />
+            <Toggle label="Aim assist (attacks turn to the nearest foe)" on={s.aimAssist} set={(v) => settings.set({ aimAssist: v })} />
             <label className={row}>Effects volume<input type="range" min={0} max={1} step={0.05} value={s.volume} onChange={(e) => settings.set({ volume: Number(e.target.value) })} className="h-8 w-44 cursor-pointer accent-[#8a5a2a]" /></label>
             <div className={row}>
                 Night darkness

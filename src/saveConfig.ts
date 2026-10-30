@@ -107,7 +107,7 @@ export interface FighterSave {
     quest: QuestSave;
     /** The hero this journey follows: the name the player chose and their look (world/heroLook.ts). */
     hero: { name: string; look: HeroLook; cls: ClassId };
-    /** The skill tree: ranks learnt (game/talents.ts), a point for every level. */
+    /** The skill tree: ranks learnt (game/talents.ts): a point every two levels, materials for every rank. */
     talents: Talents;
 }
 

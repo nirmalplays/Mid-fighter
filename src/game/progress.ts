@@ -27,7 +27,7 @@ import {
     type Element, type NpcId, type Region,
 } from './eidolon.ts';
 import type { FighterSave } from '../saveConfig.ts';
-import { canLearn, rankOf, TALENT, type TalentId, type Talents } from './talents.ts';
+import { costFor, rankOf, RESET_COST, TALENT, talentPoints, whyNot, type TalentId, type Talents } from './talents.ts';
 import { npcIdOf, quest, STORY_NPC } from './story/quest.ts';
 
 /** Card level from the copies found: 1 copy is level 1, 1+2 copies level 2, 1+2+3 level 3, ... */
@@ -384,26 +384,35 @@ export const progress = {
     talents(): Talents {
         return saveSystem.data?.talents ?? {};
     },
-    /** Learn the next rank of a talent with a skill point (false if it cannot be learnt yet). */
-    learnTalent(id: TalentId): boolean {
+    /**
+     * Learn the next rank of a talent: a skill point, the level, the materials (taken from the bag), at camp.
+     * Returns why not when it cannot be learnt yet (null when it was).
+     */
+    learnTalent(id: TalentId): string | null {
         const d = saveSystem.data;
-        if (!d || !canLearn(d.talents, d.level, id)) return false;
+        if (!d) return 'No save';
+        const why = whyNot(d.talents, d.level, id, store.get().inCamp, (c) => this.has(c));
+        if (why) return why;
+        const cost = costFor(d.talents, id);
+        for (const k of Object.keys(cost) as ItemId[]) d.bag[k] -= cost[k] ?? 0;
         d.talents = { ...d.talents, [id]: rankOf(d.talents, id) + 1 };
         const maxHp = maxHpOf(d);
         store.patch({ talents: { ...d.talents }, maxHp, ...(id === 'tough' ? { hp: Math.min(maxHp, store.get().hp + 4) } : {}) });
         sfx('levelup');
-        store.patch({ banner: { text: `${TALENT[id].name} ${rankOf(d.talents, id) > 1 ? `rank ${rankOf(d.talents, id)}` : 'learnt'}!`, id: Date.now() } });
+        store.patch({ bag: { ...d.bag }, banner: { text: `${TALENT[id].name} ${rankOf(d.talents, id) > 1 ? `rank ${rankOf(d.talents, id)}` : 'learnt'}!`, id: Date.now() } });
         saveSystem.save();
-        return true;
+        return null;
     },
-    /** Take every point back to spend again (free: try another build). */
-    resetTalents(): void {
+    /** Take every point back to spend again, for gold (RESET_COST; the materials spent are gone). At camp only. */
+    resetTalents(): boolean {
         const d = saveSystem.data;
-        if (!d) return;
+        if (!d || !store.get().inCamp || !this.has(RESET_COST)) return false;
+        for (const k of Object.keys(RESET_COST) as ItemId[]) d.bag[k] -= RESET_COST[k] ?? 0;
         d.talents = {};
         const maxHp = maxHpOf(d);
-        store.patch({ talents: {}, maxHp, hp: Math.min(store.get().hp, maxHp) });
+        store.patch({ talents: {}, bag: { ...d.bag }, maxHp, hp: Math.min(store.get().hp, maxHp) });
         saveSystem.save();
+        return true;
     },
 
     has(cost: Partial<Bag>): boolean {
@@ -621,7 +630,9 @@ export const progress = {
         if (ups > 0) {
             sfx('levelup');
             const maxHp = maxHpOf(d);
-            store.patch({ level: d.level, xp: d.xp, maxHp, hp: maxHp, banner: { text: `Level ${d.level}! +${2 * ups} max health and ${ups > 1 ? `${ups} skill points` : 'a skill point'} (the ★ button)`, id: Date.now() } });
+            // A skill point comes every two levels (game/talents.ts): say so only when one came.
+            const pts = talentPoints(d.level) - talentPoints(d.level - ups);
+            store.patch({ level: d.level, xp: d.xp, maxHp, hp: maxHp, banner: { text: `Level ${d.level}! +${2 * ups} max health${pts > 0 ? ` and ${pts > 1 ? `${pts} skill points` : 'a skill point'} (the ★ button)` : ''}`, id: Date.now() } });
             saveSystem.save();
             this.checkStory();
         } else {

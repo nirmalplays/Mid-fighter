@@ -7,7 +7,7 @@
  * list it is handed, drifts gems that are close toward the player, and asks to take one
  * once it reaches them.
  */
-import { Assets, Container, Rectangle, Sprite, Text, Texture, type TextStyleOptions } from 'pixi.js';
+import { Assets, BitmapFont, BitmapText, Container, Rectangle, Sprite, Text, Texture, type TextStyleOptions } from 'pixi.js';
 import { DROP_LIFE_MS, type DropKind, type Skill } from '../../shared/sim.ts';
 import { DROP_FRAMES } from './dropsAtlas.ts';
 import { SKILL_CAP, SKILL_COLOR, SKILL_NAMES } from '../skills.ts';
@@ -68,6 +68,8 @@ export interface DropView {
     sync(list: ViewDrop[], dtMs: number): void;
     /** Rising text at a position in the world layer. */
     text(x: number, y: number, message: string, color?: number): void;
+    /** A damage number popping off a foe: drawn from a bitmap font made once, so a crowd of them costs next to nothing. */
+    number(x: number, y: number, n: number, color?: number, big?: boolean): void;
     destroy(): void;
 }
 
@@ -109,7 +111,9 @@ export function createDropView(opts: {
     };
 
     const shown = new Map<number, Shown>();
-    const floats: { text: Text; t: number; y0: number }[] = [];
+    const floats: { text: Text | BitmapText; t: number; y0: number; dx?: number }[] = [];
+    // The damage numbers' font: white glyphs with a dark rim, tinted per number.
+    BitmapFont.install({ name: 'dmg', style: { fontFamily: 'sans-serif', fontSize: 26, fontWeight: '900', fill: 0xffffff, stroke: { color: 0x1a0c10, width: 5 } }, chars: [['0', '9'], '!'], resolution: 2 });
     let clock = 0;
 
     const dispose = (s: Shown) => {
@@ -202,6 +206,7 @@ export function createDropView(opts: {
                 f.t += dtMs;
                 const k = f.t / 1100;
                 f.text.y = f.y0 - 46 * k;
+                if (f.dx) f.text.x += f.dx * dtMs;
                 f.text.alpha = k < 0.7 ? 1 : Math.max(0, 1 - (k - 0.7) / 0.3);
                 if (k >= 1) {
                     f.text.destroy();
@@ -220,6 +225,16 @@ export function createDropView(opts: {
             text.zIndex = 1e6;
             opts.layer.addChild(text);
             floats.push({ text, t: 0, y0: y });
+        },
+
+        number(x, y, n, color = 0xffffff, big = false) {
+            const text = new BitmapText({ text: String(n), style: { fontFamily: 'dmg', fontSize: big ? 30 : 22 } });
+            text.tint = color;
+            text.anchor.set(0.5, 1);
+            text.position.set(x + (Math.random() - 0.5) * 18, y);
+            text.zIndex = 1e6;
+            opts.layer.addChild(text);
+            floats.push({ text, t: 0, y0: y, dx: (Math.random() - 0.5) * 0.03 });
         },
 
         destroy() {

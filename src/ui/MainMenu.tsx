@@ -161,6 +161,13 @@ export default function MainMenu() {
     const [sel, setSel] = useState(0);
     useEffect(() => setSel(0), [screen]);
     const cur = Math.min(sel, items.length - 1);
+    // The settings screen has no keys of its own: Escape (or a phone's Back) steps out of it.
+    useEffect(() => {
+        if (screen !== 'settings') return;
+        const on = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); back(); } };
+        window.addEventListener('keydown', on);
+        return () => window.removeEventListener('keydown', on);
+    });
     // Keys: up and down choose, Enter selects, Escape steps back.
     useEffect(() => {
         if (!ready || screen === 'kingdoms' || screen === 'settings' || screen === 'create' || screen === 'journeys') return;

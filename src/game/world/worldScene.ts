@@ -32,7 +32,7 @@ import { bindControls } from './controls.ts';
 import {
     CHUNK_TILES, LOAD_RADIUS, MAP_CHUNKS, MAP_TILES, TILE_DX, TILE_DY, ZOOM,
 } from './constants.ts';
-import { createInput, JOY_RADIUS } from './input.ts';
+import { createInput, JOY_RADIUS, SPRINT_LET, SPRINT_PUSH } from './input.ts';
 import { GEM_CAP } from '../skills.ts';
 import { FX, type FxName } from './fxAtlas.ts';
 import { cooldownFor, maxCharges, SPELLS } from './spells.ts';
@@ -54,7 +54,8 @@ import { createDarkness } from './darkness.ts';
 import { createLightMap, type Light } from './lightmap.ts';
 import { placedOf, THEMES } from './interiors.ts';
 import type { Door } from './mapGen.ts';
-import { settingsDark } from '../settings.ts';
+import { settings, settingsDark } from '../settings.ts';
+import { buzz } from '../haptics.ts';
 import { ambience, music, rainLevel, sfx, synth } from '../audio.ts';
 import { CYCLE_MS, NIGHT_START, nowSky, setSkyOffset } from '../../shared/daynight.ts';
 import { mapRef, radar } from './mapRef.ts';
@@ -598,7 +599,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             return;
         }
         if (world.scale.x !== ZOOM) world.scale.set(ZOOM);
-        const shake = shakeMs > 0 ? (shakeMs / 220) * 7 : 0;
+        const shake = shakeMs > 0 && settings.get().shake ? (shakeMs / 220) * 7 : 0;
         world.position.set(
             stage.designWidth() / 2 - sx(pu, pv) * ZOOM + (Math.random() - 0.5) * shake,
             stage.height / 2 - (sy(pu, pv) - pz - 20) * ZOOM + (Math.random() - 0.5) * shake,
@@ -667,8 +668,9 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     let fireCd = 0;
     let ringT = 0, orbitT = 0, barrageT = 0;
     let fireShown = -2;
-    /** Sprinting by pushing the joystick to its edge (a phone has no Shift key). */
+    /** Sprinting on a touch screen: the finger pushed past the joystick's ring and held there a moment. */
     let sprintNow = false;
+    let sprintHold = 0;
     store.patch({ talents: { ...tal }, boons: {}, boonOffer: null, surge: { have: 0, need: surgeNeed(0) }, fireReady: -1 });
     let phoenixUsed = false;
     let regenAcc = 0;
@@ -776,6 +778,9 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         }
         store.patch({ hp });
         story?.onHurt(hp, store.get().maxHp);
+        // Felt as well as seen: a jolt of the screen and a buzz in the hand (a long one when it is the last).
+        shakeMs = Math.max(shakeMs, hp === 0 ? 260 : 140);
+        buzz(hp === 0 ? 'error' : n >= 2 ? 'heavy' : 'medium');
         playFx('splat', pu, pv, { scale: 2.2, life: 600, lift: 44 });
         sfx(hp === 0 ? 'fall' : 'hurt');
         character.command({ type: 'hurt' });
@@ -800,8 +805,9 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         // The camps' sanctuary rings: monsters stop at the edge (except in a siege).
         noGo: (u, v) => !story?.sieging() && CAMP_CENTRES.some((c) => Math.hypot(u - c.u, v - c.v) < CAMP_RADIUS && progress.open(c.el)),
         // Debug: ?firstWave=<s>&waveEvery=<s> shorten the wave timers when playing offline.
-        everySec: Number(q.get('waveEvery')) || 90,
-        firstSec: Number(q.get('firstWave')) || 20,
+        // A short breather between onslaughts and a quick first wave: the fight keeps coming.
+        everySec: Number(q.get('waveEvery')) || 35,
+        firstSec: Number(q.get('firstWave')) || 12,
         // Debug: ?swordMul=40 makes sword drops common when playing offline, for testing.
         swordMul: Number(q.get('swordMul')) || 1,
         potionMul: Number(q.get('potionMul')) || 1,
@@ -956,7 +962,12 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         levelH: LEVEL_H,
         player: () => ({ u: pu, v: pv }),
         // Hits spark, the fallen go up in skull smoke, new arrivals rise from a puff of dust.
-        onFx: (what, u, v, big) => {
+        onFx: (what, u, v, big, lost) => {
+            // The damage, popping off it (gold for a big foe), so every blow reads on a small screen.
+            if (lost && lost > 0 && what !== 'spawn') {
+                const at = worldPoint(u, v);
+                dropView.number(at.x, at.y - heightAt(u, v) * LEVEL_H - (big ? 130 : 66), lost, big ? 0xffd84d : 0xffffff, big);
+            }
             if (what === 'hurt') playFx('hit', u, v, { scale: big ? 2.6 : 1.7, life: 420, lift: big ? 60 : 32 });
             else if (what === 'die') playFx('death', u, v, { scale: big ? 4.5 : 3, life: 800, lift: 30 });
             else playFx('spawn', u, v, { scale: 2.6, life: 650, lift: 12 });
@@ -1034,20 +1045,23 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         const score = runScore(wave, runKills);
         net.sendAway();
         const lost = progress.endRun();
-        if (lost.lostItems > 0 || lost.lostGems > 0) banner(`Lost ${lost.lostItems} materials and ${lost.lostGems} gems. A bigger Storehouse keeps more`);
-        store.patch({ gameOver: { score, wave, kills: runKills, seconds: runSeconds, status: 'sending', rank: null, note: null, top: [] } });
+        buzz('error');
+        const fell = { items: lost.lostItems, gems: lost.lostGems };
+        store.patch({ gameOver: { score, wave, kills: runKills, seconds: runSeconds, status: 'sending', rank: null, note: null, top: [], lost: fell } });
         void (async () => {
             const r = await submitRun(score, runSeconds, wave, runKills);
             const top = await topScores(10);
             const rank = r.accepted ? r.rank : await myRank();
-            if (store.get().gameOver) store.patch({ gameOver: { score, wave, kills: runKills, seconds: runSeconds, status: 'done', rank, note: r.accepted ? null : r.reason, top } });
+            if (store.get().gameOver) store.patch({ gameOver: { score, wave, kills: runKills, seconds: runSeconds, status: 'done', rank, note: r.accepted ? null : r.reason, top, lost: fell } });
         })();
     };
     // Debug: with ?spawn= the game exposes the current combat view for automated checks.
     if (q.has('spawn')) {
-        (window as unknown as { __game?: unknown }).__game = { map, hurt: (n: number) => { invuln = 0; hurtPlayer(n); }, view: () => sim.view(), pos: () => ({ u: pu, v: pv }), store, progress, quest, spawn: (kind: string, du: number, dv: number) => sim.debugSpawn(kind, pu + du, pv + dv), summon: (code: number, du: number, dv: number) => sim.summon(code, 0, pu + du, pv + dv) };
+        (window as unknown as { __game?: unknown }).__game = { map, hurt: (n: number) => { invuln = 0; hurtPlayer(n); }, view: () => sim.view(), pos: () => ({ u: pu, v: pv }), store, progress, quest, spawn: (kind: string, du: number, dv: number) => sim.debugSpawn(kind, pu + du, pv + dv), face: () => character.facing, clear: () => { for (const m of sim.view().monsters) sim.strike(m.u, m.v, 0, 9999, 0.8); }, summon: (code: number, du: number, dv: number) => sim.summon(code, 0, pu + du, pv + dv) };
     }
     let hudClock = 0;
+    /** The wave readout last sent to the HUD. */
+    let waveShown = '';
     // A swing that actually started (the character was free) lands a moment later.
     const strikes: number[] = [];
     let wasLocked = false;
@@ -1580,11 +1594,39 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     };
     let cineChecked = false;
     const onCineKey = (e: KeyboardEvent) => {
-        if (cinematic && e.key === 'Escape') cinematic.skip();
+        if (cinematic && e.key === 'Escape') {
+            e.preventDefault();
+            cinematic.skip();
+        }
     };
     window.addEventListener('keydown', onCineKey);
+    /**
+     * Aim assist: a swing turns you to the foe in reach that is nearest (and least of a turn away), since a
+     * tap on a phone carries no aim of its own. A stick pushed firmly one way keeps to the foes on that side.
+     */
+    const aimAtFoe = () => {
+        const d = input.read();
+        const push = Math.hypot(d.x, d.y);
+        const stick = Math.atan2(d.y, d.x);
+        const now = (character.facing * Math.PI) / 4;
+        const turn = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+        let best: { a: number; score: number } | null = null;
+        for (const m of sim.view().monsters) {
+            if (m.state === 'dying') continue;
+            const du = m.u - pu, dv = m.v - pv;
+            const dist = Math.hypot(du, dv);
+            if (dist > 2.6 || dist < 0.05) continue;
+            // The facing angle that puts the blow on it (the strike's offset, turned round).
+            const a = Math.atan2(du + dv, du - dv);
+            if (push > 0.5 && turn(a, stick) > Math.PI / 2) continue;
+            const score = dist + turn(a, now) * 0.6;
+            if (!best || score < best.score) best = { a, score };
+        }
+        if (best) character.setFacing(best.a / (Math.PI / 4));
+    };
     const offStrike = commands.subscribe((c) => {
         if (cinematic) return;
+        if (c.type === 'attack' && !wasLocked && character.locked && !character.dead && settings.get().aimAssist) aimAtFoe();
         if ((c.type === 'attack' || c.type === 'use') && !wasLocked && character.locked && !character.dead && character.tool === 'sword') slashAt();
         if (c.type === 'spell') castSpell(c.index);
         if (c.type === 'firebolt' && rankOf(tal, 'firebolt') > 0 && fireCd <= 0 && !busy() && castFire(false)) fireCd = fireCooldown();
@@ -1600,6 +1642,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             banner(`${BOON[id].name}${id !== 'mend' && B(id) > 1 ? ` x${B(id)}` : ''}!`);
             playFx('heal', pu, pv, { scale: 1.6, life: 900, lift: 50 });
             sfx('levelup');
+            buzz('success');
         }
         if (c.type === 'item') useItem(c.id as ItemId);
         // Use: gather, talk, climb, open, challenge or visit, if something is in reach.
@@ -1719,10 +1762,14 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         // Actions, sitting and death hold the character in place.
         const walk = character.locked || roll || cinematic || door ? { x: 0, y: 0 } : dir;
         const moving = Math.hypot(dir.x, dir.y) > 0.2 && !character.locked && !roll;
-        // Sprint: Shift on a keyboard, or the joystick pushed right out to its rim on a touch screen.
-        const deflect = input.joystick() ? Math.hypot(raw.x, raw.y) : 0;
-        const sprinting = (store.get().sprint || deflect > 0.9) && moving && tired <= 0 && stamina > 1;
-        sprintNow = sprinting && deflect > 0;
+        // Sprint: Shift on a keyboard; on a touch screen, push the finger well past the joystick's ring (a faint
+        // outer ring shows where) and hold it there a moment. Anywhere inside the ring walks, as fast as you push.
+        const reach = input.reach();
+        if (reach >= SPRINT_PUSH) sprintHold += ticker.deltaMS;
+        else if (reach < SPRINT_LET) sprintHold = 0;
+        const touchSprint = sprintHold >= 200;
+        const sprinting = (store.get().sprint || touchSprint) && moving && tired <= 0 && stamina > 1;
+        sprintNow = sprinting && touchSprint;
         if (sprinting) {
             stamina = Math.max(0, stamina - (dt * STAMINA_COST.sprint * (power.dodgeCost < STAMINA_COST.dodge ? 0.7 : 1) * (buffMs.yellow > 0 ? 0.6 : 1)));
             staminaIdle = 0;
@@ -2094,12 +2141,14 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                             playFx('frost', pu, pv, { scale: 3.2, squash: 0.55, life: 550 });
                             playFx('sparkle', pu, pv, { scale: 3, squash: 0.55, life: 600 });
                             dropView.text(player.x, player.y - 120, 'Whirlwind!', 0xfca5a5);
+                            buzz('heavy');
                             shakeMs = 200;
                         } else {
                             sim.strike(ru, rv, character.facing, Math.max(2, Math.round(dmg * 1.5)), 2.2);
                             playFx('frost', ru, rv, { scale: 2.6, squash: 0.55, life: 500 });
                             playFx('boltburst', ru, rv, { scale: 2.2, life: 450, lift: 20 });
                             dropView.text(player.x, player.y - 120, 'Runic Fracture!', 0x7dd3fc);
+                            buzz('medium');
                         }
                         story?.fracture(ru, rv, sim.view().monsters);
                         synth('mine');
@@ -2118,6 +2167,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                 }
                 if (crit) {
                     shakeMs = 220;
+                    buzz('heavy');
                     const ca = (character.facing * Math.PI) / 4;
                     playFx('crit', pu + (Math.cos(ca) + Math.sin(ca)) / Math.SQRT2, pv + (Math.sin(ca) - Math.cos(ca)) / Math.SQRT2, { scale: 1.6, life: 460, lift: 34 });
                     dropView.text(player.x + 30, player.y - 110, 'CRIT!', 0xffd84d);
@@ -2242,7 +2292,10 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
             // A level gained, an objective done: the pack's lettering rises over the player.
             {
                 const st = store.get();
-                if (shownLevel > 0 && st.level > shownLevel) playFx('levelup', pu, pv, { scale: 0.9, life: 2900, lift: 118 });
+                if (shownLevel > 0 && st.level > shownLevel) {
+                    playFx('levelup', pu, pv, { scale: 0.9, life: 2900, lift: 118 });
+                    buzz('success');
+                }
                 if (shownStep >= 0 && st.objective && st.objective.step > shownStep) playFx('complete', pu, pv, { scale: 0.9, life: 3700, lift: 118 });
                 shownLevel = st.level;
                 shownStep = st.objective?.step ?? shownStep;
@@ -2277,7 +2330,12 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                     left: Math.max(0, Math.ceil((FROG_STAYS - frog.age) / 1000)),
                 }
                 : null;
-            store.patch({ wave: view.wave, nextWaveIn: view.nextIn, waveLeft, onslaughtLeft: view.onslaughtLeft, fighting: view.fighting, frogAim, sharedMonsters: view.online });
+            // Only when something shown has changed (each patch re-renders the HUD: costly on a phone).
+            const waveKey = `${view.wave}|${view.nextIn}|${waveLeft}|${view.onslaughtLeft}|${view.fighting}|${view.online}|${frogAim ? `${Math.round(frogAim.angle * 20)}|${Math.round(frogAim.dist)}|${frogAim.left}` : '-'}`;
+            if (waveKey !== waveShown) {
+                waveShown = waveKey;
+                store.patch({ wave: view.wave, nextWaveIn: view.nextIn, waveLeft, onslaughtLeft: view.onslaughtLeft, fighting: view.fighting, frogAim, sharedMonsters: view.online });
+            }
             // Ten seconds of cooldown left: warn which side the next wave comes from.
             if (!view.fighting && view.nextIn > 0 && view.nextIn <= 10 && warnedWave !== view.wave + 1) {
                 warnedWave = view.wave + 1;
@@ -2378,8 +2436,9 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         joyGfx.clear();
         const j = input.joystick();
         if (j) {
-            // The rim lights up gold while the push sprints.
-            joyGfx.circle(j.ox, j.oy, JOY_RADIUS).stroke({ width: sprintNow ? 4 : 2, color: sprintNow ? 0xfde047 : 0xffffff, alpha: sprintNow ? 0.85 : 0.35 });
+            // The ring you walk in; past it, the faint sprint ring (gold while sprinting).
+            joyGfx.circle(j.ox, j.oy, JOY_RADIUS).stroke({ width: 2, color: 0xffffff, alpha: 0.35 });
+            joyGfx.circle(j.ox, j.oy, JOY_RADIUS * SPRINT_PUSH).stroke({ width: sprintNow ? 4 : 2, color: sprintNow ? 0xfde047 : 0xffffff, alpha: sprintNow ? 0.85 : 0.12 });
             joyGfx.circle(j.kx, j.ky, 20).fill({ color: sprintNow ? 0xfde047 : 0xffffff, alpha: sprintNow ? 0.65 : 0.4 });
         }
     };
