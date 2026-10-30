@@ -1,0 +1,60 @@
+{
+  "items": [
+    {
+      "itemId": "revive_1",
+      "name": "Revive Token",
+      "description": "1 revive. Fall in a run and you get back up where you fell.",
+      "category": "consumable",
+      "price": { "type": "bucks", "value": "20" },
+      "entitlements": [{ "entitlementId": "revive_token", "quantity": 1, "consumable": true }],
+      "assets": {},
+      "unique": false,
+      "active": true,
+      "regions": [],
+      "refundEligible": true,
+      "refundWindowHours": 24,
+      "tags": ["revive"],
+      "sortOrder": 1,
+      "releasedAt": null,
+      "expiresAt": null
+    },
+    {
+      "itemId": "revive_5",
+      "name": "5 Revive Tokens",
+      "description": "Five revives. Best for a few good runs.",
+      "category": "consumable",
+      "price": { "type": "bucks", "value": "80" },
+      "entitlements": [{ "entitlementId": "revive_token", "quantity": 5, "consumable": true }],
+      "assets": {},
+      "unique": false,
+      "active": true,
+      "regions": [],
+      "refundEligible": true,
+      "refundWindowHours": 24,
+      "tags": ["revive"],
+      "sortOrder": 2,
+      "releasedAt": null,
+      "expiresAt": null
+    },
+    {
+      "itemId": "revive_15",
+      "name": "15 Revive Tokens",
+      "description": "Fifteen revives. Best value.",
+      "category": "consumable",
+      "price": { "type": "bucks", "value": "200" },
+      "entitlements": [{ "entitlementId": "revive_token", "quantity": 15, "consumable": true }],
+      "assets": {},
+      "unique": false,
+      "active": true,
+      "regions": [],
+      "refundEligible": true,
+      "refundWindowHours": 24,
+      "tags": ["revive"],
+      "sortOrder": 3,
+      "releasedAt": null,
+      "expiresAt": null
+    }
+  ],
+  "sales": [],
+  "collections": []
+}

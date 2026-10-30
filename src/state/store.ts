@@ -85,6 +85,9 @@ export interface AppState {
     runId: number;
     /** The Game Over screen: set when the player dies, with how the run went and the leaderboard. */
     gameOver: GameOverInfo | null;
+    /** Revive tokens owned (an entitlement bought in the revive shop) and whether that shop is open */
+    reviveTokens: number;
+    reviveShop: boolean;
     /** 0..1 progress of the critical-asset warm during 'loading' */
     loadProgress: number;
     /** Set by the host's onPause/onResume lifecycle hooks */
@@ -247,6 +250,8 @@ let state: AppState = {
     phase: 'loading',
     runId: 0,
     gameOver: null,
+    reviveTokens: 0,
+    reviveShop: false,
     loadProgress: 0,
     paused: false,
     tileX: 0,

@@ -64,6 +64,9 @@ export function GameOver() {
                     <ScoreTable rows={info.top} loading={info.status === 'sending'} />
                 </div>
                 <div className="flex gap-2">
+                    <PxButton className="flex-1" style={{ minHeight: 46 }} variant="white" onClick={() => store.patch({ reviveShop: true })}>
+                        Revive tokens
+                    </PxButton>
                     <PxButton className="flex-1" style={{ minHeight: 46 }} icon={ICON.play} onClick={() => { sfx('start'); store.patch({ gameOver: null, runId: store.get().runId + 1 }); }}>
                         Play again
                     </PxButton>

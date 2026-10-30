@@ -24,6 +24,7 @@ import type { Stage } from '../stage.ts';
 import { commands } from '../commands.ts';
 import { net } from '../net/multiplayer.ts';
 import { myRank, runScore, submitRun, topScores } from '../leaderboard.ts';
+import { REVIVE_MAX, refreshTokens, useToken } from '../revive.ts';
 import { progress } from '../progress.ts';
 import { createRemotePlayers } from '../net/remotePlayers.ts';
 import { createCharacter, type Tool } from './character.ts';
@@ -765,6 +766,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         net.sendAct('hurt');
     };
     // The run: it ends when the player dies (Game Over screen + leaderboard).
+    void refreshTokens();
     let runKills = 0;
     let runSeconds = 0;
     let deadFor = 0;
@@ -964,6 +966,33 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
         heal: (n) => store.patch({ hp: Math.min(store.get().maxHp, store.get().hp + n) }),
         damageMul: () => power.damage,
     });
+    // A revive token is used the moment you fall, up to REVIVE_MAX a run; with none left the run ends.
+    let revivesUsed = 0;
+    let reviving = false;
+    const tryRevive = () => {
+        if (reviving || runOver) return;
+        if (revivesUsed >= REVIVE_MAX || store.get().reviveTokens <= 0) {
+            endRun();
+            return;
+        }
+        reviving = true;
+        void useToken().then((ok) => {
+            reviving = false;
+            if (runOver) return;
+            if (!ok) {
+                endRun();
+                return;
+            }
+            revivesUsed++;
+            deadFor = 0;
+            invuln = 3000;
+            store.patch({ hp: store.get().maxHp });
+            character.command({ type: 'die' }); // getting up
+            playFx('heal', pu, pv, { scale: 1.8, life: 1100, lift: 56 });
+            banner(`Revived! ${REVIVE_MAX - revivesUsed} left this run`);
+            sfx('revive');
+        });
+    };
     const endRun = () => {
         runOver = true;
         sfx('gameover');
@@ -983,7 +1012,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
     };
     // Debug: with ?spawn= the game exposes the current combat view for automated checks.
     if (q.has('spawn')) {
-        (window as unknown as { __game?: unknown }).__game = { map, view: () => sim.view(), pos: () => ({ u: pu, v: pv }), store, progress, quest, spawn: (kind: string, du: number, dv: number) => sim.debugSpawn(kind, pu + du, pv + dv), summon: (code: number, du: number, dv: number) => sim.summon(code, 0, pu + du, pv + dv) };
+        (window as unknown as { __game?: unknown }).__game = { map, hurt: (n: number) => { invuln = 0; hurtPlayer(n); }, view: () => sim.view(), pos: () => ({ u: pu, v: pv }), store, progress, quest, spawn: (kind: string, du: number, dv: number) => sim.debugSpawn(kind, pu + du, pv + dv), summon: (code: number, du: number, dv: number) => sim.summon(code, 0, pu + du, pv + dv) };
     }
     let hudClock = 0;
     // A swing that actually started (the character was free) lands a moment later.
@@ -1754,7 +1783,7 @@ export function createWorldScene(app: Application, stage: Stage): Scene {
                     downed = 0;
                     teamWipe();
                 }
-            } else if (deadFor > 1500) endRun();
+            } else if (deadFor > 1500) tryRevive();
         }
         saveClock += ticker.deltaMS;
         if (saveClock > 1000 && !runOver) {

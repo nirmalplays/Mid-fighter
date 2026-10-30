@@ -19,6 +19,7 @@ import { progress } from '../game/progress.ts';
 import { SKILL_BLURB, SKILL_CAP, upgradeCost } from '../game/skills.ts';
 import type { Skill } from '../shared/sim.ts';
 import { GameOver } from './Scores.tsx';
+import { buyPack, loadPrices, PACKS, REVIVE_MAX, type TokenPack } from '../game/revive.ts';
 import { SoundButton } from './SoundButton.tsx';
 import {
     BagPanel, BigMap, BossBar, BuildPanel, DownedOverlay, Hotbar4, HousePanel, KingdomChooser, maybeShowIntro, NpcPanel, Radar,
@@ -68,6 +69,85 @@ function FrogPill() {
         >
             <span style={{ display: 'inline-flex', transform: `rotate(${aim.angle}rad)` }}><Ico name="pointer" size={14} color="#fff" style={{ transform: 'rotate(45deg)' }} /></span>
             <span>Frog · {Math.round(aim.dist)} tiles · {aim.left}s</span>
+        </div>
+    );
+}
+
+/** Tap the token count to open the revive shop (not during the Game Over screen, which has its own button). */
+function ReviveTokens() {
+    const n = useStore((s) => s.reviveTokens);
+    const over = useStore((s) => s.gameOver);
+    if (over) return null;
+    return (
+        <button
+            type="button"
+            className="pointer-events-auto absolute flex items-center gap-1 rounded-xl px-2 text-[13px] font-black tabular-nums"
+            style={{ left: 12, top: 120, height: 28, background: '#fff', border: `3px solid ${BROWN}`, color: INK }}
+            onPointerDown={(e) => { e.preventDefault(); store.patch({ reviveShop: true }); }}
+        >
+            <Ico name="heart" size={14} color="#e5484d" />
+            <span>{n}</span>
+            <span>+</span>
+        </button>
+    );
+}
+
+/** The revive shop: token packs paid with RUN Bits through the RUN shop. */
+function ReviveShop() {
+    const open = useStore((s) => s.reviveShop);
+    const tokens = useStore((s) => s.reviveTokens);
+    const [prices, setPrices] = useState<Record<string, number>>({});
+    const [busy, setBusy] = useState(false);
+    const [note, setNote] = useState<string | null>(null);
+    useEffect(() => {
+        if (open) void loadPrices().then(setPrices);
+    }, [open]);
+    if (!open) return null;
+    const buy = async (pack: TokenPack) => {
+        if (busy) return;
+        setBusy(true);
+        setNote(null);
+        const r = await buyPack(pack);
+        setBusy(false);
+        setNote(r === 'bought' ? `+${pack.tokens} revive${pack.tokens > 1 ? 's' : ''}` : r === 'failed' ? 'Purchase failed. You were not charged.' : null);
+    };
+    return (
+        <div className="pointer-events-auto absolute inset-0 z-40 flex items-center justify-center" style={{ background: 'rgba(10,6,16,.55)' }}>
+            <div
+                className="flex flex-col gap-2 rounded-2xl p-3"
+                style={{ width: 360, background: `linear-gradient(${TAN_LIGHT}, ${TAN})`, border: `4px solid ${BROWN}`, boxShadow: `inset 0 0 0 2px ${TAN_LIGHT}, 0 4px 0 ${BROWN_DARK}`, color: INK }}
+            >
+                <div className="flex items-center justify-between gap-2">
+                    <div className="text-[16px] font-black">Revive Tokens · you have {tokens}</div>
+                    <button
+                        type="button"
+                        className="rounded-lg px-3 font-black active:translate-y-[2px]"
+                        style={{ height: 32, background: '#fff', border: `3px solid ${BROWN}`, fontSize: 14 }}
+                        onPointerDown={(e) => { e.preventDefault(); store.patch({ reviveShop: false }); }}
+                    >
+                        Close
+                    </button>
+                </div>
+                <div className="text-[11px] font-bold" style={{ color: BROWN_DARK }}>
+                    A token is used automatically when you fall: you get back up at full health where you fell. Up to {REVIVE_MAX} per run.
+                </div>
+                {PACKS.map((p) => (
+                    <div key={p.id} className="flex items-center gap-2 rounded-xl px-2 py-1" style={{ background: 'rgba(255,255,255,.55)', border: `2px solid ${BROWN}` }}>
+                        <Ico name="heart" size={26} color="#e5484d" />
+                        <div className="flex-1 text-[14px] font-black leading-tight">{p.tokens} {p.tokens > 1 ? 'tokens' : 'token'}</div>
+                        <button
+                            type="button"
+                            disabled={busy}
+                            className="rounded-lg px-3 font-black active:translate-y-[2px]"
+                            style={{ height: 34, minWidth: 92, background: busy ? '#cfc3b8' : '#7ee081', border: `3px solid ${BROWN}`, fontSize: 13 }}
+                            onPointerDown={(e) => { e.preventDefault(); void buy(p); }}
+                        >
+                            {prices[p.id] ?? p.bits} Bits
+                        </button>
+                    </div>
+                ))}
+                <div className="min-h-[16px] text-center text-[12px] font-black">{note}</div>
+            </div>
         </div>
     );
 }
@@ -249,6 +329,8 @@ export default function Hud() {
             <FrogPill />
             <BossBar />
             <UpgradePanel />
+            <ReviveTokens />
+            <ReviveShop />
             <HousePanel />
             <TravelPanel />
             <NpcPanel />
